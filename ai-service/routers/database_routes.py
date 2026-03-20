@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from database import get_db
 from models import database_models as db_models
@@ -10,13 +10,18 @@ router = APIRouter(
 )
 
 @router.post("/save")
-async def save_profile(profile_data: UserProfile, db: Session = Depends(get_db)):
+async def save_profile(profile_data: UserProfile, request: Request, db: Session = Depends(get_db)):
+    user_id = request.session.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
     try:
-        # 1. Clear existing profile data (Single-user system KISS approach)
-        db.query(db_models.Profile).filter(db_models.Profile.email == profile_data.email).delete()
-        
-        # 2. Create the main Profile record
+        db.query(db_models.Profile).filter(
+            db_models.Profile.user_id == user_id
+        ).delete()
+
         new_profile = db_models.Profile(
+            user_id=user_id,
             first_name=profile_data.first_name,
             last_name=profile_data.last_name,
             mobile_no=profile_data.mobile_no,
@@ -26,9 +31,8 @@ async def save_profile(profile_data: UserProfile, db: Session = Depends(get_db))
             portfolio=profile_data.portfolio
         )
         db.add(new_profile)
-        db.flush()  # Get the profile ID for foreign keys
+        db.flush()
 
-        # 3. Add Education
         for edu in profile_data.education:
             db.add(db_models.Education(
                 profile_id=new_profile.id,
@@ -37,18 +41,16 @@ async def save_profile(profile_data: UserProfile, db: Session = Depends(get_db))
                 location=edu.location
             ))
 
-        # 4. Add Experience
         for exp in profile_data.experience:
             db.add(db_models.Experience(
                 profile_id=new_profile.id,
-                job_title=exp.name, # Mapping 'name' from schema to 'job_title'
+                job_title=exp.name,
                 company=exp.company,
                 location=exp.location,
                 description=exp.description,
                 date_range=exp.date
             ))
 
-        # 5. Add Projects
         for proj in profile_data.projects:
             db.add(db_models.Project(
                 profile_id=new_profile.id,
@@ -57,7 +59,6 @@ async def save_profile(profile_data: UserProfile, db: Session = Depends(get_db))
                 date_range=proj.date
             ))
 
-        # 6. Add Skills
         for skill_name in profile_data.skills:
             db.add(db_models.Skill(
                 profile_id=new_profile.id,
@@ -65,11 +66,12 @@ async def save_profile(profile_data: UserProfile, db: Session = Depends(get_db))
             ))
 
         db.commit()
-        return {"status": "success", "message": "Profile synced to Postgres"}
+        return {"status": "success", "message": "Profile saved"}
 
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Database Sync Error: {str(e)}")
+    
 
 @router.get("/load/{email}")
 async def load_profile(email: str, db: Session = Depends(get_db)):

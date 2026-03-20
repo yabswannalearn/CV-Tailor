@@ -3,18 +3,27 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from database import Base
 
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(100), unique=True, index=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    profile = relationship("Profile", back_populates="owner", uselist=False, cascade="all, delete")
+
 class Profile(Base):
     __tablename__ = "profiles"
     id = Column(Integer, primary_key=True, index=True)
-    first_name = Column(String(50), nullable=False)
-    last_name = Column(String(50), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, unique=True)
+    first_name = Column(String(50))
+    last_name = Column(String(50))
     mobile_no = Column(String(20))
-    email = Column(String(100), unique=True, index=True)
+    email = Column(String(100))
     linkedin = Column(String(255))
     github = Column(String(255))
     portfolio = Column(String(255))
-    summary = Column(Text)
-    
+
+    owner = relationship("User", back_populates="profile")
     education = relationship("Education", back_populates="owner", cascade="all, delete")
     experience = relationship("Experience", back_populates="owner", cascade="all, delete")
     projects = relationship("Project", back_populates="owner", cascade="all, delete")
@@ -47,7 +56,6 @@ class Project(Base):
     profile_id = Column(Integer, ForeignKey("profiles.id"))
     name = Column(String(100))
     description = Column(Text)
-    tech_stack = Column(String(255))
     date_range = Column(String(50))
     owner = relationship("Profile", back_populates="projects")
 

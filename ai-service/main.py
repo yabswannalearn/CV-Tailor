@@ -1,10 +1,23 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routers import database_routes, generate_routes
+from starlette.middleware.sessions import SessionMiddleware
+from routers import database_routes, generate_routes, auth_routes
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = FastAPI()
 
-# Add this CORS middleware
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=os.getenv("SESSION_SECRET", "change-this-secret"),
+    session_cookie="cv_tailor_session",
+    max_age=86400,  # 1 day
+    https_only=False,  # set True in production
+    same_site="lax"
+)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000"],
@@ -13,6 +26,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth_routes.router)
 app.include_router(database_routes.router)
 app.include_router(generate_routes.router)
 

@@ -44,3 +44,11 @@ class GenerateRequest(BaseModel):
         # Normalize whitespace
         v = v.strip()
         return v
+
+class RegisterRequest(BaseModel):
+    email: str
+
+class LoginRequest(BaseModel):
+    email: str
+
+
