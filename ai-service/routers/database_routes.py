@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from database import get_db
 from models import database_models as db_models
 from models.schemas import UserProfile
@@ -71,11 +71,54 @@ async def save_profile(profile_data: UserProfile, request: Request, db: Session 
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Database Sync Error: {str(e)}")
-    
+
 
 @router.get("/load/{email}")
 async def load_profile(email: str, db: Session = Depends(get_db)):
-    profile = db.query(db_models.Profile).filter(db_models.Profile.email == email).first()
+    profile = db.query(db_models.Profile).options(
+        joinedload(db_models.Profile.education),
+        joinedload(db_models.Profile.experience),
+        joinedload(db_models.Profile.projects),
+        joinedload(db_models.Profile.skills),
+    ).filter(db_models.Profile.email == email).first()
+
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
-    return profile
+
+    return {
+        "id": profile.id,
+        "user_id": profile.user_id,
+        "first_name": profile.first_name,
+        "last_name": profile.last_name,
+        "mobile_no": profile.mobile_no,
+        "email": profile.email,
+        "linkedin": profile.linkedin,
+        "github": profile.github,
+        "portfolio": profile.portfolio,
+        "education": [
+            {
+                "school_name": e.school_name,
+                "course": e.course,
+                "location": e.location
+            } for e in profile.education
+        ],
+        "experience": [
+            {
+                "job_title": e.job_title,
+                "company": e.company,
+                "location": e.location,
+                "description": e.description,
+                "date_range": e.date_range
+            } for e in profile.experience
+        ],
+        "projects": [
+            {
+                "name": p.name,
+                "description": p.description,
+                "date_range": p.date_range
+            } for p in profile.projects
+        ],
+        "skills": [
+            {"skill_name": s.skill_name} for s in profile.skills
+        ],
+    }
