@@ -1,22 +1,18 @@
 import requests
 import re
-from models.schemas import UserProfile, Education, Experience, Project
+from models.schemas import UserProfile, Education, Experience, Project, Certification
 from models import database_models as db_models
 from services.templates.jakes_resume import JAKES_RESUME
 
 def clean_latex_output(raw: str) -> str:
-    # Strip markdown fences
     raw = re.sub(r"```(?:latex)?\s*", "", raw)
     raw = re.sub(r"```", "", raw)
 
-    # Take only what's AFTER \begin{document} if AI included preamble
     match = re.search(r"\\begin\{document\}", raw)
     if match:
         raw = raw[match.end():]
 
-    # Strip \end{document}
     raw = re.sub(r"\\end\{document\}", "", raw)
-
     return raw.strip()
 
 def wrap_with_template(body: str, template: str) -> str:
@@ -35,7 +31,8 @@ def db_profile_to_schema(db_profile: db_models.Profile) -> UserProfile:
             Education(
                 school_name=edu.school_name,
                 course=edu.course,
-                location=edu.location
+                location=edu.location,
+                description=edu.description or ""
             ) for edu in db_profile.education
         ],
         experience=[
@@ -54,11 +51,24 @@ def db_profile_to_schema(db_profile: db_models.Profile) -> UserProfile:
                 date=proj.date_range
             ) for proj in db_profile.projects
         ],
-        skills=[skill.skill_name for skill in db_profile.skills]
+        skills=[skill.skill_name for skill in db_profile.skills],
+        certifications=[
+            Certification(
+                name=cert.name,
+                issuer=cert.issuer,
+                date_issued=cert.date_issued
+            ) for cert in db_profile.certifications
+        ]
     )
 
+def truncate_jd(jd: str, max_chars: int = 1500) -> str:
+    if len(jd) > max_chars:
+        return jd[:max_chars] + "... [truncated]"
+    return jd
 
 def build_prompt(profile: UserProfile, jd: str) -> str:
+    jd = truncate_jd(jd)
+
     template_instruction = r"""
     USE THIS EXACT LATEX STRUCTURE (Jake's Resume):
 
@@ -72,7 +82,7 @@ def build_prompt(profile: UserProfile, jd: str) -> str:
         \href{https://johndoe.dev}{johndoe.dev}
     \end{center}
 
-    SECTIONS (use only these, no "Contact Information" section):
+    SECTIONS (use only these):
     \section{Education}
     \resumeSubHeadingListStart
         \resumeSubheading{School Name}{Location}{Degree}{Dates}
@@ -83,7 +93,6 @@ def build_prompt(profile: UserProfile, jd: str) -> str:
         \resumeSubheading{Job Title}{Location}{Company Name}{Dates}
         \resumeItemListStart
             \resumeItem{Bullet point tailored to JD}
-            \resumeItem{Another bullet point}
         \resumeItemListEnd
     \resumeSubHeadingListEnd
 
@@ -98,31 +107,51 @@ def build_prompt(profile: UserProfile, jd: str) -> str:
     \section{Skills}
     \begin{itemize}[leftmargin=0.15in, label={}]
         \small{\item{
-            \textbf{Languages}{: Python, Go, TypeScript} \\
-            \textbf{Frameworks}{: FastAPI, Next.js, Tailwind CSS} \\
-            \textbf{Tools}{: PostgreSQL, LaTeX, Git}
+            \textbf{Languages}{: Python, Go} \\
+            \textbf{Frameworks}{: FastAPI, Next.js} \\
+            \textbf{Tools}{: PostgreSQL, Git}
         }}
     \end{itemize}
+
+    \section{Certifications}
+    \resumeSubHeadingListStart
+        \resumeSubheading{Certification Name}{}{Issuer}{Date Issued}
+    \resumeSubHeadingListEnd
     """
+    cert_instruction = ""
+    if profile.certifications:
+        cert_list = ", ".join([f"{c.name} ({c.issuer}, {c.date_issued})" for c in profile.certifications if c.name])
+        cert_instruction = f"\n    CERTIFICATIONS TO INCLUDE (mandatory): {cert_list}\n"
+
 
     strict_rules = r"""
     STRICT RULES:
-    1. CRITICAL: Output ONLY what goes between \begin{document} and \end{document}.
-       Do NOT include \documentclass, \usepackage, \newcommand, \begin{document}, or \end{document}.
+    1. CRITICAL: Output ONLY body content — no \documentclass, no \usepackage, no \begin{document}, no \end{document}.
     2. Do NOT wrap output in markdown code fences.
-    3. Start your output DIRECTLY with \begin{center} — nothing before it.
-    4. NEVER create a "Contact Information" section — all contact info goes in the header \begin{center} block only.
-    5. NEVER create a "Professional Summary" section — go straight to Education, Experience, Projects, Skills.
-    6. Always wrap Education and Experience entries inside \resumeSubHeadingListStart and \resumeSubHeadingListEnd.
-    7. Tailor bullet points to emphasize skills and keywords mentioned in the JD.
-    8. Use the custom commands: \resumeSubheading, \resumeProjectHeading, \resumeItem.
-    9. Escape all LaTeX special characters in user data (%, &, $, #).
-    10. If any field is missing or unknown (e.g. dates, links), leave it BLANK — never write "N/A", "Unknown", or placeholder text.
-    """
+    3. Start DIRECTLY with \begin{center} — nothing before it.
+    4. NEVER create a "Contact Information" or "Professional Summary" section.
+    5. Always wrap Education, Experience, Certifications inside \resumeSubHeadingListStart and \resumeSubHeadingListEnd.
+    6. Tailor ALL bullet points to emphasize skills and keywords from the JD.
+    7. Use the custom commands: \resumeSubheading, \resumeProjectHeading, \resumeItem.
+    8. Escape all LaTeX special characters (%, &, $, #, _).
+    9. If any field is missing, leave it BLANK — never write "N/A" or placeholder text.
+    10. The output MUST fit on ONE page:
+        - MAX 2 bullet points per experience entry
+        - MAX 2 bullet points per project entry
+        - Skills: max 3 categories, keep each line short
+        - Be concise — every bullet must be 1 line max
+    """ + cert_instruction + (r"""
+    11. MANDATORY: If certifications are listed above, you MUST include a \section{Certifications} block.
+        Use this format:
+        \section{Certifications}
+        \resumeSubHeadingListStart
+            \resumeSubheading{Certification Name}{}{Issuer}{Date Issued}
+        \resumeSubHeadingListEnd
+    """ if profile.certifications else "")
 
     return (
-        "You are an expert technical resume writer.\n"
-        "Task: Rewrite the following User Profile into a professional LaTeX resume body tailored to the Job Description.\n\n"
+        "You are an expert technical resume writer. Output must fit on exactly ONE page.\n"
+        "Task: Rewrite the User Profile into a LaTeX resume body tailored to the Job Description.\n\n"
         f"JOB DESCRIPTION:\n{jd}\n\n"
         f"USER PROFILE:\n{profile.model_dump_json()}\n\n"
         f"{template_instruction}\n"
@@ -130,21 +159,22 @@ def build_prompt(profile: UserProfile, jd: str) -> str:
     )
 
 def generate_latex_resume(db_profile: db_models.Profile, jd: str) -> str:
-    # Convert DB model to Pydantic schema first
     profile = db_profile_to_schema(db_profile)
     prompt = build_prompt(profile, jd)
 
     try:
         response = requests.post(
             "http://localhost:11434/api/generate",
-            json={"model": "qwen2.5:7b",
-                "prompt": prompt, 
+            json={
+                "model": "qwen2.5:7b",
+                "prompt": prompt,
                 "stream": False,
                 "options": {
                     "num_predict": 2800,
-                    "temperature": 0.3,
-                    "num_ctx": 3072  
-                }},
+                    "temperature": 0.8,
+                    "num_ctx": 3072
+                }
+            },
             timeout=300
         )
         response.raise_for_status()
