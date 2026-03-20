@@ -20,8 +20,18 @@ def generate_latex_resume(profile: UserProfile, jd: str) -> str:
     - Use standard LaTeX packages (hyperref, geometry, enumitem).
     """
     
-    # Placeholder for your local LLM call (e.g., Ollama)
-    response = requests.post("http://localhost:11434/api/generate", 
-                             json={"model": "qwen2.5:7b", "prompt": prompt, "stream": False})
+    try:
+            response = requests.post(
+                "http://localhost:11434/api/generate", 
+                json={"model": "qwen2.5:7b", "prompt": prompt, "stream": False},
+                timeout=120 # Generation takes time
+            )
+            res_json = response.json()
+            
+            # Debugging: Print this to your FastAPI terminal
+            print(f"DEBUG OLLAMA RESPONSE: {res_json}")
+            
+            return res_json.get("response", "KEY 'response' NOT FOUND")
     
-    return response.json().get("response", "")
+    except Exception as e:
+            return f"SERVICE ERROR: {str(e)}"
