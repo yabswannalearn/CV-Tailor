@@ -1,6 +1,7 @@
 import requests
 import re
-from models.schemas import UserProfile
+from models.schemas import UserProfile, Education, Experience, Project
+from models import database_models as db_models
 from services.templates.jakes_resume import JAKES_RESUME
 
 def clean_latex_output(raw: str) -> str:
@@ -20,6 +21,42 @@ def clean_latex_output(raw: str) -> str:
 
 def wrap_with_template(body: str, template: str) -> str:
     return template.replace("<<BODY>>", body)
+
+def db_profile_to_schema(db_profile: db_models.Profile) -> UserProfile:
+    return UserProfile(
+        first_name=db_profile.first_name,
+        last_name=db_profile.last_name,
+        mobile_no=db_profile.mobile_no,
+        email=db_profile.email,
+        linkedin=db_profile.linkedin,
+        github=db_profile.github,
+        portfolio=db_profile.portfolio,
+        education=[
+            Education(
+                school_name=edu.school_name,
+                course=edu.course,
+                location=edu.location
+            ) for edu in db_profile.education
+        ],
+        experience=[
+            Experience(
+                name=exp.job_title,
+                company=exp.company,
+                location=exp.location,
+                description=exp.description,
+                date=exp.date_range
+            ) for exp in db_profile.experience
+        ],
+        projects=[
+            Project(
+                name=proj.name,
+                description=proj.description,
+                date=proj.date_range
+            ) for proj in db_profile.projects
+        ],
+        skills=[skill.skill_name for skill in db_profile.skills]
+    )
+
 
 def build_prompt(profile: UserProfile, jd: str) -> str:
     template_instruction = r"""
@@ -71,7 +108,7 @@ def build_prompt(profile: UserProfile, jd: str) -> str:
     strict_rules = r"""
     STRICT RULES:
     1. CRITICAL: Output ONLY what goes between \begin{document} and \end{document}.
-    Do NOT include \documentclass, \usepackage, \newcommand, \begin{document}, or \end{document}.
+       Do NOT include \documentclass, \usepackage, \newcommand, \begin{document}, or \end{document}.
     2. Do NOT wrap output in markdown code fences.
     3. Start your output DIRECTLY with \begin{center} — nothing before it.
     4. NEVER create a "Contact Information" section — all contact info goes in the header \begin{center} block only.
@@ -92,14 +129,23 @@ def build_prompt(profile: UserProfile, jd: str) -> str:
         f"{strict_rules}"
     )
 
-def generate_latex_resume(profile: UserProfile, jd: str) -> str:
+def generate_latex_resume(db_profile: db_models.Profile, jd: str) -> str:
+    # Convert DB model to Pydantic schema first
+    profile = db_profile_to_schema(db_profile)
     prompt = build_prompt(profile, jd)
 
     try:
         response = requests.post(
             "http://localhost:11434/api/generate",
-            json={"model": "qwen2.5:7b", "prompt": prompt, "stream": False},
-            timeout=120
+            json={"model": "qwen2.5:7b",
+                "prompt": prompt, 
+                "stream": False,
+                "options": {
+                    "num_predict": 2800,
+                    "temperature": 0.3,
+                    "num_ctx": 3072  
+                }},
+            timeout=300
         )
         response.raise_for_status()
         raw_latex = response.json().get("response", "")
