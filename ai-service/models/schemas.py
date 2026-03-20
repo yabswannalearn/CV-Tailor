@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import List, Optional
 
 class Education(BaseModel):
@@ -32,5 +32,15 @@ class UserProfile(BaseModel):
     skills: List[str]
 
 class GenerateRequest(BaseModel):
-    profile: UserProfile
-    job_description: str
+    email: str
+    jd: str
+
+    @field_validator("jd")
+    @classmethod
+    def sanitize_jd(cls, v: str) -> str:
+        # Remove invalid control characters that break JSON parsing
+        import re
+        v = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', v)
+        # Normalize whitespace
+        v = v.strip()
+        return v
