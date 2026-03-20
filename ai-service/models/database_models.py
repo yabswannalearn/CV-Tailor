@@ -37,6 +37,7 @@ class Education(Base):
     course = Column(String(150))
     location = Column(String(100))
     date_range = Column(String(50))
+    description = Column(Text)
     owner = relationship("Profile", back_populates="education")
 
 class Experience(Base):

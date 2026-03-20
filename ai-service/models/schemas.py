@@ -5,6 +5,7 @@ class Education(BaseModel):
     school_name: str
     course: str
     location: str
+    description: Optional[str] = None
 
 class Experience(BaseModel):
     name: str

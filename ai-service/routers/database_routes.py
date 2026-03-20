@@ -38,7 +38,8 @@ async def save_profile(profile_data: UserProfile, request: Request, db: Session 
                 profile_id=new_profile.id,
                 school_name=edu.school_name,
                 course=edu.course,
-                location=edu.location
+                location=edu.location,
+                description=edu.description
             ))
 
         for exp in profile_data.experience:
@@ -99,7 +100,8 @@ async def load_profile(email: str, db: Session = Depends(get_db)):
             {
                 "school_name": e.school_name,
                 "course": e.course,
-                "location": e.location
+                "location": e.location,
+                "description": e.description  # add this
             } for e in profile.education
         ],
         "experience": [
