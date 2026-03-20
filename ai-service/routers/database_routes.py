@@ -66,6 +66,14 @@ async def save_profile(profile_data: UserProfile, request: Request, db: Session 
                 skill_name=skill_name
             ))
 
+        for cert in profile_data.certifications:
+            db.add(db_models.Certification(
+                profile_id=new_profile.id,
+                name=cert.name,
+                issuer=cert.issuer,
+                date_issued=cert.date_issued
+            ))
+
         db.commit()
         return {"status": "success", "message": "Profile saved"}
 
@@ -81,6 +89,7 @@ async def load_profile(email: str, db: Session = Depends(get_db)):
         joinedload(db_models.Profile.experience),
         joinedload(db_models.Profile.projects),
         joinedload(db_models.Profile.skills),
+        joinedload(db_models.Profile.certifications),
     ).filter(db_models.Profile.email == email).first()
 
     if not profile:
@@ -122,5 +131,12 @@ async def load_profile(email: str, db: Session = Depends(get_db)):
         ],
         "skills": [
             {"skill_name": s.skill_name} for s in profile.skills
+        ],
+        "certifications": [
+            {
+                "name": c.name,
+                "issuer": c.issuer,
+                "date_issued": c.date_issued
+            } for c in profile.certifications
         ],
     }

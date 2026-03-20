@@ -28,6 +28,7 @@ class Profile(Base):
     experience = relationship("Experience", back_populates="owner", cascade="all, delete")
     projects = relationship("Project", back_populates="owner", cascade="all, delete")
     skills = relationship("Skill", back_populates="owner", cascade="all, delete")
+    certifications = relationship("Certification", back_populates="owner", cascade="all, delete")
 
 class Education(Base):
     __tablename__ = "education"
@@ -66,3 +67,12 @@ class Skill(Base):
     profile_id = Column(Integer, ForeignKey("profiles.id"))
     skill_name = Column(String(50))
     owner = relationship("Profile", back_populates="skills")
+
+class Certification(Base):
+    __tablename__ = "certifications"
+    id = Column(Integer, primary_key=True)
+    profile_id = Column(Integer, ForeignKey("profiles.id"))
+    name = Column(String(150))
+    issuer = Column(String(150))
+    date_issued = Column(String(50))
+    owner = relationship("Profile", back_populates="certifications")

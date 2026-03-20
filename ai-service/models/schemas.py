@@ -19,6 +19,12 @@ class Project(BaseModel):
     description: str
     date: str
 
+class Certification(BaseModel):
+    name: str
+    issuer: Optional[str] = None
+    date_issued: Optional[str] = None
+
+
 class UserProfile(BaseModel):
     first_name: str
     last_name: str
@@ -31,6 +37,7 @@ class UserProfile(BaseModel):
     experience: List[Experience]
     projects: List[Project]
     skills: List[str]
+    certifications: List[Certification] = []
 
 class GenerateRequest(BaseModel):
     email: str
