@@ -1,0 +1,27 @@
+import requests
+from models.schemas import UserProfile
+
+def generate_latex_resume(profile: UserProfile, jd: str) -> str:
+    # Minimalist Prompting (KISS)
+    prompt = f"""
+    You are an expert technical resume writer. 
+    Using the following User Profile and Job Description, generate a LaTeX resume.
+    Use the 'Jake's Resume' template style.
+    
+    USER PROFILE:
+    {profile.json()}
+    
+    JOB DESCRIPTION:
+    {jd}
+    
+    INSTRUCTIONS:
+    - Tailor the experience bullets to match the JD keywords.
+    - Return ONLY the raw LaTeX code. No conversational text.
+    - Use standard LaTeX packages (hyperref, geometry, enumitem).
+    """
+    
+    # Placeholder for your local LLM call (e.g., Ollama)
+    response = requests.post("http://localhost:11434/api/generate", 
+                             json={"model": "qwen2.5:7b", "prompt": prompt, "stream": False})
+    
+    return response.json().get("response", "")
