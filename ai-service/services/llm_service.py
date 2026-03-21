@@ -1,8 +1,14 @@
-import requests
 import re
+import os
+from dotenv import load_dotenv
 from models.schemas import UserProfile, Education, Experience, Project, Certification
 from models import database_models as db_models
 from services.templates.jakes_resume import JAKES_RESUME
+from google import genai
+
+load_dotenv()
+
+client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 def clean_latex_output(raw: str) -> str:
     raw = re.sub(r"```(?:latex)?\s*", "", raw)
@@ -118,11 +124,14 @@ def build_prompt(profile: UserProfile, jd: str) -> str:
         \resumeSubheading{Certification Name}{}{Issuer}{Date Issued}
     \resumeSubHeadingListEnd
     """
+
     cert_instruction = ""
     if profile.certifications:
-        cert_list = ", ".join([f"{c.name} ({c.issuer}, {c.date_issued})" for c in profile.certifications if c.name])
+        cert_list = ", ".join([
+            f"{c.name} ({c.issuer}, {c.date_issued})"
+            for c in profile.certifications if c.name
+        ])
         cert_instruction = f"\n    CERTIFICATIONS TO INCLUDE (mandatory): {cert_list}\n"
-
 
     strict_rules = r"""
     STRICT RULES:
@@ -163,31 +172,16 @@ def generate_latex_resume(db_profile: db_models.Profile, jd: str) -> str:
     prompt = build_prompt(profile, jd)
 
     try:
-        response = requests.post(
-            "http://localhost:11434/api/generate",
-            json={
-                "model": "qwen2.5:7b",
-                "prompt": prompt,
-                "stream": False,
-                "options": {
-                    "num_predict": 2800,
-                    "temperature": 0.8,
-                    "num_ctx": 3072
-                }
-            },
-            timeout=300
+        response = client.models.generate_content(
+            model="gemini-3.1-flash-lite-preview",
+            contents=prompt,
         )
-        response.raise_for_status()
-        raw_latex = response.json().get("response", "")
 
+        raw_latex = response.text
         cleaned = clean_latex_output(raw_latex)
         full_latex = wrap_with_template(cleaned, JAKES_RESUME)
 
         return full_latex
 
-    except requests.exceptions.Timeout:
-        raise Exception("Ollama request timed out — is the model loaded?")
-    except requests.exceptions.ConnectionError:
-        raise Exception("Cannot connect to Ollama — is it running on port 11434?")
     except Exception as e:
         raise Exception(f"SERVICE ERROR: {str(e)}")
