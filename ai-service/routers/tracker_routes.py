@@ -7,6 +7,7 @@ from database import get_db
 from models import database_models as db_models
 from models.schemas import JobApplicationCreate, JobApplicationUpdate
 import requests as http_requests
+from pydantic import BaseModel as PydanticBaseModel
 
 router = APIRouter(prefix="/tracker", tags=["tracker"])
 
@@ -171,3 +172,33 @@ async def get_latex(job_id: int, request: Request, db: Session = Depends(get_db)
     if not job.latex_source:
         raise HTTPException(status_code=404, detail="No CV generated for this job yet")
     return {"latex": job.latex_source}
+
+class SaveLatexRequest(PydanticBaseModel):
+    latex: str
+
+@router.patch("/{job_id}/latex")
+async def save_latex(job_id: int, data: SaveLatexRequest, request: Request, db: Session = Depends(get_db)):
+    """Save edited LaTeX back to DB and recompile PDF."""
+    user_id = get_current_user_id(request)
+    job = db.query(db_models.JobApplication).filter(
+        db_models.JobApplication.id == job_id,
+        db_models.JobApplication.user_id == user_id
+    ).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    # Save new LaTeX
+    job.latex_source = data.latex
+
+    # Recompile PDF from new LaTeX
+    go_response = http_requests.post(
+        "http://localhost:8081/generate",
+        json={"latex": data.latex},
+        timeout=120
+    )
+    if go_response.ok:
+        job.pdf_data = go_response.content
+        job.pdf_generated_at = datetime.utcnow()
+
+    db.commit()
+    return {"status": "success", "pdf_updated": go_response.ok}
