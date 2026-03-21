@@ -1,6 +1,6 @@
 from pydantic import BaseModel, field_validator
 from typing import List, Optional
-from datetime import date as DateType
+from datetime import date as DateType, datetime
 from typing import Optional
 
 class Education(BaseModel):
@@ -90,12 +90,45 @@ class JobApplicationUpdate(BaseModel):
     priority: Optional[str] = None
     notes: Optional[str] = None
 
+class JobApplicationCreate(BaseModel):
+    company_name: str
+    job_title: str
+    job_url: Optional[str] = None
+    short_description: Optional[str] = None
+    job_description: Optional[str] = None  # add
+    status: Optional[str] = "Saved"
+    date_applied: Optional[DateType] = None
+    follow_up_date: Optional[DateType] = None
+    job_type: Optional[str] = None
+    location: Optional[str] = None
+    salary_range: Optional[str] = None
+    priority: Optional[str] = "Medium"
+    notes: Optional[str] = None
+
+class JobApplicationUpdate(BaseModel):
+    company_name: Optional[str] = None
+    job_title: Optional[str] = None
+    job_url: Optional[str] = None
+    short_description: Optional[str] = None
+    job_description: Optional[str] = None  # add
+    status: Optional[str] = None
+    date_applied: Optional[DateType] = None
+    follow_up_date: Optional[DateType] = None
+    job_type: Optional[str] = None
+    location: Optional[str] = None
+    salary_range: Optional[str] = None
+    priority: Optional[str] = None
+    notes: Optional[str] = None
+
 class JobApplicationResponse(BaseModel):
     id: int
     company_name: str
     job_title: str
     job_url: Optional[str] = None
     short_description: Optional[str] = None
+    job_description: Optional[str] = None  # add
+    has_pdf: bool = False                   # add — don't send raw bytes to frontend
+    pdf_generated_at: Optional[datetime] = None  # add
     status: str
     date_applied: Optional[DateType] = None
     follow_up_date: Optional[DateType] = None
@@ -107,4 +140,3 @@ class JobApplicationResponse(BaseModel):
 
     class Config:
         from_attributes = True
-

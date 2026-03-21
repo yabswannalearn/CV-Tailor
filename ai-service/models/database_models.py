@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Date
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Date, LargeBinary
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from database import Base
@@ -84,7 +84,10 @@ class JobApplication(Base):
     company_name = Column(String(150), nullable=False)
     job_title = Column(String(150), nullable=False)
     job_url = Column(String(500))
-    short_description = Column(Text)
+    short_description = Column(Text)       # keep for display
+    job_description = Column(Text)         # full JD for AI
+    pdf_data = Column(LargeBinary)         # stored PDF bytes
+    pdf_generated_at = Column(DateTime(timezone=True))
     status = Column(String(50), default="Saved")
     date_applied = Column(Date)
     follow_up_date = Column(Date)
