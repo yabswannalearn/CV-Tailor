@@ -98,5 +98,6 @@ class JobApplication(Base):
     notes = Column(Text)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    latex_source = Column(Text)
 
     owner = relationship("User", back_populates="job_applications")

@@ -1,12 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
-from sqlalchemy.orm import Session
-from sqlalchemy.sql import func
+from sqlalchemy.orm import Session, joinedload
 from typing import List
 from datetime import datetime
 from database import get_db
 from models import database_models as db_models
-from models.schemas import JobApplicationCreate, JobApplicationUpdate, JobApplicationResponse
+from models.schemas import JobApplicationCreate, JobApplicationUpdate
 import requests as http_requests
 
 router = APIRouter(prefix="/tracker", tags=["tracker"])
@@ -93,11 +92,10 @@ async def get_stats(request: Request, db: Session = Depends(get_db)):
         stats[job.status] = stats.get(job.status, 0) + 1
     return {"total": len(jobs), "by_status": stats}
 
-# ── PDF endpoints ────────────────────────────────────────────────
+# ── PDF + LaTeX endpoints ─────────────────────────────────────────
 
 @router.post("/{job_id}/generate-pdf")
 async def generate_pdf_for_job(job_id: int, request: Request, db: Session = Depends(get_db)):
-    """Generate CV for a job and save PDF to DB."""
     user_id = get_current_user_id(request)
 
     job = db.query(db_models.JobApplication).filter(
@@ -109,14 +107,11 @@ async def generate_pdf_for_job(job_id: int, request: Request, db: Session = Depe
     if not job.job_description:
         raise HTTPException(status_code=400, detail="No job description found for this job")
 
-    # Get user email for profile lookup
     user = db.query(db_models.User).filter(db_models.User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # 1. Generate LaTeX from AI service (internal call)
     from services.llm_service import generate_latex_resume
-    from sqlalchemy.orm import joinedload
 
     profile = db.query(db_models.Profile).options(
         joinedload(db_models.Profile.education),
@@ -129,6 +124,7 @@ async def generate_pdf_for_job(job_id: int, request: Request, db: Session = Depe
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found — fill in your profile first")
 
+    # 1. Generate LaTeX
     latex_code = generate_latex_resume(profile, job.job_description)
 
     # 2. Compile PDF via Go service
@@ -140,7 +136,8 @@ async def generate_pdf_for_job(job_id: int, request: Request, db: Session = Depe
     if not go_response.ok:
         raise HTTPException(status_code=500, detail="PDF compilation failed")
 
-    # 3. Save PDF bytes to DB
+    # 3. Save both LaTeX and PDF to DB
+    job.latex_source = latex_code
     job.pdf_data = go_response.content
     job.pdf_generated_at = datetime.utcnow()
     db.commit()
@@ -149,7 +146,6 @@ async def generate_pdf_for_job(job_id: int, request: Request, db: Session = Depe
 
 @router.get("/{job_id}/pdf")
 async def get_pdf(job_id: int, request: Request, db: Session = Depends(get_db)):
-    """Serve the saved PDF for a job."""
     user_id = get_current_user_id(request)
     job = db.query(db_models.JobApplication).filter(
         db_models.JobApplication.id == job_id,
@@ -162,3 +158,16 @@ async def get_pdf(job_id: int, request: Request, db: Session = Depends(get_db)):
         media_type="application/pdf",
         headers={"Content-Disposition": f"inline; filename={job.company_name}_resume.pdf"}
     )
+
+@router.get("/{job_id}/latex")
+async def get_latex(job_id: int, request: Request, db: Session = Depends(get_db)):
+    user_id = get_current_user_id(request)
+    job = db.query(db_models.JobApplication).filter(
+        db_models.JobApplication.id == job_id,
+        db_models.JobApplication.user_id == user_id
+    ).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if not job.latex_source:
+        raise HTTPException(status_code=404, detail="No CV generated for this job yet")
+    return {"latex": job.latex_source}
