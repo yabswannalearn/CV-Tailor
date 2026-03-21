@@ -62,72 +62,99 @@ def build_prompt(profile: UserProfile, jd: str) -> str:
     jd = truncate_jd(jd)
 
     return f"""
-You are an expert technical resume writer. Your job is to tailor resume content to a job description.
+You are an elite technical resume writer and career strategist.
+
+Your job is TWO things:
+1. SELECTION — Pick only the BEST and MOST RELEVANT items from the profile that match the job description.
+2. TAILORING — Rewrite every bullet point using the JD's exact keywords, terminology, and priorities.
 
 JOB DESCRIPTION:
 {jd}
 
-USER PROFILE:
+USER PROFILE (full data — you SELECT from this):
 {profile.model_dump_json()}
 
-Generate tailored resume content as a JSON object. Follow these rules strictly:
+SELECTION RULES:
+- Experience: Include ALL experience entries. Pick 2-3 bullets each, most relevant to JD.
+- Projects: Pick TOP 2-3 projects most relevant to the JD. IGNORE irrelevant ones.
+- Skills: Filter to only skills the JD cares about. Group into 2-3 meaningful categories.
+- Certifications: Only include certifications relevant to the JD role.
+- Summary: 3 sentences that directly speak to what THIS specific job needs. Mirror JD language.
+
+TAILORING RULES:
+- Use EXACT keywords from the JD in bullets (if JD says "data pipelines", use that phrase).
+- Quantify achievements wherever possible (%, time saved, scale, users, etc.).
+- Lead bullets with strong action verbs (Architected, Engineered, Designed, Implemented, etc.).
+- Never invent experience. Only reframe what exists using JD language.
+
+PAGE FILLING RULES — CRITICAL:
+- The resume MUST fill close to one full page. No large empty space at the bottom.
+- Projects are your main lever — write 3 detailed bullets per project, each 1.5-2 lines long.
+- Each project bullet should explain: WHAT you built + HOW you built it + the IMPACT or result.
+- Experience bullets should also be detailed — 1.5 lines each, not just one short sentence.
+- Summary should be 3 full sentences.
+- If there is still space, add a 3rd project from the profile if relevant.
+- Skills section should have 2-3 categories with 5-7 items each.
+- Do NOT add fake content. Expand and elaborate on what EXISTS in the profile using JD context.
+
+OUTPUT RULES:
 1. Return ONLY valid JSON — no markdown, no explanation, no code fences.
-2. Tailor bullet points to highlight skills and keywords from the JD.
-3. Keep bullet points concise — max 1-2 lines each.
-4. MAX 3 bullet points per experience entry.
-5. MAX 2 bullet points per project entry.
-6. CRITICAL: Write plain text only inside JSON values — NO backslashes, NO LaTeX commands.
-   Write normal text like: "100% uptime" not "100\\% uptime"
-   Write normal dashes like: "2024 - 2025" not "2024 -- 2025"
-   Python will handle all LaTeX formatting automatically.
-7. The entire resume MUST fit on ONE page.
-8. If certifications exist, list them pipe-separated: "Cert 1 | Cert 2 | Cert 3"
-9. Leave fields blank if data is missing — never invent information.
+2. Plain text only inside JSON — NO backslashes, NO LaTeX commands.
+3. Write normal dashes: "2024 - 2025" not "2024 -- 2025"
+4. Certifications: pipe-separated string like "Cert 1 | Cert 2"
+5. Leave fields blank if data is missing — never invent data.
 
 Return this exact JSON structure:
 {{
-  "summary": "one paragraph summary tailored to JD",
+  "summary": "3 full sentences speaking directly to THIS job using JD language and keywords",
   "experience": [
     {{
       "title": "Job Title",
       "company": "Company",
       "location": "Location",
       "date": "Start - End",
-      "bullets": ["bullet 1", "bullet 2"]
+      "bullets": [
+        "Detailed bullet 1.5-2 lines long with JD keywords and quantified impact",
+        "Detailed bullet 1.5-2 lines long",
+        "Detailed bullet 1.5-2 lines long"
+      ]
     }}
   ],
   "projects": [
     {{
-      "name": "Project Name",
-      "tech": "Tech, Stack",
+      "name": "Project name",
+      "tech": "Tech stack",
       "date": "Year",
-      "bullets": ["bullet 1", "bullet 2"]
+      "bullets": [
+        "Detailed bullet explaining what you built, how, and the measurable impact — 1.5 to 2 lines long",
+        "Detailed bullet on a specific technical challenge solved and the approach taken",
+        "Detailed bullet on results, scale, or adoption — with numbers if possible"
+      ]
     }}
   ],
   "skills": {{
-    "Languages": "Python, Go",
-    "Frameworks": "FastAPI, Next.js",
-    "Tools": "PostgreSQL, Git"
+    "JD-relevant category 1": "skill1, skill2, skill3, skill4, skill5",
+    "JD-relevant category 2": "skill1, skill2, skill3, skill4",
+    "JD-relevant category 3": "skill1, skill2, skill3"
   }},
-  "certifications": "Cert 1 | Cert 2 | Cert 3"
+  "certifications": "Relevant cert 1 | Relevant cert 2 | Relevant cert 3"
 }}
 """
 
 def escape_latex(text: str) -> str:
-    """Escape special LaTeX characters in plain text."""
     if not text:
         return text
     replacements = [
-        ("\\", r"\textbackslash{}"),  # must be first
+        ("\\", r"\textbackslash{}"),
         ("%", r"\%"),
         ("&", r"\&"),
         ("$", r"\$"),
         ("#", r"\#"),
         ("_", r"\_"),
-        ("{", r"\{"),
-        ("}", r"\}"),
+        # Remove { } from escaping — they break LaTeX commands
         ("~", r"\textasciitilde{}"),
         ("^", r"\^{}"),
+        # Note: apostrophe ' is fine in LaTeX, don't escape it
     ]
     for char, escaped in replacements:
         text = text.replace(char, escaped)
