@@ -1,4 +1,5 @@
 import re
+import json
 import os
 from dotenv import load_dotenv
 from models.schemas import UserProfile, Education, Experience, Project, Certification
@@ -7,22 +8,7 @@ from services.templates.jakes_resume import JAKES_RESUME
 from google import genai
 
 load_dotenv()
-
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-
-def clean_latex_output(raw: str) -> str:
-    raw = re.sub(r"```(?:latex)?\s*", "", raw)
-    raw = re.sub(r"```", "", raw)
-
-    match = re.search(r"\\begin\{document\}", raw)
-    if match:
-        raw = raw[match.end():]
-
-    raw = re.sub(r"\\end\{document\}", "", raw)
-    return raw.strip()
-
-def wrap_with_template(body: str, template: str) -> str:
-    return template.replace("<<BODY>>", body)
 
 def db_profile_to_schema(db_profile: db_models.Profile) -> UserProfile:
     return UserProfile(
@@ -75,97 +61,186 @@ def truncate_jd(jd: str, max_chars: int = 1500) -> str:
 def build_prompt(profile: UserProfile, jd: str) -> str:
     jd = truncate_jd(jd)
 
-    template_instruction = r"""
-    USE THIS EXACT LATEX STRUCTURE (Jake's Resume):
+    return f"""
+You are an expert technical resume writer. Your job is to tailor resume content to a job description.
 
-    HEADER (always first, contains ALL contact info):
-    \begin{center}
-        \textbf{\Huge \scshape John Doe} \\ \vspace{1pt}
-        \small +63 912 345 6789 $|$
-        \href{mailto:john@example.com}{john@example.com} $|$
-        \href{https://linkedin.com/in/johndoe}{linkedin.com/in/johndoe} $|$
-        \href{https://github.com/johndoe}{github.com/johndoe} $|$
-        \href{https://johndoe.dev}{johndoe.dev}
-    \end{center}
+JOB DESCRIPTION:
+{jd}
 
-    SECTIONS (use only these):
-    \section{Education}
-    \resumeSubHeadingListStart
-        \resumeSubheading{School Name}{Location}{Degree}{Dates}
-    \resumeSubHeadingListEnd
+USER PROFILE:
+{profile.model_dump_json()}
 
-    \section{Experience}
-    \resumeSubHeadingListStart
-        \resumeSubheading{Job Title}{Location}{Company Name}{Dates}
-        \resumeItemListStart
-            \resumeItem{Bullet point tailored to JD}
-        \resumeItemListEnd
-    \resumeSubHeadingListEnd
+Generate tailored resume content as a JSON object. Follow these rules strictly:
+1. Return ONLY valid JSON — no markdown, no explanation, no code fences.
+2. Tailor bullet points to highlight skills and keywords from the JD.
+3. Keep bullet points concise — max 1-2 lines each.
+4. MAX 3 bullet points per experience entry.
+5. MAX 2 bullet points per project entry.
+6. CRITICAL: Write plain text only inside JSON values — NO backslashes, NO LaTeX commands.
+   Write normal text like: "100% uptime" not "100\\% uptime"
+   Write normal dashes like: "2024 - 2025" not "2024 -- 2025"
+   Python will handle all LaTeX formatting automatically.
+7. The entire resume MUST fit on ONE page.
+8. If certifications exist, list them pipe-separated: "Cert 1 | Cert 2 | Cert 3"
+9. Leave fields blank if data is missing — never invent information.
 
-    \section{Projects}
-    \resumeSubHeadingListStart
-        \resumeProjectHeading{\textbf{Project Name} $|$ \emph{Tech Stack}}{Date}
-        \resumeItemListStart
-            \resumeItem{What you built and its impact}
-        \resumeItemListEnd
-    \resumeSubHeadingListEnd
+Return this exact JSON structure:
+{{
+  "summary": "one paragraph summary tailored to JD",
+  "experience": [
+    {{
+      "title": "Job Title",
+      "company": "Company",
+      "location": "Location",
+      "date": "Start - End",
+      "bullets": ["bullet 1", "bullet 2"]
+    }}
+  ],
+  "projects": [
+    {{
+      "name": "Project Name",
+      "tech": "Tech, Stack",
+      "date": "Year",
+      "bullets": ["bullet 1", "bullet 2"]
+    }}
+  ],
+  "skills": {{
+    "Languages": "Python, Go",
+    "Frameworks": "FastAPI, Next.js",
+    "Tools": "PostgreSQL, Git"
+  }},
+  "certifications": "Cert 1 | Cert 2 | Cert 3"
+}}
+"""
 
-    \section{Skills}
-    \begin{itemize}[leftmargin=0.15in, label={}]
-        \small{\item{
-            \textbf{Languages}{: Python, Go} \\
-            \textbf{Frameworks}{: FastAPI, Next.js} \\
-            \textbf{Tools}{: PostgreSQL, Git}
-        }}
-    \end{itemize}
+def escape_latex(text: str) -> str:
+    """Escape special LaTeX characters in plain text."""
+    if not text:
+        return text
+    replacements = [
+        ("\\", r"\textbackslash{}"),  # must be first
+        ("%", r"\%"),
+        ("&", r"\&"),
+        ("$", r"\$"),
+        ("#", r"\#"),
+        ("_", r"\_"),
+        ("{", r"\{"),
+        ("}", r"\}"),
+        ("~", r"\textasciitilde{}"),
+        ("^", r"\^{}"),
+    ]
+    for char, escaped in replacements:
+        text = text.replace(char, escaped)
+    return text
 
-    \section{Certifications}
-    \resumeSubHeadingListStart
-        \resumeSubheading{Certification Name}{}{Issuer}{Date Issued}
-    \resumeSubHeadingListEnd
-    """
+def clean_json_response(raw: str) -> str:
+    # Strip markdown fences
+    raw = re.sub(r"```(?:json)?\s*", "", raw)
+    raw = re.sub(r"```", "", raw)
+    # Find the JSON object boundaries
+    start = raw.find("{")
+    end = raw.rfind("}") + 1
+    if start != -1 and end > start:
+        raw = raw[start:end]
+    return raw.strip()
 
-    cert_instruction = ""
-    if profile.certifications:
-        cert_list = ", ".join([
-            f"{c.name} ({c.issuer}, {c.date_issued})"
-            for c in profile.certifications if c.name
-        ])
-        cert_instruction = f"\n    CERTIFICATIONS TO INCLUDE (mandatory): {cert_list}\n"
+def build_heading(profile: UserProfile) -> str:
+    name = f"{profile.first_name} {profile.last_name}"
 
-    strict_rules = r"""
-    STRICT RULES:
-    1. CRITICAL: Output ONLY body content — no \documentclass, no \usepackage, no \begin{document}, no \end{document}.
-    2. Do NOT wrap output in markdown code fences.
-    3. Start DIRECTLY with \begin{center} — nothing before it.
-    4. NEVER create a "Contact Information" or "Professional Summary" section.
-    5. Always wrap Education, Experience, Certifications inside \resumeSubHeadingListStart and \resumeSubHeadingListEnd.
-    6. Tailor ALL bullet points to emphasize skills and keywords from the JD.
-    7. Use the custom commands: \resumeSubheading, \resumeProjectHeading, \resumeItem.
-    8. Escape all LaTeX special characters (%, &, $, #, _).
-    9. If any field is missing, leave it BLANK — never write "N/A" or placeholder text.
-    10. The output MUST fit on ONE page:
-        - MAX 2 bullet points per experience entry
-        - MAX 2 bullet points per project entry
-        - Skills: max 3 categories, keep each line short
-        - Be concise — every bullet must be 1 line max
-    """ + cert_instruction + (r"""
-    11. MANDATORY: If certifications are listed above, you MUST include a \section{Certifications} block.
-        Use this format:
-        \section{Certifications}
-        \resumeSubHeadingListStart
-            \resumeSubheading{Certification Name}{}{Issuer}{Date Issued}
-        \resumeSubHeadingListEnd
-    """ if profile.certifications else "")
+    contact_parts = []
+    if profile.mobile_no:
+        contact_parts.append(r"    \small \raisebox{-0.1\height}\faPhone\ " + profile.mobile_no)
+    if profile.email:
+        contact_parts.append(r"    \href{mailto:" + profile.email + r"}{\raisebox{-0.2\height}\faEnvelope\ \underline{" + profile.email + r"}}")
+    if profile.linkedin:
+        display = profile.linkedin.replace("https://", "").replace("http://", "")
+        contact_parts.append(r"    \href{" + profile.linkedin + r"}{\raisebox{-0.2\height}\faLinkedin\ \underline{" + display + r"}}")
+    if profile.github:
+        display = profile.github.replace("https://", "").replace("http://", "")
+        contact_parts.append(r"    \href{" + profile.github + r"}{\raisebox{-0.2\height}\faGithub\ \underline{" + display + r"}}")
+    if profile.portfolio:
+        display = profile.portfolio.replace("https://", "").replace("http://", "")
+        contact_parts.append(r"    \href{" + profile.portfolio + r"}{\raisebox{-0.2\height}\faGlobe\ \underline{" + display + r"}}")
+
+    contact_line = " ~\n".join(contact_parts)
 
     return (
-        "You are an expert technical resume writer. Output must fit on exactly ONE page.\n"
-        "Task: Rewrite the User Profile into a LaTeX resume body tailored to the Job Description.\n\n"
-        f"JOB DESCRIPTION:\n{jd}\n\n"
-        f"USER PROFILE:\n{profile.model_dump_json()}\n\n"
-        f"{template_instruction}\n"
-        f"{strict_rules}"
+        r"\begin{center}" + "\n"
+        r"    {\Huge \scshape \textbf{\textcolor{NavyBlue}{" + name + r"}}} \\ \vspace{1pt}" + "\n"
+        + contact_line + "\n"
+        + r"    \vspace{-8pt}" + "\n"
+        + r"\end{center}"
     )
+
+def build_education(profile: UserProfile) -> str:
+    lines = []
+    for edu in profile.education:
+        desc = edu.description or ""
+        lines.append(r"    \resumeSubheading")
+        lines.append(f"      {{{edu.school_name}}}{{{edu.location}}}")
+        lines.append(f"      {{{edu.course}{' --- ' + desc if desc else ''}}}{{}}")
+    return "\n".join(lines)
+
+def build_experience(entries: list) -> str:
+    lines = []
+    for exp in entries:
+        lines.append(r"    \resumeSubheading")
+        lines.append(f"      {{{escape_latex(exp['company'])}}}{{{escape_latex(exp['location'])}}}")
+        lines.append(f"      {{{escape_latex(exp['title'])}}}{{{escape_latex(exp['date'])}}}")
+        lines.append(r"      \resumeItemListStart")
+        for b in exp.get("bullets", []):
+            lines.append(f"        \\resumeItem{{{escape_latex(b)}}}")
+        lines.append(r"      \resumeItemListEnd")
+        lines.append("")
+    return "\n".join(lines)
+
+def build_projects(entries: list) -> str:
+    lines = []
+    for proj in entries:
+        lines.append(r"      \resumeProjectHeading")
+        lines.append(f"          {{\\textbf{{{escape_latex(proj['name'])}}} $|$ \\emph{{{escape_latex(proj['tech'])}}}}}{{\\textbf{{\\small {escape_latex(proj['date'])}}}}}")
+        lines.append(r"          \resumeItemListStart")
+        for b in proj.get("bullets", []):
+            lines.append(f"            \\resumeItem{{{escape_latex(b)}}}")
+        lines.append(r"          \resumeItemListEnd")
+        lines.append(r"          \vspace{-13pt}")
+        lines.append("")
+    return "\n".join(lines)
+
+def build_skills(skills_dict: dict) -> str:
+    lines = []
+    for category, items in skills_dict.items():
+        lines.append(f"     \\textbf{{{escape_latex(category)}}}{{: {escape_latex(items)}}} \\\\")
+    return "\n".join(lines)
+
+def build_certifications(cert_line: str) -> str:
+    if not cert_line or not cert_line.strip():
+        return ""
+    # Convert pipe separators to LaTeX pipe
+    cert_line = cert_line.replace(" | ", " $|$ ")
+    return r"""\section{Certifications}
+ \begin{itemize}[leftmargin=0.15in, label={}]
+    \small{\item{
+     """ + cert_line + r"""
+    }}
+ \end{itemize}"""
+
+def assemble_latex(profile: UserProfile, ai_content: dict) -> str:
+    doc = JAKES_RESUME
+    doc = doc.replace("<<HEADING>>", build_heading(profile))
+    doc = doc.replace("<<SUMMARY>>", ai_content.get("summary", ""))
+    doc = doc.replace("<<EDUCATION>>", build_education(profile))
+    doc = doc.replace("<<EXPERIENCE>>", build_experience(ai_content.get("experience", [])))
+    doc = doc.replace("<<PROJECTS>>", build_projects(ai_content.get("projects", [])))
+    doc = doc.replace("<<SKILLS>>", build_skills(ai_content.get("skills", {})))
+    doc = doc.replace("<<CERTIFICATIONS>>", build_certifications(ai_content.get("certifications", "")))
+    return doc
+
+def clean_json_response(raw: str) -> str:
+    # Strip markdown fences if present
+    raw = re.sub(r"```(?:json)?\s*", "", raw)
+    raw = re.sub(r"```", "", raw)
+    return raw.strip()
 
 def generate_latex_resume(db_profile: db_models.Profile, jd: str) -> str:
     profile = db_profile_to_schema(db_profile)
@@ -177,11 +252,12 @@ def generate_latex_resume(db_profile: db_models.Profile, jd: str) -> str:
             contents=prompt,
         )
 
-        raw_latex = response.text
-        cleaned = clean_latex_output(raw_latex)
-        full_latex = wrap_with_template(cleaned, JAKES_RESUME)
-
+        raw = clean_json_response(response.text)
+        ai_content = json.loads(raw)
+        full_latex = assemble_latex(profile, ai_content)
         return full_latex
 
+    except json.JSONDecodeError as e:
+        raise Exception(f"AI returned invalid JSON: {str(e)}")
     except Exception as e:
         raise Exception(f"SERVICE ERROR: {str(e)}")
