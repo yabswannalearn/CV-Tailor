@@ -9,46 +9,64 @@ pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/b
 
 const GRAIN = `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`;
 
+const C = {
+  bg:           "#f5f2ed",
+  bgCard:       "#edeae4",
+  bgEditor:     "#f9f7f4",
+  bgSnippet:    "#ece9e3",
+  border:       "#d4cfc7",
+  borderStrong: "#b8b3aa",
+  text:         "#1a1814",
+  textMid:      "#4a4540",
+  textMuted:    "#7a7570",
+  textFaint:    "#a8a39c",
+  green:        "#3d6600",
+  greenLight:   "#e8f5c0",
+  greenBorder:  "#8ab030",
+  red:          "#b83030",
+  redBg:        "#ffeaea",
+  editorFg:     "#2a2420",
+  lineNum:      "#c0bbb4",
+  lineNumActive:"#5a8a00",
+};
+
 type AppState = "idle" | "generating" | "editing" | "compiling" | "error";
 
-// LaTeX snippet shortcuts
-const SNIPPETS = [
-  { label: "Bold", insert: "\\textbf{}", cursorOffset: 9 },
-  { label: "Italic", insert: "\\textit{}", cursorOffset: 9 },
-  { label: "Section", insert: "\\section{}", cursorOffset: 9 },
-  { label: "Item", insert: "\\resumeItem{}", cursorOffset: 12 },
-  { label: "Subheading", insert: "\\resumeSubheading{}{}{}{}", cursorOffset: 18 },
-  { label: "Project", insert: "\\resumeProjectHeading{\\textbf{} $|$ \\emph{}}{}", cursorOffset: 22 },
-  { label: "List Start", insert: "\\resumeItemListStart\n\\resumeItemListEnd", cursorOffset: 20 },
-  { label: "href", insert: "\\href{}{}", cursorOffset: 6 },
-];
-
-function LineNumbers({ code, scrollTop }: { code: string; scrollTop: number }) {
-  const lines = code.split("\n").length;
-  return (
-    <div
-      className="select-none text-right pr-3 pt-4 text-[11px] leading-[1.6] font-mono shrink-0"
-      style={{
-        color: "#3a3530",
-        width: "3rem",
-        transform: `translateY(-${scrollTop}px)`,
-        transition: "none",
-        minHeight: "100%",
-      }}
-    >
-      {Array.from({ length: lines }, (_, i) => (
-        <div key={i + 1}>{i + 1}</div>
-      ))}
-    </div>
-  );
+function parseSections(code: string) {
+  return code.split("\n").reduce<{ name: string; line: number }[]>((acc, l, i) => {
+    const m = l.match(/\\section\{([^}]+)\}/);
+    if (m) acc.push({ name: m[1], line: i + 1 });
+    return acc;
+  }, []);
 }
+
+function scrollToLine(ta: HTMLTextAreaElement, lineNum: number) {
+  const lines = ta.value.split("\n");
+  let charPos = 0;
+  for (let i = 0; i < Math.min(lineNum - 1, lines.length); i++) charPos += lines[i].length + 1;
+  ta.focus();
+  ta.selectionStart = charPos;
+  ta.selectionEnd = charPos + (lines[lineNum - 1]?.length || 0);
+  ta.scrollTop = Math.max(0, (lineNum - 5) * 19.2);
+}
+
+// ── Icon components ──────────────────────────────────────────────
+const Icon = ({ children, title, onClick, active }: { children: React.ReactNode; title: string; onClick?: () => void; active?: boolean }) => (
+  <button title={title} onClick={onClick}
+    className="flex items-center justify-center w-7 h-7 rounded transition-all duration-100 shrink-0"
+    style={{ color: active ? C.green : C.textMid, background: active ? C.greenLight : "transparent", border: `1px solid ${active ? C.greenBorder : "transparent"}` }}
+    onMouseEnter={e => { if (!active) { e.currentTarget.style.background = C.bgSnippet; e.currentTarget.style.borderColor = C.border; }}}
+    onMouseLeave={e => { if (!active) { e.currentTarget.style.background = "transparent"; e.currentTarget.style.borderColor = "transparent"; }}}>
+    {children}
+  </button>
+);
+
+const Divider = () => <div className="w-px h-4 mx-1 shrink-0" style={{ background: C.border }} />;
 
 export default function GeneratePage() {
   const router = useRouter();
   const [jd, setJd] = useState("");
   const [latex, setLatex] = useState("");
-  const [latexHistory, setLatexHistory] = useState<string[]>([]);
-  const [historyIndex, setHistoryIndex] = useState(-1);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [numPages, setNumPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
@@ -62,8 +80,16 @@ export default function GeneratePage() {
   const [findText, setFindText] = useState("");
   const [showFind, setShowFind] = useState(false);
   const [wordWrap, setWordWrap] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [sections, setSections] = useState<{ name: string; line: number }[]>([]);
+  const [highlightedLine, setHighlightedLine] = useState<number | null>(null);
+  const [clickedWord, setClickedWord] = useState<string | null>(null);
+  const [splitPct, setSplitPct] = useState(50); // left panel width %
+  const [isDragging, setIsDragging] = useState(false);
+  const [sectionsOpen, setSectionsOpen] = useState(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const editorRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef(false);
 
   useEffect(() => {
     fetch("http://localhost:8000/auth/me", { credentials: "include" })
@@ -72,7 +98,36 @@ export default function GeneratePage() {
       .catch(() => router.push("/login"));
   }, []);
 
-  // Track cursor position
+  useEffect(() => { setSections(parseSections(latex)); }, [latex]);
+
+  useEffect(() => {
+    if (highlightedLine !== null) {
+      const t = setTimeout(() => setHighlightedLine(null), 2000);
+      return () => clearTimeout(t);
+    }
+  }, [highlightedLine]);
+
+  // ── Resizable divider ────────────────────────────────────────────
+  const onDividerMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    dragRef.current = true;
+    setIsDragging(true);
+    const onMove = (ev: MouseEvent) => {
+      if (!dragRef.current || !containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const pct = ((ev.clientX - rect.left) / rect.width) * 100;
+      setSplitPct(Math.min(75, Math.max(25, pct)));
+    };
+    const onUp = () => {
+      dragRef.current = false;
+      setIsDragging(false);
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
   const updateCursorPos = () => {
     const ta = textareaRef.current;
     if (!ta) return;
@@ -81,33 +136,25 @@ export default function GeneratePage() {
     setCursorPos({ line: lines.length, col: lines[lines.length - 1].length + 1 });
   };
 
-  // Push to history for undo
-  const pushHistory = (val: string) => {
-    setLatexHistory(h => [...h.slice(0, historyIndex + 1), val].slice(-50));
-    setHistoryIndex(i => Math.min(i + 1, 49));
+  const insertAround = (before: string, after: string) => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    const start = ta.selectionStart, end = ta.selectionEnd;
+    const selected = latex.substring(start, end);
+    const newVal = latex.substring(0, start) + before + selected + after + latex.substring(end);
+    setLatex(newVal);
+    setTimeout(() => { ta.focus(); ta.selectionStart = start + before.length; ta.selectionEnd = end + before.length; }, 0);
   };
 
-  const handleLatexChange = (val: string) => {
-    setLatex(val);
-    pushHistory(val);
-  };
-
-  // Insert snippet at cursor
-  const insertSnippet = (insert: string, cursorOffset: number) => {
+  const insertAt = (text: string, offset: number) => {
     const ta = textareaRef.current;
     if (!ta) return;
     const start = ta.selectionStart;
-    const end = ta.selectionEnd;
-    const newVal = latex.substring(0, start) + insert + latex.substring(end);
-    handleLatexChange(newVal);
-    setTimeout(() => {
-      ta.focus();
-      ta.selectionStart = start + cursorOffset;
-      ta.selectionEnd = start + cursorOffset;
-    }, 0);
+    const newVal = latex.substring(0, start) + text + latex.substring(ta.selectionEnd);
+    setLatex(newVal);
+    setTimeout(() => { ta.focus(); ta.selectionStart = ta.selectionEnd = start + offset; }, 0);
   };
 
-  // Find & highlight
   const handleFind = () => {
     if (!findText || !textareaRef.current) return;
     const idx = latex.indexOf(findText, textareaRef.current.selectionEnd);
@@ -118,147 +165,130 @@ export default function GeneratePage() {
     }
   };
 
-  const handleGenerate = async () => {
-    if (!jd.trim() || !userEmail) return;
-    if (pdfUrl) { window.URL.revokeObjectURL(pdfUrl); setPdfUrl(null); }
-    setAppState("generating");
-    setErrorMsg("");
+  const handleCopy = () => {
+    navigator.clipboard.writeText(latex);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
-    try {
-      const res = await fetch("http://localhost:8000/generate/cv", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ email: userEmail, jd }),
-      });
-      if (!res.ok) { const err = await res.json(); throw new Error(err.detail || "Generation failed"); }
-      const { latex: generatedLatex } = await res.json();
-      setLatex(generatedLatex);
-      setLatexHistory([generatedLatex]);
-      setHistoryIndex(0);
-      await compileLatex(generatedLatex);
-      setHasGenerated(true);
-    } catch (err: any) {
-      setErrorMsg(err.message || "Generation failed");
-      setAppState("error");
+  const jumpToSection = (lineNum: number) => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    setHighlightedLine(lineNum);
+    setTimeout(() => { scrollToLine(ta, lineNum); updateCursorPos(); }, 50);
+  };
+
+  const handlePdfDoubleClick = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.tagName === "SPAN" && target.closest(".react-pdf__Page__textContent")) {
+      const word = window.getSelection()?.toString().trim() || target.textContent?.trim() || "";
+      if (!word || word.length < 3) return;
+      setClickedWord(word);
+      const ta = textareaRef.current;
+      if (!ta) return;
+      const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const idx = latex.search(new RegExp(escaped, "i"));
+      if (idx !== -1) {
+        const lineNum = latex.substring(0, idx).split("\n").length;
+        setHighlightedLine(lineNum);
+        setTimeout(() => { ta.focus(); ta.selectionStart = idx; ta.selectionEnd = idx + word.length; scrollToLine(ta, lineNum); updateCursorPos(); }, 50);
+        setTimeout(() => setClickedWord(null), 2000);
+      }
     }
   };
 
-  const compileLatex = async (latexSource?: string) => {
-    const source = latexSource ?? latex;
+  const handleGenerate = async () => {
+    if (!jd.trim() || !userEmail) return;
+    if (pdfUrl) { window.URL.revokeObjectURL(pdfUrl); setPdfUrl(null); }
+    setAppState("generating"); setErrorMsg("");
+    try {
+      const res = await fetch("http://localhost:8000/generate/cv", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        credentials: "include", body: JSON.stringify({ email: userEmail, jd }),
+      });
+      if (!res.ok) { const err = await res.json(); throw new Error(err.detail || "Generation failed"); }
+      const { latex: gen } = await res.json();
+      setLatex(gen);
+      await compileLatex(gen);
+      setHasGenerated(true);
+    } catch (err: any) { setErrorMsg(err.message || "Generation failed"); setAppState("error"); }
+  };
+
+  const compileLatex = async (src?: string) => {
+    const source = src ?? latex;
     if (!source.trim()) return;
     if (pdfUrl) { window.URL.revokeObjectURL(pdfUrl); setPdfUrl(null); }
-    setAppState("compiling");
-    setErrorMsg("");
-
+    setAppState("compiling"); setErrorMsg("");
     try {
-      const pdfRes = await fetch("http://localhost:8081/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const res = await fetch("http://localhost:8081/generate", {
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ latex: source }),
       });
-
-      if (!pdfRes.ok) {
-        try { const err = await pdfRes.json(); throw new Error(err.details || err.error || "Compilation failed"); }
-        catch { throw new Error("Compilation failed"); }
+      if (!res.ok) {
+        try { const e = await res.json(); throw new Error(e.details || e.error || "Compile failed"); }
+        catch { throw new Error("Compile failed"); }
       }
-
-      const blob = await pdfRes.blob();
+      const blob = await res.blob();
       setPdfUrl(window.URL.createObjectURL(blob));
-      setAppState("editing");
-      setNumPages(0);
-      setCurrentPage(1);
-    } catch (err: any) {
-      setErrorMsg(err.message || "Compilation failed");
-      setAppState("error");
-    }
+      setAppState("editing"); setNumPages(0); setCurrentPage(1);
+    } catch (err: any) { setErrorMsg(err.message); setAppState("error"); }
   };
 
   const handleDownload = () => {
     if (!pdfUrl) return;
     const a = document.createElement("a");
-    a.href = pdfUrl;
-    a.download = "Tailored_Resume.pdf";
-    a.click();
+    a.href = pdfUrl; a.download = "Tailored_Resume.pdf"; a.click();
   };
 
-  const copyLatex = () => {
-    navigator.clipboard.writeText(latex);
-  };
-
-  const onDocumentLoadSuccess = useCallback(({ numPages }: { numPages: number }) => {
-    setNumPages(numPages);
-  }, []);
-
+  const onDocumentLoadSuccess = useCallback(({ numPages }: { numPages: number }) => setNumPages(numPages), []);
   const isBusy = appState === "generating" || appState === "compiling";
   const lineCount = latex.split("\n").length;
-  const wordCount = latex.split(/\s+/).filter(Boolean).length;
 
-  // Pre-generation view
+  // ── Pre-generation ────────────────────────────────────────────────
   if (!hasGenerated) {
     return (
-      <main className="min-h-screen bg-[#f5f2ed] text-[#1a1814] font-mono flex flex-col items-center justify-center px-6 py-16">
+      <main className="min-h-screen font-mono flex flex-col items-center justify-center px-6 py-16"
+        style={{ background: C.bg, color: C.text }}>
         <div className="pointer-events-none fixed inset-0 opacity-[0.07] z-0"
           style={{ backgroundImage: GRAIN, backgroundRepeat: "repeat", backgroundSize: "128px" }} />
-
         <div className="relative z-10 w-full max-w-2xl">
           <div className="mb-10">
             <div className="flex items-center gap-3 mb-2">
-              <button onClick={() => router.push("/dashboard")}
-                className="text-[#5a8a00] text-xs tracking-[0.3em] uppercase hover:opacity-70 transition-opacity">
-                ← dashboard
-              </button>
-              <span className="h-px flex-1 bg-[#d4cfc7]" />
-              <span className="text-[#b0aba4] text-xs">v0.1</span>
+              <button onClick={() => router.push("/dashboard")} className="text-xs tracking-[0.3em] uppercase hover:opacity-60 transition-opacity" style={{ color: C.green }}>← dashboard</button>
+              <span className="h-px flex-1" style={{ background: C.border }} />
+              <span className="text-xs" style={{ color: C.textFaint }}>v0.1</span>
             </div>
-            <h1 className="text-4xl font-bold leading-none tracking-tight text-[#1a1814]"
-              style={{ fontFamily: "'Georgia', serif", letterSpacing: "-0.02em" }}>
-              Tailor Your<br />
-              <span className="text-[#5a8a00]">Resume.</span>
+            <h1 className="text-4xl font-bold leading-none tracking-tight" style={{ fontFamily: "'Georgia', serif", letterSpacing: "-0.02em", color: C.text }}>
+              Tailor Your<br /><span style={{ color: C.green }}>Resume.</span>
             </h1>
-            <p className="mt-4 text-[#7a7570] text-sm leading-relaxed">
-              Paste a job description. Gemini tailors your CV, then opens<br />
-              a live LaTeX editor so you can fine-tune before exporting.
+            <p className="mt-4 text-sm leading-relaxed" style={{ color: C.textMuted }}>
+              Paste a job description. Gemini tailors your CV, then opens<br />a live LaTeX editor so you can fine-tune before exporting.
             </p>
-            {userEmail && <p className="mt-2 text-[#b0aba4] text-xs">Signed in as {userEmail}</p>}
+            {userEmail && <p className="mt-2 text-xs" style={{ color: C.textFaint }}>Signed in as {userEmail}</p>}
           </div>
-
           <div className="relative mb-5">
-            <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-[#c8f060] via-[#c8f06044] to-transparent" />
-            <label className="block text-[10px] tracking-[0.25em] text-[#7a7570] uppercase mb-3 mt-4">
-              Job Description
-            </label>
-            <textarea
-              className="w-full h-56 bg-[#e8e4dd] text-[#1a1814] text-sm leading-relaxed p-3 resize-none outline-none border border-[#d4cfc7] focus:border-[#c8f06088] rounded-sm placeholder-[#b0aba4] transition-colors duration-200"
+            <div className="absolute top-0 left-0 right-0 h-px" style={{ background: `linear-gradient(to right, ${C.greenBorder}, transparent)` }} />
+            <label className="block text-[10px] tracking-[0.25em] uppercase mb-3 mt-4" style={{ color: C.textMuted }}>Job Description</label>
+            <textarea className="w-full h-56 text-sm leading-relaxed p-3 resize-none outline-none rounded-sm"
+              style={{ background: C.bgCard, color: C.text, border: `1px solid ${C.border}`, caretColor: C.green }}
               placeholder="Paste the full job description here..."
-              value={jd}
-              onChange={e => setJd(e.target.value)}
-            />
-            <div className="absolute bottom-3 right-3 text-[10px] text-[#b0aba4]">{jd.length} chars</div>
+              value={jd} onChange={e => setJd(e.target.value)} />
+            <div className="absolute bottom-3 right-3 text-[10px]" style={{ color: C.textFaint }}>{jd.length} chars</div>
           </div>
-
           {appState === "error" && (
-            <div className="mb-4 px-4 py-3 bg-[#ffeaea] border border-[#ffcccc] text-[#cc3333] text-xs rounded-sm">
-              ✗ {errorMsg}
-            </div>
+            <div className="mb-4 px-4 py-3 text-xs rounded-sm" style={{ background: C.redBg, border: "1px solid #ffcccc", color: C.red }}>✗ {errorMsg}</div>
           )}
-
           <button onClick={handleGenerate} disabled={isBusy || !jd.trim()}
             className="w-full py-4 text-sm tracking-[0.15em] uppercase font-bold transition-all duration-200 rounded-sm disabled:cursor-not-allowed"
-            style={{ background: isBusy || !jd.trim() ? "#d4cfc7" : "#1a1814", color: isBusy || !jd.trim() ? "#b0aba4" : "#f5f2ed" }}>
+            style={{ background: isBusy || !jd.trim() ? C.border : C.text, color: isBusy || !jd.trim() ? C.textFaint : C.bg }}>
             {appState === "generating" ? (
               <span className="flex items-center justify-center gap-3">
-                <span className="inline-flex gap-1">
-                  {[0, 150, 300].map(d => (
-                    <span key={d} className="w-1 h-1 bg-[#7a7570] rounded-full animate-bounce" style={{ animationDelay: `${d}ms` }} />
-                  ))}
-                </span>
+                <span className="inline-flex gap-1">{[0,150,300].map(d => <span key={d} className="w-1 h-1 rounded-full animate-bounce" style={{ background: C.textFaint, animationDelay: `${d}ms` }} />)}</span>
                 AI is tailoring your resume...
               </span>
             ) : "Generate & Open Editor →"}
           </button>
-
-          <div className="mt-8 flex items-center gap-4 text-[#b0aba4] text-[10px] tracking-widest uppercase">
+          <div className="mt-8 flex items-center gap-4 text-[10px] tracking-widest uppercase" style={{ color: C.textFaint }}>
             <span>Gemini</span><span>·</span><span>Go</span><span>·</span><span>LaTeX</span>
           </div>
         </div>
@@ -266,188 +296,187 @@ export default function GeneratePage() {
     );
   }
 
-  // Post-generation: Overleaf-style editor
+  // ── Editor view ───────────────────────────────────────────────────
   return (
-    <main className="h-screen flex flex-col overflow-hidden" style={{ background: "#0f0d0b", color: "#d4cfc7", fontFamily: "ui-monospace, 'Courier New', monospace" }}>
+    <main className="h-screen flex flex-col overflow-hidden font-mono" style={{ background: C.bg, color: C.text, userSelect: isDragging ? "none" : "auto" }}>
 
-      {/* ── Top navbar ── */}
-      <div className="flex items-center justify-between px-4 h-11 border-b shrink-0"
-        style={{ borderColor: "#1e1a17", background: "#0a0806" }}>
-
-        {/* Left: branding + file */}
+      {/* ── Navbar ── */}
+      <div className="flex items-center justify-between px-4 h-11 shrink-0" style={{ background: C.bgCard, borderBottom: `1px solid ${C.border}` }}>
         <div className="flex items-center gap-3">
-          <button onClick={() => router.push("/dashboard")}
-            className="text-[10px] tracking-[0.3em] uppercase transition-opacity hover:opacity-60"
-            style={{ color: "#5a8a00" }}>
-            ← cv_tailor
-          </button>
-          <span style={{ color: "#1e1a17" }}>│</span>
+          <button onClick={() => router.push("/dashboard")} className="text-[10px] tracking-[0.3em] uppercase hover:opacity-60 transition-opacity" style={{ color: C.green }}>← cv_tailor</button>
+          <span style={{ color: C.border }}>│</span>
           <div className="flex items-center gap-1.5">
-            <svg width="10" height="12" viewBox="0 0 10 12" fill="none">
-              <path d="M1 1H6.5L9 3.5V11H1V1Z" stroke="#3a3530" strokeWidth="1" />
-              <path d="M6.5 1V3.5H9" stroke="#3a3530" strokeWidth="1" />
-            </svg>
-            <span className="text-[11px]" style={{ color: "#4a4540" }}>tailored_resume.tex</span>
+            <svg width="10" height="12" viewBox="0 0 10 12" fill="none"><path d="M1 1H6.5L9 3.5V11H1V1Z" stroke={C.borderStrong} strokeWidth="1" /><path d="M6.5 1V3.5H9" stroke={C.borderStrong} strokeWidth="1" /></svg>
+            <span className="text-[11px]" style={{ color: C.textMid }}>tailored_resume.tex</span>
           </div>
         </div>
 
-        {/* Center: recompile + download */}
+        {/* Recompile + Download */}
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => compileLatex()}
-            disabled={isBusy}
-            className="flex items-center gap-2 px-4 py-1.5 text-[11px] font-bold tracking-[0.12em] uppercase rounded transition-all duration-150 disabled:cursor-not-allowed"
-            style={{
-              background: isBusy ? "#1a1714" : "#4a7a00",
-              color: isBusy ? "#3a3530" : "#e8f5c0",
-              border: "1px solid",
-              borderColor: isBusy ? "#2a2520" : "#5a8a00",
-            }}>
+          <button onClick={() => compileLatex()} disabled={isBusy}
+            className="flex items-center gap-2 px-4 py-1.5 text-[11px] font-bold tracking-[0.12em] uppercase rounded-sm transition-all disabled:cursor-not-allowed"
+            style={{ background: isBusy ? C.border : C.green, color: isBusy ? C.textFaint : "#fff", border: `1px solid ${isBusy ? C.border : C.green}` }}>
             {appState === "compiling" ? (
               <span className="flex items-center gap-1.5">
-                <span className="inline-flex gap-0.5">
-                  {[0, 100, 200].map(d => (
-                    <span key={d} className="w-1 h-1 rounded-full animate-bounce" style={{ background: "#3a3530", animationDelay: `${d}ms` }} />
-                  ))}
-                </span>
+                <span className="inline-flex gap-0.5">{[0,100,200].map(d => <span key={d} className="w-1 h-1 rounded-full animate-bounce" style={{ background: C.textFaint, animationDelay: `${d}ms` }} />)}</span>
                 Compiling
               </span>
             ) : (
               <span className="flex items-center gap-1.5">
-                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                  <path d="M2 1.5L8 5L2 8.5V1.5Z" fill="currentColor" />
-                </svg>
+                <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M1.5 1L7.5 4.5L1.5 8V1Z" fill="currentColor" /></svg>
                 Recompile
               </span>
             )}
           </button>
-
           <button onClick={handleDownload} disabled={!pdfUrl}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold tracking-[0.12em] uppercase rounded transition-all duration-150 disabled:opacity-20 disabled:cursor-not-allowed"
-            style={{ border: "1px solid #2a2520", color: "#5a5550", background: "transparent" }}
-            onMouseEnter={e => { if (pdfUrl) { (e.target as HTMLElement).style.borderColor = "#5a8a0055"; (e.target as HTMLElement).style.color = "#5a8a00"; } }}
-            onMouseLeave={e => { (e.target as HTMLElement).style.borderColor = "#2a2520"; (e.target as HTMLElement).style.color = "#5a5550"; }}>
+            className="px-3 py-1.5 text-[11px] font-bold tracking-[0.12em] uppercase rounded-sm transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+            style={{ border: `1px solid ${C.border}`, color: C.textMid }}>
             ↓ Download
           </button>
         </div>
 
-        {/* Right: status + page nav */}
+        {/* Status */}
         <div className="flex items-center gap-4">
-          {appState === "error" && (
-            <span className="text-[10px]" style={{ color: "#cc4444" }}>✗ {errorMsg.slice(0, 40)}</span>
-          )}
+          {appState === "error" && <span className="text-[10px]" style={{ color: C.red }}>✗ {errorMsg.slice(0, 40)}</span>}
           {appState === "editing" && (
-            <span className="flex items-center gap-1.5 text-[10px]" style={{ color: "#5a8a00" }}>
-              <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#5a8a00" }} />
-              Compiled
+            <span className="flex items-center gap-1.5 text-[10px]" style={{ color: C.green }}>
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: C.green }} />Compiled
             </span>
           )}
           {numPages > 1 && (
             <div className="flex items-center gap-1.5">
-              <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage <= 1}
-                className="text-[11px] transition-colors disabled:opacity-20"
-                style={{ color: "#4a4540" }}>←</button>
-              <span className="text-[10px]" style={{ color: "#3a3530" }}>{currentPage}/{numPages}</span>
-              <button onClick={() => setCurrentPage(p => Math.min(numPages, p + 1))} disabled={currentPage >= numPages}
-                className="text-[11px] transition-colors disabled:opacity-20"
-                style={{ color: "#4a4540" }}>→</button>
+              <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage <= 1} className="text-[11px] disabled:opacity-20" style={{ color: C.textMid }}>←</button>
+              <span className="text-[10px]" style={{ color: C.textMuted }}>{currentPage}/{numPages}</span>
+              <button onClick={() => setCurrentPage(p => Math.min(numPages, p + 1))} disabled={currentPage >= numPages} className="text-[11px] disabled:opacity-20" style={{ color: C.textMid }}>→</button>
             </div>
           )}
         </div>
       </div>
 
-      {/* ── Main area ── */}
-      <div className="flex flex-1 overflow-hidden">
+      {/* ── Icon Toolbar ── */}
+      <div className="flex items-center gap-0.5 px-3 py-1.5 shrink-0" style={{ background: C.bgCard, borderBottom: `1px solid ${C.border}` }}>
 
-        {/* ── Left: Editor column ── */}
-        <div className="flex flex-col" style={{ width: "50%", borderRight: "1px solid #1a1714" }}>
+        {/* Format */}
+        <Icon title="Bold — wraps selection in \textbf{}" onClick={() => insertAround("\\textbf{", "}")}>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><text x="2" y="11" fontSize="12" fontWeight="900" fontFamily="serif" fill="currentColor">B</text></svg>
+        </Icon>
+        <Icon title="Italic — wraps selection in \textit{}" onClick={() => insertAround("\\textit{", "}")}>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><text x="3" y="11" fontSize="12" fontStyle="italic" fontFamily="serif" fill="currentColor">I</text></svg>
+        </Icon>
+        <Icon title="Underline — wraps selection in \underline{}" onClick={() => insertAround("\\underline{", "}")}>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><text x="2" y="10" fontSize="11" fontFamily="serif" fill="currentColor">U</text><line x1="2" y1="13" x2="12" y2="13" stroke="currentColor" strokeWidth="1.5"/></svg>
+        </Icon>
 
-          {/* Editor toolbar */}
-          <div className="flex items-center gap-1 px-3 py-1.5 shrink-0 overflow-x-auto"
-            style={{ background: "#0d0b09", borderBottom: "1px solid #1a1714" }}>
+        <Divider />
 
-            {/* Snippet buttons */}
-            {SNIPPETS.map(s => (
-              <button key={s.label}
-                onClick={() => insertSnippet(s.insert, s.cursorOffset)}
-                className="px-2 py-1 text-[10px] rounded shrink-0 transition-colors duration-100"
-                style={{ color: "#5a5550", background: "#151210", border: "1px solid #222" }}
-                onMouseEnter={e => { (e.currentTarget).style.color = "#c8e090"; (e.currentTarget).style.borderColor = "#3a4a20"; }}
-                onMouseLeave={e => { (e.currentTarget).style.color = "#5a5550"; (e.currentTarget).style.borderColor = "#222"; }}>
-                {s.label}
-              </button>
-            ))}
+        {/* Structure */}
+        <Icon title="Add \section{}" onClick={() => insertAt("\\section{}", 9)}>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <text x="1" y="10" fontSize="9" fontWeight="700" fontFamily="monospace" fill="currentColor">§</text>
+          </svg>
+        </Icon>
+        <Icon title="Add \resumeItem{}" onClick={() => insertAt("\\resumeItem{}", 12)}>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <circle cx="3" cy="7" r="1.5" fill="currentColor"/>
+            <line x1="6" y1="7" x2="13" y2="7" stroke="currentColor" strokeWidth="1.5"/>
+          </svg>
+        </Icon>
+        <Icon title="Add \resumeSubheading{}{}{}{}" onClick={() => insertAt("\\resumeSubheading{}{}{}{}", 18)}>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <line x1="1" y1="4" x2="13" y2="4" stroke="currentColor" strokeWidth="1.5"/>
+            <line x1="1" y1="8" x2="9" y2="8" stroke="currentColor" strokeWidth="1"/>
+            <line x1="1" y1="11" x2="11" y2="11" stroke="currentColor" strokeWidth="1"/>
+          </svg>
+        </Icon>
+        <Icon title="Add \resumeProjectHeading{}{}" onClick={() => insertAt("\\resumeProjectHeading{\\textbf{} $|$ \\emph{}}{}", 22)}>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <rect x="1" y="2" width="12" height="10" rx="1" stroke="currentColor" strokeWidth="1.2" fill="none"/>
+            <line x1="4" y1="5.5" x2="10" y2="5.5" stroke="currentColor" strokeWidth="1"/>
+            <line x1="4" y1="8.5" x2="8" y2="8.5" stroke="currentColor" strokeWidth="1"/>
+          </svg>
+        </Icon>
+        <Icon title="Add list block" onClick={() => insertAt("\\resumeItemListStart\n\\resumeItemListEnd", 20)}>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <circle cx="3" cy="4" r="1" fill="currentColor"/>
+            <circle cx="3" cy="8" r="1" fill="currentColor"/>
+            <circle cx="3" cy="12" r="1" fill="currentColor"/>
+            <line x1="6" y1="4" x2="13" y2="4" stroke="currentColor" strokeWidth="1.2"/>
+            <line x1="6" y1="8" x2="11" y2="8" stroke="currentColor" strokeWidth="1.2"/>
+            <line x1="6" y1="12" x2="12" y2="12" stroke="currentColor" strokeWidth="1.2"/>
+          </svg>
+        </Icon>
+        <Icon title="Add \href{}{}" onClick={() => insertAt("\\href{}{}", 6)}>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M5 9L3 11a2 2 0 002.83 0l2-2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+            <path d="M9 5l2-2a2 2 0 00-2.83 0L6 5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+            <line x1="5" y1="9" x2="9" y2="5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+          </svg>
+        </Icon>
 
-            <div style={{ width: "1px", background: "#1e1a17", margin: "0 4px", height: "16px", flexShrink: 0 }} />
+        <Divider />
 
-            {/* Utility buttons */}
-            <button onClick={copyLatex}
-              className="px-2 py-1 text-[10px] rounded shrink-0 transition-colors"
-              style={{ color: "#5a5550", background: "#151210", border: "1px solid #222" }}
-              onMouseEnter={e => { (e.currentTarget).style.color = "#c8e090"; }}
-              onMouseLeave={e => { (e.currentTarget).style.color = "#5a5550"; }}
-              title="Copy all LaTeX">
-              Copy
-            </button>
+        {/* Utilities */}
+        <Icon title={copied ? "Copied!" : "Copy all LaTeX"} onClick={handleCopy} active={copied}>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <rect x="4" y="1" width="9" height="10" rx="1" stroke="currentColor" strokeWidth="1.2" fill="none"/>
+            <rect x="1" y="4" width="9" height="10" rx="1" stroke="currentColor" strokeWidth="1.2" fill={copied ? "currentColor" : "none"} fillOpacity="0.15"/>
+          </svg>
+        </Icon>
+        <Icon title="Find in code (Ctrl+F)" onClick={() => setShowFind(f => !f)} active={showFind}>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <circle cx="6" cy="6" r="4" stroke="currentColor" strokeWidth="1.2"/>
+            <line x1="9.5" y1="9.5" x2="13" y2="13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+          </svg>
+        </Icon>
+        <Icon title="Word wrap" onClick={() => setWordWrap(w => !w)} active={wordWrap}>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <line x1="1" y1="4" x2="13" y2="4" stroke="currentColor" strokeWidth="1.2"/>
+            <path d="M1 8h8a2 2 0 010 4H7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+            <path d="M5 10l-2 2 2 2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </Icon>
 
-            <button onClick={() => setShowFind(f => !f)}
-              className="px-2 py-1 text-[10px] rounded shrink-0 transition-colors"
-              style={{ color: showFind ? "#c8e090" : "#5a5550", background: showFind ? "#1a2a10" : "#151210", border: `1px solid ${showFind ? "#3a4a20" : "#222"}` }}
-              title="Find in code">
-              Find
-            </button>
+        <Divider />
 
-            <button onClick={() => setWordWrap(w => !w)}
-              className="px-2 py-1 text-[10px] rounded shrink-0 transition-colors"
-              style={{ color: wordWrap ? "#c8e090" : "#5a5550", background: wordWrap ? "#1a2a10" : "#151210", border: `1px solid ${wordWrap ? "#3a4a20" : "#222"}` }}
-              title="Toggle word wrap">
-              Wrap
-            </button>
+        {/* Zoom */}
+        <button onClick={() => setZoom(z => Math.max(70, z - 10))} className="w-6 h-6 flex items-center justify-center text-[11px] rounded transition-all" style={{ color: C.textMid }} title="Zoom out">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><line x1="2" y1="6" x2="10" y2="6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+        </button>
+        <span className="text-[10px] w-8 text-center" style={{ color: C.textMuted }}>{zoom}%</span>
+        <button onClick={() => setZoom(z => Math.min(150, z + 10))} className="w-6 h-6 flex items-center justify-center text-[11px] rounded transition-all" style={{ color: C.textMid }} title="Zoom in">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><line x1="6" y1="2" x2="6" y2="10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><line x1="2" y1="6" x2="10" y2="6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+        </button>
+      </div>
 
-            <div style={{ width: "1px", background: "#1e1a17", margin: "0 4px", height: "16px", flexShrink: 0 }} />
+      {/* Find bar */}
+      {showFind && (
+        <div className="flex items-center gap-2 px-3 py-2 shrink-0" style={{ background: C.greenLight, borderBottom: `1px solid ${C.greenBorder}` }}>
+          <span className="text-[10px]" style={{ color: C.green }}>Find:</span>
+          <input value={findText} onChange={e => setFindText(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && handleFind()}
+            placeholder="Search in code..." autoFocus
+            className="flex-1 bg-transparent text-[11px] outline-none"
+            style={{ color: C.text, borderBottom: `1px solid ${C.greenBorder}` }} />
+          <button onClick={handleFind} className="text-[10px] px-2 py-0.5 rounded" style={{ color: C.green, border: `1px solid ${C.greenBorder}`, background: "white" }}>Next</button>
+          <button onClick={() => setShowFind(false)} className="text-[10px]" style={{ color: C.textMuted }}>✕</button>
+        </div>
+      )}
 
-            {/* Zoom */}
-            <div className="flex items-center gap-1 shrink-0">
-              <button onClick={() => setZoom(z => Math.max(70, z - 10))}
-                className="w-5 h-5 flex items-center justify-center text-[10px] rounded"
-                style={{ color: "#5a5550", background: "#151210", border: "1px solid #222" }}>−</button>
-              <span className="text-[10px] w-8 text-center" style={{ color: "#3a3530" }}>{zoom}%</span>
-              <button onClick={() => setZoom(z => Math.min(150, z + 10))}
-                className="w-5 h-5 flex items-center justify-center text-[10px] rounded"
-                style={{ color: "#5a5550", background: "#151210", border: "1px solid #222" }}>+</button>
-            </div>
-          </div>
+      {/* ── Resizable panels ── */}
+      <div ref={containerRef} className="flex flex-1 overflow-hidden" style={{ cursor: isDragging ? "col-resize" : "auto" }}>
 
-          {/* Find bar */}
-          {showFind && (
-            <div className="flex items-center gap-2 px-3 py-2 shrink-0"
-              style={{ background: "#0d0b09", borderBottom: "1px solid #1a1714" }}>
-              <input
-                value={findText}
-                onChange={e => setFindText(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && handleFind()}
-                placeholder="Find in code..."
-                className="flex-1 bg-transparent text-[11px] outline-none"
-                style={{ color: "#c8e090", borderBottom: "1px solid #3a4a20" }}
-              />
-              <button onClick={handleFind}
-                className="text-[10px] px-2 py-0.5 rounded"
-                style={{ color: "#5a8a00", border: "1px solid #3a4a20" }}>
-                Next
-              </button>
-              <button onClick={() => setShowFind(false)}
-                className="text-[10px]" style={{ color: "#3a3530" }}>✕</button>
-            </div>
-          )}
+        {/* Left: Editor + bottom Sections */}
+        <div className="flex flex-col overflow-hidden" style={{ width: `${splitPct}%` }}>
 
-          {/* Editor with line numbers */}
-          <div ref={editorRef} className="flex flex-1 overflow-hidden" style={{ background: "#0f0d0b" }}>
+          {/* Editor area */}
+          <div className="flex flex-1 overflow-hidden" style={{ background: C.bgEditor }}>
             {/* Line numbers */}
-            <div className="overflow-hidden shrink-0" style={{ width: "3rem", background: "#0a0806", borderRight: "1px solid #1a1714" }}>
-              <div style={{ paddingTop: "1rem", transform: `translateY(-${scrollTop}px)` }}>
+            <div className="overflow-hidden shrink-0" style={{ width: "3.5rem", background: C.bgCard, borderRight: `1px solid ${C.border}` }}>
+              <div style={{ paddingTop: "1rem", transform: `translateY(-${scrollTop}px)`, transition: "none" }}>
                 {Array.from({ length: lineCount }, (_, i) => (
-                  <div key={i} className="text-right pr-3 text-[11px] leading-[1.6]"
-                    style={{ color: cursorPos.line === i + 1 ? "#4a5a30" : "#2a2520" }}>
+                  <div key={i} className="text-right pr-3 text-[11px] cursor-pointer"
+                    style={{ lineHeight: "1.6", color: highlightedLine === i + 1 ? "#fff" : cursorPos.line === i + 1 ? C.lineNumActive : C.lineNum, background: highlightedLine === i + 1 ? C.green : "transparent", fontFamily: "ui-monospace, monospace" }}
+                    onClick={() => { if (textareaRef.current) scrollToLine(textareaRef.current, i + 1); }}>
                     {i + 1}
                   </div>
                 ))}
@@ -458,7 +487,7 @@ export default function GeneratePage() {
             <textarea
               ref={textareaRef}
               value={latex}
-              onChange={e => handleLatexChange(e.target.value)}
+              onChange={e => setLatex(e.target.value)}
               onScroll={e => setScrollTop((e.target as HTMLTextAreaElement).scrollTop)}
               onClick={updateCursorPos}
               onKeyUp={updateCursorPos}
@@ -468,122 +497,134 @@ export default function GeneratePage() {
                 if (e.ctrlKey && e.key === "f") { e.preventDefault(); setShowFind(f => !f); }
                 if (e.key === "Tab") {
                   e.preventDefault();
-                  const ta = e.currentTarget;
-                  const start = ta.selectionStart;
-                  const end = ta.selectionEnd;
-                  const newVal = latex.substring(0, start) + "  " + latex.substring(end);
-                  handleLatexChange(newVal);
+                  const ta = e.currentTarget, start = ta.selectionStart;
+                  const newVal = latex.substring(0, start) + "  " + latex.substring(ta.selectionEnd);
+                  setLatex(newVal);
                   setTimeout(() => { ta.selectionStart = ta.selectionEnd = start + 2; }, 0);
                 }
               }}
-              className="flex-1 resize-none outline-none p-4 text-[11px] leading-[1.6]"
-              style={{
-                background: "transparent",
-                color: "#c8c4be",
-                fontFamily: "ui-monospace, 'Courier New', monospace",
-                fontSize: `${zoom / 100 * 11}px`,
-                whiteSpace: wordWrap ? "pre-wrap" : "pre",
-                overflowX: wordWrap ? "hidden" : "auto",
-                caretColor: "#5a8a00",
-              }}
+              className="flex-1 resize-none outline-none p-4"
+              style={{ background: "transparent", color: C.editorFg, fontFamily: "ui-monospace, 'Courier New', monospace", fontSize: `${zoom / 100 * 12}px`, lineHeight: "1.6", whiteSpace: wordWrap ? "pre-wrap" : "pre", overflowX: wordWrap ? "hidden" : "auto", caretColor: C.green }}
               spellCheck={false}
             />
           </div>
 
           {/* Status bar */}
-          <div className="flex items-center justify-between px-4 py-1.5 shrink-0"
-            style={{ background: "#0a0806", borderTop: "1px solid #1a1714" }}>
-            <div className="flex items-center gap-4">
-              <span className="text-[10px]" style={{ color: "#3a3530" }}>
-                Ln {cursorPos.line}, Col {cursorPos.col}
-              </span>
-              <span className="text-[10px]" style={{ color: "#2a2520" }}>
-                {lineCount} lines · {wordCount} words · {latex.length} chars
-              </span>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="text-[10px]" style={{ color: "#2a2520" }}>LaTeX</span>
-              <span className="text-[10px]" style={{ color: "#2a2520" }}>Ctrl+Enter to compile · Ctrl+F to find</span>
-            </div>
+          <div className="flex items-center justify-between px-4 py-1 shrink-0" style={{ background: C.bgCard, borderTop: `1px solid ${C.border}` }}>
+            <span className="text-[10px]" style={{ color: C.textMid }}>Ln {cursorPos.line}, Col {cursorPos.col}</span>
+            <span className="text-[10px]" style={{ color: C.textFaint }}>{lineCount} lines · {latex.length} chars</span>
+            <span className="text-[10px]" style={{ color: C.textFaint }}>Ctrl+Enter · Ctrl+F</span>
+          </div>
+
+          {/* ── Bottom Sections Panel ── */}
+          <div style={{ borderTop: `1px solid ${C.border}` }}>
+            {/* Sections header — always visible */}
+            <button
+              onClick={() => setSectionsOpen(o => !o)}
+              className="w-full flex items-center justify-between px-4 py-2 transition-colors"
+              style={{ background: C.bgCard }}
+              onMouseEnter={e => e.currentTarget.style.background = C.bgSnippet}
+              onMouseLeave={e => e.currentTarget.style.background = C.bgCard}>
+              <div className="flex items-center gap-2">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <line x1="1" y1="3" x2="11" y2="3" stroke="currentColor" strokeWidth="1.2"/>
+                  <line x1="1" y1="6" x2="8" y2="6" stroke="currentColor" strokeWidth="1.2"/>
+                  <line x1="1" y1="9" x2="9" y2="9" stroke="currentColor" strokeWidth="1.2"/>
+                </svg>
+                <span className="text-[10px] tracking-[0.2em] uppercase" style={{ color: C.textMid }}>
+                  Sections <span style={{ color: C.textFaint }}>({sections.length})</span>
+                </span>
+              </div>
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none"
+                style={{ transform: sectionsOpen ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s", color: C.textFaint }}>
+                <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+
+            {/* Sections list */}
+            {sectionsOpen && (
+              <div className="overflow-y-auto" style={{ maxHeight: "160px", background: C.bgEditor, borderTop: `1px solid ${C.border}` }}>
+                {sections.length === 0 ? (
+                  <div className="px-4 py-3 text-[10px]" style={{ color: C.textFaint }}>No \section{} found in LaTeX</div>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5 p-3">
+                    {sections.map((sec, i) => (
+                      <button key={i} onClick={() => jumpToSection(sec.line)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] rounded-sm transition-all"
+                        style={{ background: C.bgCard, border: `1px solid ${C.border}`, color: C.textMid }}
+                        onMouseEnter={e => { e.currentTarget.style.background = C.greenLight; e.currentTarget.style.borderColor = C.greenBorder; e.currentTarget.style.color = C.green; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = C.bgCard; e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.textMid; }}>
+                        <span style={{ color: C.textFaint, fontSize: "10px" }}>{i + 1}</span>
+                        {sec.name}
+                        <span style={{ color: C.textFaint, fontSize: "10px" }}>:{sec.line}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ── Drag divider ── */}
+        <div
+          onMouseDown={onDividerMouseDown}
+          className="flex items-center justify-center shrink-0 transition-colors"
+          style={{ width: "5px", cursor: "col-resize", background: isDragging ? C.greenBorder : C.border, zIndex: 10 }}
+          onMouseEnter={e => { if (!isDragging) e.currentTarget.style.background = C.borderStrong; }}
+          onMouseLeave={e => { if (!isDragging) e.currentTarget.style.background = C.border; }}>
+          {/* drag handle dots */}
+          <div className="flex flex-col gap-1">
+            {[0,1,2].map(i => <div key={i} className="w-1 h-1 rounded-full" style={{ background: isDragging ? "#fff" : C.borderStrong }} />)}
           </div>
         </div>
 
         {/* ── Right: PDF Preview ── */}
-        <div className="flex flex-col" style={{ width: "50%", background: "#13110e" }}>
+        <div className="flex flex-col overflow-hidden" style={{ flex: 1 }}>
 
           {/* Preview header */}
-          <div className="flex items-center justify-between px-4 py-2 shrink-0"
-            style={{ background: "#0a0806", borderBottom: "1px solid #1a1714" }}>
+          <div className="flex items-center justify-between px-4 py-2 shrink-0" style={{ background: C.bgCard, borderBottom: `1px solid ${C.border}` }}>
             <div className="flex items-center gap-2">
-              <span className="text-[10px] tracking-[0.2em] uppercase" style={{ color: "#2a2520" }}>Preview</span>
+              <span className="text-[10px] tracking-[0.2em] uppercase" style={{ color: C.textFaint }}>Preview</span>
+              <span className="text-[10px] px-2 py-0.5 rounded" style={{ background: C.greenLight, color: C.green, border: `1px solid ${C.greenBorder}` }}>
+                Double-click text to jump to editor
+              </span>
             </div>
-            <div className="flex items-center gap-4">
-              {appState === "compiling" && (
-                <span className="text-[10px]" style={{ color: "#4a5a30" }}>Compiling...</span>
-              )}
-              {numPages > 0 && (
-                <span className="text-[10px]" style={{ color: "#3a3530" }}>{numPages} page{numPages > 1 ? "s" : ""}</span>
-              )}
+            <div className="flex items-center gap-3">
+              {clickedWord && <span className="text-[10px]" style={{ color: C.green }}>→ "{clickedWord}"</span>}
+              {numPages > 0 && <span className="text-[10px]" style={{ color: C.textFaint }}>{numPages}p</span>}
               <div className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full" style={{ background: appState === "editing" ? "#5a8a00" : appState === "error" ? "#cc4444" : "#3a3530" }} />
-                <span className="text-[10px]" style={{ color: "#3a3530" }}>tailored_resume.pdf</span>
+                <span className="w-1.5 h-1.5 rounded-full" style={{ background: appState === "editing" ? C.green : appState === "error" ? C.red : C.borderStrong }} />
+                <span className="text-[10px]" style={{ color: C.textMuted }}>tailored_resume.pdf</span>
               </div>
             </div>
           </div>
 
-          {/* PDF area */}
+          {/* PDF */}
           <div className="flex-1 overflow-auto flex items-start justify-center py-8 px-6"
-            style={{ background: "#13110e" }}>
-
+            style={{ background: "#e8e4dd" }}
+            onDoubleClick={handlePdfDoubleClick}>
             {appState === "compiling" && (
               <div className="flex flex-col items-center justify-center h-full gap-4">
-                <div className="flex gap-2">
-                  {[0, 150, 300].map(d => (
-                    <span key={d} className="w-2 h-2 rounded-full animate-bounce"
-                      style={{ background: "#5a8a00", animationDelay: `${d}ms` }} />
-                  ))}
-                </div>
-                <p className="text-[10px] tracking-widest uppercase" style={{ color: "#3a3530" }}>
-                  Compiling LaTeX...
-                </p>
+                <div className="flex gap-2">{[0,150,300].map(d => <span key={d} className="w-2 h-2 rounded-full animate-bounce" style={{ background: C.green, animationDelay: `${d}ms` }} />)}</div>
+                <p className="text-[10px] tracking-widest uppercase" style={{ color: C.textMuted }}>Compiling LaTeX...</p>
               </div>
             )}
-
             {!isBusy && pdfUrl && (
-              <div style={{ filter: "drop-shadow(0 8px 32px rgba(0,0,0,0.6))" }}>
-                <Document
-                  file={pdfUrl}
-                  onLoadSuccess={onDocumentLoadSuccess}
-                  loading={
-                    <div className="flex items-center justify-center h-40 text-[10px] tracking-widest uppercase" style={{ color: "#3a3530" }}>
-                      Loading...
-                    </div>
-                  }
-                  error={
-                    <div className="flex items-center justify-center h-40 text-[11px]" style={{ color: "#cc4444" }}>
-                      Failed to render PDF
-                    </div>
-                  }
-                >
-                  <Page
-                    pageNumber={currentPage}
-                    renderTextLayer={true}
-                    renderAnnotationLayer={true}
-                    width={Math.min(660, window.innerWidth / 2 - 48)}
-                  />
+              <div style={{ filter: "drop-shadow(0 4px 24px rgba(0,0,0,0.18))", cursor: "text" }}>
+                <Document file={pdfUrl} onLoadSuccess={onDocumentLoadSuccess}
+                  loading={<div className="flex items-center justify-center h-40 text-[10px] uppercase" style={{ color: C.textMuted }}>Loading...</div>}
+                  error={<div className="flex items-center justify-center h-40 text-[11px]" style={{ color: C.red }}>Failed to render</div>}>
+                  <Page pageNumber={currentPage} renderTextLayer={true} renderAnnotationLayer={true}
+                    width={Math.min(700, (window.innerWidth * (1 - splitPct / 100)) - 60)} />
                 </Document>
               </div>
             )}
-
             {!isBusy && !pdfUrl && appState === "error" && (
               <div className="flex flex-col items-center justify-center h-full gap-3">
-                <span className="text-sm" style={{ color: "#cc4444" }}>✗ Compilation Error</span>
-                <span className="text-[11px] max-w-xs text-center" style={{ color: "#3a3530" }}>{errorMsg}</span>
-                <button onClick={() => compileLatex()}
-                  className="mt-2 px-4 py-1.5 text-[11px] rounded"
-                  style={{ border: "1px solid #3a4a20", color: "#5a8a00" }}>
-                  Try Again
-                </button>
+                <span className="text-sm" style={{ color: C.red }}>✗ Compilation Error</span>
+                <span className="text-[11px] max-w-xs text-center" style={{ color: C.textMuted }}>{errorMsg}</span>
+                <button onClick={() => compileLatex()} className="mt-2 px-4 py-1.5 text-[11px] rounded" style={{ border: `1px solid ${C.greenBorder}`, color: C.green, background: C.greenLight }}>Try Again</button>
               </div>
             )}
           </div>
