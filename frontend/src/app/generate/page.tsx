@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
+import AppLayout from "@/components/AppLayout";
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
@@ -64,6 +65,7 @@ const Icon = ({ children, title, onClick, active }: { children: React.ReactNode;
 const Divider = () => <div className="w-px h-4 mx-1 shrink-0" style={{ background: C.border }} />;
 
 export default function GeneratePage() {
+  
   const router = useRouter();
   const [jd, setJd] = useState("");
   const [latex, setLatex] = useState("");
@@ -90,6 +92,7 @@ export default function GeneratePage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef(false);
+  
 
   useEffect(() => {
     fetch("http://localhost:8000/auth/me", { credentials: "include" })
@@ -298,6 +301,7 @@ export default function GeneratePage() {
 
   // ── Editor view ───────────────────────────────────────────────────
   return (
+    <AppLayout>
     <main className="h-screen flex flex-col overflow-hidden font-mono" style={{ background: C.bg, color: C.text, userSelect: isDragging ? "none" : "auto" }}>
 
       {/* ── Navbar ── */}
@@ -631,5 +635,6 @@ export default function GeneratePage() {
         </div>
       </div>
     </main>
+      </AppLayout>
   );
 }

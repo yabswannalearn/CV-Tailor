@@ -56,7 +56,7 @@ export default function LandingPage() {
         {/* Stack tags */}
         <div className="mt-16 flex items-center justify-center gap-4 text-[#b0aba4] text-[10px] tracking-widest uppercase">
           <span>FastAPI</span><span>·</span>
-          <span>Qwen2.5</span><span>·</span>
+          <span>Gemini</span><span>·</span>
           <span>Go</span><span>·</span>
           <span>LaTeX</span><span>·</span>
           <span>PostgreSQL</span>
