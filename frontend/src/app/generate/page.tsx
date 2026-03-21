@@ -91,6 +91,8 @@ export default function GeneratePage() {
   const [isDragging, setIsDragging] = useState(false);
   const [sectionsOpen, setSectionsOpen] = useState(true);
   const [jobLabel, setJobLabel] = useState<string | null>(null);
+  const [savingToJob, setSavingToJob] = useState(false);
+  const [savedToJob, setSavedToJob] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -274,6 +276,26 @@ export default function GeneratePage() {
     a.href = pdfUrl; a.download = "Tailored_Resume.pdf"; a.click();
   };
 
+  const handleSaveToJob = async () => {
+  if (!jobId || !latex.trim()) return;
+  setSavingToJob(true);
+  setSavedToJob(false);
+  try {
+    const res = await fetch(`http://localhost:8000/tracker/${jobId}/latex`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ latex }),
+    });
+    if (res.ok) {
+      setSavedToJob(true);
+      setTimeout(() => setSavedToJob(false), 3000);
+    }
+  } finally {
+    setSavingToJob(false);
+  }
+  };
+  
   const onDocumentLoadSuccess = useCallback(({ numPages }: { numPages: number }) => setNumPages(numPages), []);
   const isBusy = appState === "generating" || appState === "compiling";
   const lineCount = latex.split("\n").length;
@@ -378,6 +400,45 @@ export default function GeneratePage() {
               style={{ border: `1px solid ${C.border}`, color: C.textMid }}>
               ↓ Download
             </button>
+            {jobId && (
+              <button
+                onClick={handleSaveToJob}
+                disabled={savingToJob}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold tracking-[0.12em] uppercase rounded-sm transition-all disabled:cursor-not-allowed"
+                style={{
+                  background: savedToJob ? C.greenLight : "transparent",
+                  color: savedToJob ? C.green : savingToJob ? C.textFaint : C.textMid,
+                  border: `1px solid ${savedToJob ? C.greenBorder : C.border}`,
+                }}>
+                {savingToJob ? (
+                  <span className="flex items-center gap-1">
+                    <span className="inline-flex gap-0.5">
+                      {[0,100,200].map(d => (
+                        <span key={d} className="w-1 h-1 rounded-full animate-bounce"
+                          style={{ background: C.textFaint, animationDelay: `${d}ms` }} />
+                      ))}
+                    </span>
+                    Saving
+                  </span>
+                ) : savedToJob ? (
+                  <span className="flex items-center gap-1.5">
+                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                      <path d="M1.5 5l2.5 2.5 4.5-4.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                    Saved
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1.5">
+                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                      <path d="M1 2h6.5L9 3.5V9H1V2z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round"/>
+                      <rect x="3" y="2" width="3" height="2.5" stroke="currentColor" strokeWidth="1"/>
+                      <rect x="2" y="6" width="5" height="2.5" stroke="currentColor" strokeWidth="1"/>
+                    </svg>
+                    Save to Job
+                  </span>
+                )}
+              </button>
+            )}
           </div>
 
           <div className="flex items-center gap-4">
