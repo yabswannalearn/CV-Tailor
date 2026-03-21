@@ -1,5 +1,7 @@
 from pydantic import BaseModel, field_validator
 from typing import List, Optional
+from datetime import date as DateType
+from typing import Optional
 
 class Education(BaseModel):
     school_name: str
@@ -59,4 +61,50 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: str
 
+
+class JobApplicationCreate(BaseModel):
+    company_name: str
+    job_title: str
+    job_url: Optional[str] = None
+    short_description: Optional[str] = None
+    status: Optional[str] = "Saved"
+    date_applied: Optional[DateType] = None
+    follow_up_date: Optional[DateType] = None
+    job_type: Optional[str] = None
+    location: Optional[str] = None
+    salary_range: Optional[str] = None
+    priority: Optional[str] = "Medium"
+    notes: Optional[str] = None
+
+class JobApplicationUpdate(BaseModel):
+    company_name: Optional[str] = None
+    job_title: Optional[str] = None
+    job_url: Optional[str] = None
+    short_description: Optional[str] = None
+    status: Optional[str] = None
+    date_applied: Optional[DateType] = None
+    follow_up_date: Optional[DateType] = None
+    job_type: Optional[str] = None
+    location: Optional[str] = None
+    salary_range: Optional[str] = None
+    priority: Optional[str] = None
+    notes: Optional[str] = None
+
+class JobApplicationResponse(BaseModel):
+    id: int
+    company_name: str
+    job_title: str
+    job_url: Optional[str] = None
+    short_description: Optional[str] = None
+    status: str
+    date_applied: Optional[DateType] = None
+    follow_up_date: Optional[DateType] = None
+    job_type: Optional[str] = None
+    location: Optional[str] = None
+    salary_range: Optional[str] = None
+    priority: str
+    notes: Optional[str] = None
+
+    class Config:
+        from_attributes = True
 

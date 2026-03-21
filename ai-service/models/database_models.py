@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Date
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from database import Base
@@ -8,7 +8,7 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String(100), unique=True, index=True, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-
+    job_applications = relationship("JobApplication", back_populates="owner", cascade="all, delete")
     profile = relationship("Profile", back_populates="owner", uselist=False, cascade="all, delete")
 
 class Profile(Base):
@@ -76,3 +76,24 @@ class Certification(Base):
     issuer = Column(String(150))
     date_issued = Column(String(50))
     owner = relationship("Profile", back_populates="certifications")
+
+class JobApplication(Base):
+    __tablename__ = "job_applications"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    company_name = Column(String(150), nullable=False)
+    job_title = Column(String(150), nullable=False)
+    job_url = Column(String(500))
+    short_description = Column(Text)
+    status = Column(String(50), default="Saved")
+    date_applied = Column(Date)
+    follow_up_date = Column(Date)
+    job_type = Column(String(50))
+    location = Column(String(150))
+    salary_range = Column(String(100))
+    priority = Column(String(20), default="Medium")
+    notes = Column(Text)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    owner = relationship("User", back_populates="job_applications")
