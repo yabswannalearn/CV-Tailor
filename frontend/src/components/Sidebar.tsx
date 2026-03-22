@@ -51,11 +51,22 @@ const IconChevron = ({ collapsed }: { collapsed: boolean }) => (
   </svg>
 );
 
+const IconInterview = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+    <circle cx="8" cy="6" r="3" stroke="currentColor" strokeWidth="1.3"/>
+    <path d="M3 14c0-2.8 2.2-5 5-5s5 2.2 5 5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+    <circle cx="12" cy="10" r="2.5" fill="currentColor" fillOpacity="0.15" stroke="currentColor" strokeWidth="1.1"/>
+    <line x1="12" y1="9.2" x2="12" y2="10.5" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
+    <circle cx="12" cy="11.2" r="0.4" fill="currentColor"/>
+  </svg>
+);
+
 // ── Nav items ─────────────────────────────────────────────────────
 const NAV_ITEMS = [
   { label: "Dashboard",   href: "/dashboard",   icon: <IconDashboard /> },
   { label: "Generate CV", href: "/generate",    icon: <IconGenerate /> },
   { label: "Job Tracker", href: "/tracker",     icon: <IconTracker /> },
+  { label: "Interview", href: "/interview", icon: <IconInterview /> }
 ];
 
 // ── Sidebar ───────────────────────────────────────────────────────
