@@ -140,3 +140,9 @@ class JobApplicationResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class InterviewAnalyzeRequest(BaseModel):
+    question: str
+    answer: str
+    job_title: str
+    jd: Optional[str] = None
