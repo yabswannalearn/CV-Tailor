@@ -6,7 +6,6 @@ router = APIRouter(prefix="/interview", tags=["interview"])
 
 @router.get("/questions")
 async def questions():
-    """Returns the question set for a session."""
     return {"questions": get_questions()}
 
 @router.post("/analyze")
@@ -20,7 +19,9 @@ async def analyze(data: InterviewAnalyzeRequest, request: Request):
             answer=data.answer,
             job_title=data.job_title,
             jd=data.jd or "",
+            delivery=data.delivery,
         )
         return result
     except Exception as e:
+        print(f"INTERVIEW ERROR: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))

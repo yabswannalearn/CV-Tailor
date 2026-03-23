@@ -146,3 +146,18 @@ class InterviewAnalyzeRequest(BaseModel):
     answer: str
     job_title: str
     jd: Optional[str] = None
+
+
+class DeliveryMetrics(BaseModel):
+    eye_contact_pct: Optional[float] = None    # 0-100
+    avg_smile: Optional[float] = None          # 0-1
+    blink_rate: Optional[float] = None         # blinks per minute
+    posture_score: Optional[float] = None      # 0-1
+    answer_duration_seconds: Optional[int] = None
+
+class InterviewAnalyzeRequest(BaseModel):
+    question: str
+    answer: str
+    job_title: str
+    jd: Optional[str] = None
+    delivery: Optional[DeliveryMetrics] = None  # optional — works without MediaPipe too
