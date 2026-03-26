@@ -83,7 +83,7 @@ class JobApplication(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     company_name = Column(String(150), nullable=False)
     job_title = Column(String(150), nullable=False)
-    job_url = Column(String(500))
+    job_url = Column(Text)  # Changed from String(500) to Text to support long URLs (e.g., Indeed URLs with many parameters)
     short_description = Column(Text)       # keep for display
     job_description = Column(Text)         # full JD for AI
     pdf_data = Column(LargeBinary)         # stored PDF bytes

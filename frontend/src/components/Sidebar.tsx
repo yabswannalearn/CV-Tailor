@@ -61,12 +61,21 @@ const IconInterview = () => (
   </svg>
 );
 
+const IconCode = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+    <path d="M5 4L1 8L5 12" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M11 4L15 8L11 12" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+    <line x1="9.5" y1="2" x2="6.5" y2="14" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+  </svg>
+);
+
 // ── Nav items ─────────────────────────────────────────────────────
 const NAV_ITEMS = [
   { label: "Dashboard",   href: "/dashboard",   icon: <IconDashboard /> },
   { label: "Generate CV", href: "/generate",    icon: <IconGenerate /> },
   { label: "Job Tracker", href: "/tracker",     icon: <IconTracker /> },
-  { label: "Interview", href: "/interview", icon: <IconInterview /> }
+  { label: "Interview", href: "/interview", icon: <IconInterview /> },
+  { label: "Code Practice", href: "/code", icon: <IconCode /> }
 ];
 
 // ── Sidebar ───────────────────────────────────────────────────────

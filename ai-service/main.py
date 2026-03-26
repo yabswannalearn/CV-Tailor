@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
-from routers import database_routes, generate_routes, auth_routes, tracker_routes, interview_routes
+from routers import database_routes, generate_routes, auth_routes, tracker_routes, interview_routes, code_routes
 import os
 from dotenv import load_dotenv
 
@@ -31,6 +31,7 @@ app.include_router(database_routes.router)
 app.include_router(generate_routes.router)
 app.include_router(tracker_routes.router)
 app.include_router(interview_routes.router)
+app.include_router(code_routes.router)
 
 @app.get("/")
 def root():

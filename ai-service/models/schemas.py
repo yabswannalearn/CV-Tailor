@@ -161,3 +161,36 @@ class InterviewAnalyzeRequest(BaseModel):
     job_title: str
     jd: Optional[str] = None
     delivery: Optional[DeliveryMetrics] = None  # optional — works without MediaPipe too
+
+class CodeRunRequest(BaseModel):
+    code: str
+    stdin: Optional[str] = None          # for problems that need input
+
+class CodeRunResponse(BaseModel):
+    stdout: str
+    stderr: str
+    execution_time_ms: int
+    timed_out: bool
+
+class CodeHintRequest(BaseModel):
+    problem_title: str
+    problem_description: str
+    current_code: str
+    hint_level: int = 1                  # 1 = subtle, 2 = more direct, 3 = near-solution
+
+class CodeReviewRequest(BaseModel):
+    problem_title: str
+    problem_description: str
+    code: str
+    output: Optional[str] = None
+
+class CodeExplainErrorRequest(BaseModel):
+    code: str
+    error: str
+    problem_title: Optional[str] = None
+
+class CodeGenerateRequest(BaseModel):
+    job_title: str
+    jd: str
+    difficulty: str = "Medium"           # Easy / Medium / Hard
+    count: int = 3
