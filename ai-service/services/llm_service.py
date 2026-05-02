@@ -313,7 +313,7 @@ RULES:
 3. Keep it concise—about 3 to 4 paragraphs.
 4. Do NOT invent any skills or experiences not present in the user profile.
 5. Format the output as plain text (or markdown), with appropriate spacing for paragraphs. Do not output JSON.
-6. The cover letter should start with a professional greeting (e.g., "Dear Hiring Manager," or "Dear [Company] Hiring Team,") and end with a professional sign-off including the user's name.
+6. The cover letter should start with a professional greeting (e.g., "Dear Hiring Manager," or "Dear [Company] Hiring Team,") and end with a professional sign-off including the user's name, portfolio link (reinaelyabut.dev).
 
 Return ONLY the cover letter text.
 """
