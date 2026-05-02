@@ -35,6 +35,7 @@ def serialize_job(job: db_models.JobApplication) -> dict:
         "salary_range": job.salary_range,
         "priority": job.priority,
         "notes": job.notes,
+        "cover_letter": job.cover_letter,
     }
 
 @router.get("/")
@@ -144,6 +145,45 @@ async def generate_pdf_for_job(job_id: int, request: Request, db: Session = Depe
     db.commit()
 
     return {"status": "success", "message": "PDF generated and saved"}
+
+@router.post("/{job_id}/generate-cover-letter")
+async def generate_cover_letter_for_job(job_id: int, request: Request, db: Session = Depends(get_db)):
+    user_id = get_current_user_id(request)
+
+    job = db.query(db_models.JobApplication).filter(
+        db_models.JobApplication.id == job_id,
+        db_models.JobApplication.user_id == user_id
+    ).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if not job.job_description:
+        raise HTTPException(status_code=400, detail="No job description found for this job")
+
+    user = db.query(db_models.User).filter(db_models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    from services.llm_service import generate_cover_letter
+
+    profile = db.query(db_models.Profile).options(
+        joinedload(db_models.Profile.education),
+        joinedload(db_models.Profile.experience),
+        joinedload(db_models.Profile.projects),
+        joinedload(db_models.Profile.skills),
+        joinedload(db_models.Profile.certifications),
+    ).filter(db_models.Profile.email == user.email).first()
+
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found — fill in your profile first")
+
+    # Generate cover letter
+    cover_letter_content = generate_cover_letter(profile, job.job_description, job.company_name)
+
+    # Save to DB
+    job.cover_letter = cover_letter_content
+    db.commit()
+
+    return {"status": "success", "cover_letter": cover_letter_content}
 
 @router.get("/{job_id}/pdf")
 async def get_pdf(job_id: int, request: Request, db: Session = Depends(get_db)):

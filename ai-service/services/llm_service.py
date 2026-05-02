@@ -288,3 +288,45 @@ def generate_latex_resume(db_profile: db_models.Profile, jd: str) -> str:
         raise Exception(f"AI returned invalid JSON: {str(e)}")
     except Exception as e:
         raise Exception(f"SERVICE ERROR: {str(e)}")
+
+def build_cover_letter_prompt(profile: UserProfile, jd: str, company: str) -> str:
+    jd = truncate_jd(jd)
+
+    return f"""
+You are an expert career coach and technical cover letter writer.
+
+Your job is to write a highly tailored, compelling, and professional cover letter for the user.
+The cover letter MUST be written from the perspective of the user, applying to the specified company for the job described.
+
+JOB DESCRIPTION:
+{jd}
+
+COMPANY:
+{company}
+
+USER PROFILE:
+{profile.model_dump_json()}
+
+RULES:
+1. Write in a confident, professional, yet conversational tone.
+2. Directly address how the user's specific skills and experiences from their profile make them a perfect fit for the requirements in the job description.
+3. Keep it concise—about 3 to 4 paragraphs.
+4. Do NOT invent any skills or experiences not present in the user profile.
+5. Format the output as plain text (or markdown), with appropriate spacing for paragraphs. Do not output JSON.
+6. The cover letter should start with a professional greeting (e.g., "Dear Hiring Manager," or "Dear [Company] Hiring Team,") and end with a professional sign-off including the user's name.
+
+Return ONLY the cover letter text.
+"""
+
+def generate_cover_letter(db_profile: db_models.Profile, jd: str, company_name: str) -> str:
+    profile = db_profile_to_schema(db_profile)
+    prompt = build_cover_letter_prompt(profile, jd, company_name)
+
+    try:
+        response = client.models.generate_content(
+            model="gemini-3.1-flash-lite-preview",
+            contents=prompt,
+        )
+        return response.text.strip()
+    except Exception as e:
+        raise Exception(f"SERVICE ERROR: {str(e)}")

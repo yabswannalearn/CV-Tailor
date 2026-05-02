@@ -55,6 +55,20 @@ class GenerateRequest(BaseModel):
         v = v.strip()
         return v
 
+class GenerateCoverLetterRequest(BaseModel):
+    email: str
+    jd: str
+    company_name: str
+
+    @field_validator("jd")
+    @classmethod
+    def sanitize_jd(cls, v: str) -> str:
+        # Remove invalid control characters
+        import re
+        v = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', v)
+        v = v.strip()
+        return v
+
 class RegisterRequest(BaseModel):
     email: str
 
@@ -104,6 +118,7 @@ class JobApplicationCreate(BaseModel):
     salary_range: Optional[str] = None
     priority: Optional[str] = "Medium"
     notes: Optional[str] = None
+    cover_letter: Optional[str] = None
 
 class JobApplicationUpdate(BaseModel):
     company_name: Optional[str] = None
@@ -119,6 +134,7 @@ class JobApplicationUpdate(BaseModel):
     salary_range: Optional[str] = None
     priority: Optional[str] = None
     notes: Optional[str] = None
+    cover_letter: Optional[str] = None
 
 class JobApplicationResponse(BaseModel):
     id: int
@@ -137,6 +153,7 @@ class JobApplicationResponse(BaseModel):
     salary_range: Optional[str] = None
     priority: str
     notes: Optional[str] = None
+    cover_letter: Optional[str] = None
 
     class Config:
         from_attributes = True
