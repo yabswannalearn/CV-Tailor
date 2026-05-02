@@ -34,6 +34,7 @@ interface Job {
   salary_range?: string;
   priority: Priority;
   notes?: string;
+  cover_letter?: string;
 }
 
 type JobForm = {
@@ -220,6 +221,65 @@ function PdfModal({ jobId, companyName, onClose }: { jobId: number; companyName:
   );
 }
 
+// ── Cover Letter Modal ───────────────────────────────────────────
+function CoverLetterModal({ job, onClose, onSave }: { job: Job; onClose: () => void; onSave: (id: number, text: string) => void }) {
+  const [text, setText] = useState(job.cover_letter || "");
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    await onSave(job.id, text);
+    setSaving(false);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 font-mono"
+      style={{ background: "rgba(26,24,20,0.6)" }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="flex flex-col rounded-sm shadow-2xl overflow-hidden" style={{ width: "680px", maxHeight: "90vh", background: "#f5f2ed", border: "1px solid #d4cfc7" }}>
+        
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-3 shrink-0" style={{ background: "#edeae4", borderBottom: "1px solid #d4cfc7" }}>
+          <div className="flex items-center gap-3">
+            <span className="w-2 h-2 rounded-full" style={{ background: "#5a8a00" }} />
+            <span className="text-[11px] font-bold tracking-[0.1em] uppercase" style={{ color: "#1a1814" }}>
+              {job.company_name} — Cover Letter
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            <button onClick={onClose} className="text-lg leading-none transition-colors" style={{ color: "#a8a39c" }}
+              onMouseEnter={e => e.currentTarget.style.color = "#1a1814"}
+              onMouseLeave={e => e.currentTarget.style.color = "#a8a39c"}>✕</button>
+          </div>
+        </div>
+
+        {/* Text Area */}
+        <div className="flex-1 overflow-auto flex flex-col p-4">
+          <textarea
+            value={text}
+            onChange={e => setText(e.target.value)}
+            className="w-full flex-1 p-4 text-sm rounded-sm outline-none resize-none font-mono"
+            style={{ background: "#e8e4dd", color: "#1a1814", border: "1px solid #d4cfc7", minHeight: "400px" }}
+            onFocus={e => e.target.style.borderColor = "#8ab030"}
+            onBlur={e => e.target.style.borderColor = "#d4cfc7"}
+          />
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-3 px-5 py-3 shrink-0" style={{ borderTop: "1px solid #d4cfc7" }}>
+          <button onClick={onClose} className="px-4 py-2 text-xs font-bold tracking-[0.1em] uppercase rounded-sm transition-colors" style={{ border: "1px solid #d4cfc7", color: "#7a7570" }}>
+            Cancel
+          </button>
+          <button onClick={handleSave} disabled={saving} className="px-5 py-2 text-xs font-bold tracking-[0.1em] uppercase rounded-sm transition-colors" style={{ background: "#1a1814", color: "#f5f2ed" }}>
+            {saving ? "Saving..." : "Save"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────
 export default function TrackerPage() {
   const router = useRouter();
@@ -234,7 +294,9 @@ export default function TrackerPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedJob, setExpandedJob] = useState<number | null>(null);
   const [generatingFor, setGeneratingFor] = useState<number | null>(null);
+  const [generatingClFor, setGeneratingClFor] = useState<number | null>(null);
   const [viewingPdfFor, setViewingPdfFor] = useState<Job | null>(null);
+  const [viewingClFor, setViewingClFor] = useState<Job | null>(null);
   const [generateError, setGenerateError] = useState<{ id: number; msg: string } | null>(null);
 
   useEffect(() => {
@@ -322,6 +384,51 @@ export default function TrackerPage() {
       setGenerateError({ id: job.id, msg: "Connection error" });
       setTimeout(() => setGenerateError(null), 3000);
     } finally { setGeneratingFor(null); }
+  };
+
+  const handleGenerateCoverLetter = async (job: Job) => {
+    if (!job.job_description?.trim()) {
+      setGenerateError({ id: job.id, msg: "Add a job description first" });
+      setTimeout(() => setGenerateError(null), 3000);
+      return;
+    }
+    setGeneratingClFor(job.id);
+    setGenerateError(null);
+    try {
+      const res = await fetch(`${API}/tracker/${job.id}/generate-cover-letter`, {
+        method: "POST", credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        setGenerateError({ id: job.id, msg: err.detail || "Generation failed" });
+        setTimeout(() => setGenerateError(null), 4000);
+      } else {
+        const data = await res.json();
+        const updatedJob = { ...job, cover_letter: data.cover_letter };
+        setJobs(jobs.map(j => j.id === job.id ? updatedJob : j));
+        setViewingClFor(updatedJob);
+      }
+    } catch {
+      setGenerateError({ id: job.id, msg: "Connection error" });
+      setTimeout(() => setGenerateError(null), 3000);
+    } finally { setGeneratingClFor(null); }
+  };
+
+  const handleSaveCoverLetter = async (id: number, text: string) => {
+    try {
+      const res = await fetch(`${API}/tracker/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ cover_letter: text })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setJobs(jobs.map(j => j.id === id ? data : j));
+      }
+    } catch (e) {
+      console.error("Failed to save cover letter", e);
+    }
   };
 
   const setField = (k: keyof JobForm, v: string) => setForm(f => ({ ...f, [k]: v }));
@@ -519,6 +626,53 @@ export default function TrackerPage() {
 
                         <div className="w-px h-5 shrink-0" style={{ background: "#d4cfc7" }} />
 
+                        {/* Generate Cover Letter */}
+                        <button
+                          onClick={() => handleGenerateCoverLetter(job)}
+                          disabled={generatingClFor === job.id}
+                          title={job.job_description ? "Generate cover letter for this job" : "Add job description first"}
+                          className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold tracking-[0.08em] uppercase rounded-sm transition-all disabled:cursor-not-allowed"
+                          style={{
+                            background: generatingClFor === job.id ? "#e8e4dd" : job.cover_letter ? "#e8f5c0" : "#f5f2ed",
+                            color: generatingClFor === job.id ? "#a8a39c" : job.cover_letter ? "#3d6600" : "#4a4540",
+                            border: `1px solid ${generatingClFor === job.id ? "#d4cfc7" : job.cover_letter ? "#8ab030" : "#d4cfc7"}`,
+                          }}>
+                          {generatingClFor === job.id ? (
+                            <span className="flex items-center gap-1">
+                              <span className="inline-flex gap-0.5">
+                                {[0,100,200].map(d => <span key={d} className="w-1 h-1 rounded-full animate-bounce" style={{ background: "#a8a39c", animationDelay: `${d}ms` }} />)}
+                              </span>
+                              Generating
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1">
+                              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                                <path d="M1 2v6h8V2H1zm1 1h6v1H2V3zm0 2h6v1H2V5zm0 2h4v1H2V7z" fill="currentColor"/>
+                              </svg>
+                              {job.cover_letter ? "Regenerate CL" : "Generate CL"}
+                            </span>
+                          )}
+                        </button>
+
+                        {/* View Cover Letter */}
+                        {job.cover_letter && (
+                          <button
+                            onClick={() => setViewingClFor(job)}
+                            title="View and Edit Cover Letter"
+                            className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold tracking-[0.08em] uppercase rounded-sm transition-all"
+                            style={{ background: "#f5f2ed", color: "#4a4540", border: "1px solid #d4cfc7" }}
+                            onMouseEnter={e => { e.currentTarget.style.background = "#e8f5c0"; e.currentTarget.style.color = "#3d6600"; e.currentTarget.style.borderColor = "#8ab030"; }}
+                            onMouseLeave={e => { e.currentTarget.style.background = "#f5f2ed"; e.currentTarget.style.color = "#4a4540"; e.currentTarget.style.borderColor = "#d4cfc7"; }}>
+                            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                              <path d="M1.5 1H7L9 3V9H1.5V1Z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round"/>
+                              <path d="M3 5.5h4M3 7h2.5" stroke="currentColor" strokeWidth="1"/>
+                            </svg>
+                            Edit CL
+                          </button>
+                        )}
+
+                        <div className="w-px h-5 shrink-0" style={{ background: "#d4cfc7" }} />
+
                         {/* Expand */}
                         <IconBtn onClick={() => setExpandedJob(expanded ? null : job.id)} title="Details">
                           <svg width="11" height="11" viewBox="0 0 11 11" fill="none"
@@ -708,6 +862,15 @@ export default function TrackerPage() {
           jobId={viewingPdfFor.id}
           companyName={viewingPdfFor.company_name}
           onClose={() => setViewingPdfFor(null)}
+        />
+      )}
+
+      {/* ── Cover Letter Modal ── */}
+      {viewingClFor && (
+        <CoverLetterModal
+          job={viewingClFor}
+          onClose={() => setViewingClFor(null)}
+          onSave={handleSaveCoverLetter}
         />
       )}
     </AppLayout>
