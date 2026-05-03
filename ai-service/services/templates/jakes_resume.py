@@ -18,14 +18,22 @@ JAKES_RESUME = r"""
 \usepackage{fancyhdr}
 \usepackage[english]{babel}
 \usepackage{tabularx}
-\usepackage{fontawesome5}
+\usepackage{fontawesome}
 \usepackage{multicol}
 \usepackage{xcolor}
-\usepackage{charter}
+
+% --- FONT OPTIONS ---
+% \usepackage{charter}     % Serif
+% \usepackage{lmodern}     % Standard LaTeX
+% \usepackage{palatino}    % Elegant Serif
+% \usepackage{times}       % Times New Roman
+\usepackage{lmodern}       % Standard LaTeX
+\renewcommand{\familydefault}{\sfdefault}
+% --------------------
 
 \setlength{\multicolsep}{-3.0pt}
 \setlength{\columnsep}{-1pt}
-\input{glyphtounicode}
+% \input{glyphtounicode}
 
 \pagestyle{fancy}
 \fancyhf{}
@@ -48,7 +56,7 @@ JAKES_RESUME = r"""
   \vspace{-4pt}\scshape\raggedright\large\bfseries
 }{}{0em}{}[\color{black}\titlerule \vspace{-5pt}]
 
-\pdfgentounicode=1
+% \pdfgentounicode=1
 
 \newcommand{\resumeItem}[1]{
   \item\small{{#1 \vspace{-2pt}}}

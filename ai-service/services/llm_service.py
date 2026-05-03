@@ -1,3 +1,4 @@
+# LLM Service for Resume Generation
 import re
 import json
 import os
@@ -172,35 +173,39 @@ def clean_json_response(raw: str) -> str:
     return raw.strip()
 
 def build_heading(profile: UserProfile) -> str:
-    name = f"{profile.first_name} {profile.last_name}"
-
+    name = f"{profile.first_name} {profile.last_name}".upper()
+    
     contact_parts = []
     if profile.mobile_no:
-        contact_parts.append(r"    \small \raisebox{-0.1\height}\faPhone\ " + profile.mobile_no)
+        contact_parts.append(r"\faPhone\ " + profile.mobile_no)
     if profile.email:
-        contact_parts.append(r"    \href{mailto:" + profile.email + r"}{\raisebox{-0.2\height}\faEnvelope\ \underline{" + profile.email + r"}}")
+        contact_parts.append(r"\href{mailto:" + profile.email + r"}{\faEnvelope\ \underline{" + profile.email + r"}}")
     if profile.linkedin:
         display = profile.linkedin.replace("https://", "").replace("http://", "")
-        contact_parts.append(r"    \href{" + profile.linkedin + r"}{\raisebox{-0.2\height}\faLinkedin\ \underline{" + display + r"}}")
+        contact_parts.append(r"\href{" + profile.linkedin + r"}{\faLinkedinSquare\ \underline{" + display + r"}}")
     if profile.github:
         display = profile.github.replace("https://", "").replace("http://", "")
-        contact_parts.append(r"    \href{" + profile.github + r"}{\raisebox{-0.2\height}\faGithub\ \underline{" + display + r"}}")
+        contact_parts.append(r"\href{" + profile.github + r"}{\faGithub\ \underline{" + display + r"}}")
+
+    contact_line = " $|$ ".join(contact_parts)
+    
+    portfolio_line = ""
     if profile.portfolio:
         display = profile.portfolio.replace("https://", "").replace("http://", "")
-        contact_parts.append(r"    \href{" + profile.portfolio + r"}{\raisebox{-0.2\height}\faGlobe\ \underline{" + display + r"}}")
-
-    contact_line = " ~\n".join(contact_parts)
+        portfolio_line = r"\\ \href{" + profile.portfolio + r"}{\faGlobe\ \underline{" + display + r"}}"
 
     return (
         r"\begin{center}" + "\n"
-        r"    {\Huge \scshape \textbf{\textcolor{NavyBlue}{" + name + r"}}} \\ \vspace{1pt}" + "\n"
-        + contact_line + "\n"
-        + r"    \vspace{-8pt}" + "\n"
-        + r"\end{center}"
+        r"    {\Huge \textbf{\textcolor{NavyBlue}{" + name + r"}}} \\ \vspace{2pt}" + "\n"
+        r"    \small " + contact_line + portfolio_line + "\n"
+        r"    \vspace{-12pt}" + "\n"
+        r"\end{center}"
     )
 
 def build_education(profile: UserProfile) -> str:
     lines = []
+    if not profile.education:
+        return r"    \item {No education history provided.}"
     for edu in profile.education:
         desc = edu.description or ""
         lines.append(r"    \resumeSubheading")
@@ -210,6 +215,8 @@ def build_education(profile: UserProfile) -> str:
 
 def build_experience(entries: list) -> str:
     lines = []
+    if not entries:
+        return r"    \item {No experience entries provided.}"
     for exp in entries:
         lines.append(r"    \resumeSubheading")
         lines.append(f"      {{{escape_latex(exp['company'])}}}{{{escape_latex(exp['location'])}}}")
@@ -223,6 +230,8 @@ def build_experience(entries: list) -> str:
 
 def build_projects(entries: list) -> str:
     lines = []
+    if not entries:
+        return r"      \item {No projects provided.}"
     for proj in entries:
         lines.append(r"      \resumeProjectHeading")
         lines.append(f"          {{\\textbf{{{escape_latex(proj['name'])}}} $|$ \\emph{{{escape_latex(proj['tech'])}}}}}{{\\textbf{{\\small {escape_latex(proj['date'])}}}}}")
@@ -236,6 +245,8 @@ def build_projects(entries: list) -> str:
 
 def build_skills(skills_dict: dict) -> str:
     lines = []
+    if not skills_dict:
+        return r"     \item {No skills provided.}"
     for category, items in skills_dict.items():
         lines.append(f"     \\textbf{{{escape_latex(category)}}}{{: {escape_latex(items)}}} \\\\")
     return "\n".join(lines)
@@ -263,11 +274,7 @@ def assemble_latex(profile: UserProfile, ai_content: dict) -> str:
     doc = doc.replace("<<CERTIFICATIONS>>", build_certifications(ai_content.get("certifications", "")))
     return doc
 
-def clean_json_response(raw: str) -> str:
-    # Strip markdown fences if present
-    raw = re.sub(r"```(?:json)?\s*", "", raw)
-    raw = re.sub(r"```", "", raw)
-    return raw.strip()
+
 
 def generate_latex_resume(db_profile: db_models.Profile, jd: str) -> str:
     profile = db_profile_to_schema(db_profile)

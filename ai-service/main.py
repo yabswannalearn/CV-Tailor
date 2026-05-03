@@ -1,9 +1,18 @@
+# CV Tailor FastAPI AI Service
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from routers import database_routes, generate_routes, auth_routes, tracker_routes, interview_routes, code_routes
+import logging
 import os
 from dotenv import load_dotenv
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
