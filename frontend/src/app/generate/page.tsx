@@ -105,13 +105,17 @@ export default function GeneratePage() {
     if (pdfUrl) { window.URL.revokeObjectURL(pdfUrl); setPdfUrl(null); }
     setAppState("compiling"); setErrorMsg("");
     try {
-      const res = await fetch("http://localhost:8081/generate", {
+      const res = await fetch("http://localhost:8000/generate/compile", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ latex: source }),
       });
       if (!res.ok) {
-        try { const e = await res.json(); throw new Error(e.details || e.error || "Compile failed"); }
-        catch { throw new Error("Compile failed"); }
+        let message = "Compile failed";
+        try {
+          const e = await res.json();
+          message = e.detail || e.details || e.error || message;
+        } catch {}
+        throw new Error(message);
       }
       const blob = await res.blob();
       setPdfUrl(window.URL.createObjectURL(blob));

@@ -1,9 +1,9 @@
 @echo off
 echo Starting CV Tailor services...
 
-:: Start Go PDF service
-echo [1/3] Starting Go PDF service on :8081
-start "PDF Service" cmd /k "cd /d "C:\vscode\CV Tailor Go\pdf-service" && go run main.go"
+:: Start Go PDF service - REMOVED (Migrated to Tectonic in FastAPI)
+:: echo [1/3] Starting Go PDF service on :8081
+:: start "PDF Service" cmd /k "cd /d "C:\vscode\CV Tailor Go\pdf-service" && go run main.go"
 
 :: Wait a moment
 timeout /t 2 /nobreak >nul

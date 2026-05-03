@@ -1,0 +1,7 @@
+fastapi[standard]
+google-genai
+psycopg2-binary
+python-dotenv
+requests
+sqlalchemy
+tecto

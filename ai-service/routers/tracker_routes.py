@@ -6,8 +6,8 @@ from datetime import datetime
 from database import get_db
 from models import database_models as db_models
 from models.schemas import JobApplicationCreate, JobApplicationUpdate
-import requests as http_requests
 from pydantic import BaseModel as PydanticBaseModel
+from services.pdf_service import PDFCompilationError, compile_latex_to_pdf
 
 router = APIRouter(prefix="/tracker", tags=["tracker"])
 
@@ -129,18 +129,15 @@ async def generate_pdf_for_job(job_id: int, request: Request, db: Session = Depe
     # 1. Generate LaTeX
     latex_code = generate_latex_resume(profile, job.job_description)
 
-    # 2. Compile PDF via Go service
-    go_response = http_requests.post(
-        "http://localhost:8081/generate",
-        json={"latex": latex_code},
-        timeout=120
-    )
-    if not go_response.ok:
-        raise HTTPException(status_code=500, detail="PDF compilation failed")
+    # 2. Compile PDF with the Python-managed Tectonic binary
+    try:
+        pdf_bytes = compile_latex_to_pdf(latex_code)
+    except PDFCompilationError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     # 3. Save both LaTeX and PDF to DB
     job.latex_source = latex_code
-    job.pdf_data = go_response.content
+    job.pdf_data = pdf_bytes
     job.pdf_generated_at = datetime.utcnow()
     db.commit()
 
@@ -231,14 +228,17 @@ async def save_latex(job_id: int, data: SaveLatexRequest, request: Request, db: 
     job.latex_source = data.latex
 
     # Recompile PDF from new LaTeX
-    go_response = http_requests.post(
-        "http://localhost:8081/generate",
-        json={"latex": data.latex},
-        timeout=120
-    )
-    if go_response.ok:
-        job.pdf_data = go_response.content
+    pdf_updated = False
+    compilation_error = None
+    try:
+        job.pdf_data = compile_latex_to_pdf(data.latex)
         job.pdf_generated_at = datetime.utcnow()
+        pdf_updated = True
+    except PDFCompilationError as exc:
+        compilation_error = str(exc)
 
     db.commit()
-    return {"status": "success", "pdf_updated": go_response.ok}
+    response = {"status": "success", "pdf_updated": pdf_updated}
+    if compilation_error:
+        response["error"] = compilation_error
+    return response
