@@ -20,7 +20,12 @@ async def save_profile(profile_data: UserProfile, request: Request, db: Session 
             db_models.Profile.user_id == user_id
         ).first()
         if existing:
-            db.delete(existing)
+            db.query(db_models.Education).filter(db_models.Education.profile_id == existing.id).delete()
+            db.query(db_models.Experience).filter(db_models.Experience.profile_id == existing.id).delete()
+            db.query(db_models.Project).filter(db_models.Project.profile_id == existing.id).delete()
+            db.query(db_models.Skill).filter(db_models.Skill.profile_id == existing.id).delete()
+            db.query(db_models.Certification).filter(db_models.Certification.profile_id == existing.id).delete()
+            db.query(db_models.Profile).filter(db_models.Profile.id == existing.id).delete()
             db.flush()
 
         new_profile = db_models.Profile(
