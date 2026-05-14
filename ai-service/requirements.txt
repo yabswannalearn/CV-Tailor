@@ -1,5 +1,6 @@
 fastapi[standard]
 google-genai
+itsdangerous
 psycopg2-binary
 python-dotenv
 requests
