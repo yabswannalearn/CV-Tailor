@@ -16,9 +16,12 @@ async def save_profile(profile_data: UserProfile, request: Request, db: Session 
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     try:
-        db.query(db_models.Profile).filter(
+        existing = db.query(db_models.Profile).filter(
             db_models.Profile.user_id == user_id
-        ).delete()
+        ).first()
+        if existing:
+            db.delete(existing)
+            db.flush()
 
         new_profile = db_models.Profile(
             user_id=user_id,
