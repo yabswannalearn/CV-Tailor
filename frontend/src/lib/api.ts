@@ -1,2 +1,4 @@
-// Invalidate Next.js build cache to ensure Vercel proxy rewrite is applied
-export const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+// Dynamically detect Vercel production to force /api proxy path and bypass env cache
+export const API_URL = typeof window !== "undefined" && window.location.hostname.includes("vercel.app")
+  ? "/api"
+  : process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
