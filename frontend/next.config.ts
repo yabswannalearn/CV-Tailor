@@ -7,6 +7,14 @@ const nextConfig: NextConfig = {
     return config;
   },
   transpilePackages: ["react-pdf"],
+  async rewrites() {
+    return [
+      {
+        source: "/api/:path*",
+        destination: "https://cv-tailor-backend.fastapicloud.dev/:path*",
+      },
+    ];
+  },
 };
 
 export default nextConfig;
