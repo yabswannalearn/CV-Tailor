@@ -2,10 +2,11 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import AppLayout from "@/components/AppLayout";
+import { API_URL } from "@/lib/api";
 
 const GRAIN = `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`
 
-const API = "http://localhost:8000"
+const API = API_URL
 
 const inputClass =
   "w-full bg-[#e8e4dd] text-[#1a1814] text-sm p-3 outline-none border border-[#d4cfc7] focus:border-[#c8f06088] rounded-sm placeholder-[#b0aba4] transition-colors duration-200"

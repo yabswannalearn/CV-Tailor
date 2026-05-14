@@ -1,13 +1,14 @@
 "use client";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { Suspense, useState, useEffect, useRef, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import AppLayout from "@/components/AppLayout";
+import { API_URL } from "@/lib/api";
 
 // Monaco editor — client only (no SSR)
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), { ssr: false });
 
-const API = "http://localhost:8000";
+const API = API_URL;
 
 // ── Types ────────────────────────────────────────────────────────
 interface Problem {
@@ -81,7 +82,7 @@ function ScoreRing({ score }: { score: number }) {
 }
 
 // ── Main ──────────────────────────────────────────────────────────
-export default function CodePage() {
+function CodePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const jobIdParam = searchParams.get("job_id");
@@ -792,5 +793,13 @@ export default function CodePage() {
         </div>
       </div>
     </AppLayout>
+  );
+}
+
+export default function CodePage() {
+  return (
+    <Suspense fallback={null}>
+      <CodePageContent />
+    </Suspense>
   );
 }

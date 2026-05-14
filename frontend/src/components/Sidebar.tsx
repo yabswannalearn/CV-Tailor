@@ -1,8 +1,9 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
+import { API_URL } from "@/lib/api";
 
-const API = "http://localhost:8000";
+const API = API_URL;
 
 // ── Icons ────────────────────────────────────────────────────────
 const IconDashboard = () => (
