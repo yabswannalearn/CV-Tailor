@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { Suspense, useState, useEffect, useRef, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import AppLayout from "@/components/AppLayout";
@@ -9,6 +9,7 @@ const Page = dynamic(() => import("react-pdf").then(m => m.Page), { ssr: false }
 
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
+import { API_URL } from "@/lib/api";
 
 if (typeof window !== "undefined") {
   import("react-pdf").then(({ pdfjs }) => {
@@ -16,7 +17,7 @@ if (typeof window !== "undefined") {
   });
 }
 
-const API = "http://localhost:8000";
+const API = API_URL;
 const MEDIAPIPE_WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm";
 
 interface Job {
@@ -143,7 +144,7 @@ function CameraPreview({ videoRef, cameraError, liveEyeContact, sessionState, ti
   );
 }
 
-export default function InterviewPage() {
+function InterviewPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const preselectedJobId = searchParams.get("job_id");
@@ -884,4 +885,12 @@ export default function InterviewPage() {
   }
 
   return null;
+}
+
+export default function InterviewPage() {
+  return (
+    <Suspense fallback={null}>
+      <InterviewPageContent />
+    </Suspense>
+  );
 }

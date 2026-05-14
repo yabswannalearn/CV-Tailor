@@ -1,12 +1,20 @@
 "use client";
-import { useState, useCallback, useEffect, useRef } from "react";
+import { Suspense, useState, useCallback, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Document, Page, pdfjs } from "react-pdf";
+import dynamic from "next/dynamic";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 import AppLayout from "@/components/AppLayout";
+import { API_URL } from "@/lib/api";
 
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+const Document = dynamic(() => import("react-pdf").then(m => m.Document), { ssr: false });
+const Page = dynamic(() => import("react-pdf").then(m => m.Page), { ssr: false });
+
+if (typeof window !== "undefined") {
+  import("react-pdf").then(({ pdfjs }) => {
+    pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+  });
+}
 
 const GRAIN = `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`;
 
@@ -63,7 +71,7 @@ const Icon = ({ children, title, onClick, active }: { children: React.ReactNode;
 
 const Divider = () => <div className="w-px h-4 mx-1 shrink-0" style={{ background: C.border }} />;
 
-export default function GeneratePage() {
+function GeneratePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const jobId = searchParams.get("job_id");
@@ -105,7 +113,7 @@ export default function GeneratePage() {
     if (pdfUrl) { window.URL.revokeObjectURL(pdfUrl); setPdfUrl(null); }
     setAppState("compiling"); setErrorMsg("");
     try {
-      const res = await fetch("http://localhost:8000/generate/compile", {
+      const res = await fetch(`${API_URL}/generate/compile`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ latex: source }),
       });
@@ -126,14 +134,14 @@ export default function GeneratePage() {
 
   useEffect(() => {
     // Auth check
-    fetch("http://localhost:8000/auth/me", { credentials: "include" })
+    fetch(`${API_URL}/auth/me`, { credentials: "include" })
       .then(res => { if (!res.ok) { router.push("/login"); return null; } return res.json(); })
       .then(data => { if (data) setUserEmail(data.email); })
       .catch(() => router.push("/login"));
 
     // If coming from tracker, load existing LaTeX
     if (jobId) {
-      fetch(`http://localhost:8000/tracker/${jobId}/latex`, { credentials: "include" })
+      fetch(`${API_URL}/tracker/${jobId}/latex`, { credentials: "include" })
         .then(res => res.ok ? res.json() : null)
         .then(data => {
           if (data?.latex) {
@@ -147,7 +155,7 @@ export default function GeneratePage() {
         });
 
       // Also fetch job info for label
-      fetch(`http://localhost:8000/tracker/`, { credentials: "include" })
+      fetch(`${API_URL}/tracker/`, { credentials: "include" })
         .then(res => res.ok ? res.json() : null)
         .then(jobs => {
           if (jobs) {
@@ -262,7 +270,7 @@ export default function GeneratePage() {
     if (pdfUrl) { window.URL.revokeObjectURL(pdfUrl); setPdfUrl(null); }
     setAppState("generating"); setErrorMsg("");
     try {
-      const res = await fetch("http://localhost:8000/generate/cv", {
+      const res = await fetch(`${API_URL}/generate/cv`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         credentials: "include", body: JSON.stringify({ email: userEmail, jd }),
       });
@@ -285,7 +293,7 @@ export default function GeneratePage() {
   setSavingToJob(true);
   setSavedToJob(false);
   try {
-    const res = await fetch(`http://localhost:8000/tracker/${jobId}/latex`, {
+    const res = await fetch(`${API_URL}/tracker/${jobId}/latex`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
@@ -678,5 +686,13 @@ export default function GeneratePage() {
         </div>
       </div>
     </AppLayout>
+  );
+}
+
+export default function GeneratePage() {
+  return (
+    <Suspense fallback={null}>
+      <GeneratePageContent />
+    </Suspense>
   );
 }

@@ -1,17 +1,23 @@
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Document, Page, pdfjs } from "react-pdf";
+import dynamic from "next/dynamic";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 import AppLayout from "@/components/AppLayout";
+import { API_URL } from "@/lib/api";
+
+const Document = dynamic(() => import("react-pdf").then(m => m.Document), { ssr: false });
+const Page = dynamic(() => import("react-pdf").then(m => m.Page), { ssr: false });
 
 // Configure PDF.js worker - must be done on client only
 if (typeof window !== "undefined") {
-  pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+  import("react-pdf").then(({ pdfjs }) => {
+    pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+  });
 }
 
-const API = "http://localhost:8000";
+const API = API_URL;
 
 // ── Types ────────────────────────────────────────────────────────
 type Status = "Saved" | "Applied" | "Interview" | "Tech Test" | "Offer" | "Rejected" | "Ghosted";
