@@ -1,3 +1,3 @@
-// Same-origin "/api" proxy (see rewrites in next.config.ts) so the session
-// cookie stays first-party to the frontend. Override with NEXT_PUBLIC_API_URL.
-export const API_URL = process.env.NEXT_PUBLIC_API_URL || "/api";
+// Force the frontend to ALWAYS use the local "/api" proxy so that 
+// cookies are never blocked by third-party cookie restrictions.
+export const API_URL = "/api";
