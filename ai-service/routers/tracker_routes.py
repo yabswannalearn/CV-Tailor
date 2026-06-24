@@ -242,3 +242,30 @@ async def save_latex(job_id: int, data: SaveLatexRequest, request: Request, db: 
     if compilation_error:
         response["error"] = compilation_error
     return response
+
+class FetchJobRequest(PydanticBaseModel):
+    url: str
+
+@router.post("/fetch-job-details")
+async def fetch_job_details(data: FetchJobRequest, request: Request):
+    user_id = get_current_user_id(request)
+    
+    from scrapling import Fetcher
+    from services.llm_service import extract_job_details
+
+    try:
+        # 1. Fetch page using scrapling (bypasses anti-bot)
+        fetcher = Fetcher(headless=True)
+        response = fetcher.get(data.url)
+        
+        html_content = response.body.decode('utf-8', errors='ignore')
+        
+        # 2. Extract using LLM
+        details = extract_job_details(html_content)
+        
+        return {
+            "status": "success",
+            "data": details
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch or parse job: {str(e)}")

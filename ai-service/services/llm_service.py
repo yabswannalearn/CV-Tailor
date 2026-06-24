@@ -337,3 +337,43 @@ def generate_cover_letter(db_profile: db_models.Profile, jd: str, company_name: 
         return response.text.strip()
     except Exception as e:
         raise Exception(f"SERVICE ERROR: {str(e)}")
+
+def build_job_extraction_prompt(html: str) -> str:
+    # Truncate HTML to avoid exceeding token limits (Gemini 1.5/3.1 handles large context, but just in case)
+    if len(html) > 50000:
+        html = html[:50000]
+        
+    return f"""
+You are an expert data extractor.
+
+I am providing you with the raw HTML of a job posting.
+Extract the following information:
+- The Job Title
+- The Company Name
+- The Full Job Description (clean text, no HTML tags)
+
+RAW HTML:
+{html}
+
+OUTPUT RULES:
+1. Return ONLY valid JSON.
+2. Structure:
+{{
+  "job_title": "string",
+  "company_name": "string",
+  "job_description": "string"
+}}
+3. If you cannot find a field, return null for it.
+"""
+
+def extract_job_details(html: str) -> dict:
+    prompt = build_job_extraction_prompt(html)
+    try:
+        response = client.models.generate_content(
+            model="gemini-3.1-flash-lite-preview",
+            contents=prompt,
+        )
+        raw = clean_json_response(response.text)
+        return json.loads(raw)
+    except Exception as e:
+        raise Exception(f"Failed to extract job details: {str(e)}")
