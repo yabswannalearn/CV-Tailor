@@ -36,3 +36,6 @@ pdf-service/*.exe
 .idea/
 *.swp
 *.bak
+
+# --- Graphify Plugin ---
+graphify-out/
