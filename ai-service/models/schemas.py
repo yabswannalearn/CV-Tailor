@@ -10,22 +10,24 @@ class Education(BaseModel):
     description: Optional[str] = None
 
 class Experience(BaseModel):
-    name: str
+    job_title: str
     company: str
     location: str
     description: str
-    date: str
+    date_range: str
 
 class Project(BaseModel):
     name: str
     description: str
-    date: str
+    date_range: str
 
 class Certification(BaseModel):
     name: str
     issuer: Optional[str] = None
     date_issued: Optional[str] = None
 
+class SkillItem(BaseModel):
+    skill_name: str
 
 class UserProfile(BaseModel):
     first_name: str
@@ -38,7 +40,7 @@ class UserProfile(BaseModel):
     education: List[Education]
     experience: List[Experience]
     projects: List[Project]
-    skills: List[str]
+    skills: List[SkillItem]
     certifications: List[Certification] = []
 
 class GenerateRequest(BaseModel):

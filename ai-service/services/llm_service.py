@@ -3,7 +3,7 @@ import re
 import json
 import os
 from dotenv import load_dotenv
-from models.schemas import UserProfile, Education, Experience, Project, Certification
+from models.schemas import UserProfile, Education, Experience, Project, Certification, SkillItem
 from models import database_models as db_models
 from services.templates.jakes_resume import JAKES_RESUME
 from google import genai
@@ -30,21 +30,21 @@ def db_profile_to_schema(db_profile: db_models.Profile) -> UserProfile:
         ],
         experience=[
             Experience(
-                name=exp.job_title,
+                job_title=exp.job_title,
                 company=exp.company,
                 location=exp.location,
                 description=exp.description,
-                date=exp.date_range
+                date_range=exp.date_range
             ) for exp in db_profile.experience
         ],
         projects=[
             Project(
                 name=proj.name,
                 description=proj.description,
-                date=proj.date_range
+                date_range=proj.date_range
             ) for proj in db_profile.projects
         ],
-        skills=[skill.skill_name for skill in db_profile.skills],
+        skills=[SkillItem(skill_name=skill.skill_name) for skill in db_profile.skills],
         certifications=[
             Certification(
                 name=cert.name,

@@ -1,4 +1,3 @@
-// Unconditionally use /api proxy path in production for both SSR and CSR
-export const API_URL = process.env.NODE_ENV === "production"
-  ? "/api"
-  : process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+// Same-origin "/api" proxy (see rewrites in next.config.ts) so the session
+// cookie stays first-party to the frontend. Override with NEXT_PUBLIC_API_URL.
+export const API_URL = process.env.NEXT_PUBLIC_API_URL || "/api";

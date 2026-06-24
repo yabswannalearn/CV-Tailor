@@ -53,11 +53,11 @@ async def save_profile(profile_data: UserProfile, request: Request, db: Session 
         for exp in profile_data.experience:
             db.add(db_models.Experience(
                 profile_id=new_profile.id,
-                job_title=exp.name,
+                job_title=exp.job_title,
                 company=exp.company,
                 location=exp.location,
                 description=exp.description,
-                date_range=exp.date
+                date_range=exp.date_range
             ))
 
         for proj in profile_data.projects:
@@ -65,13 +65,13 @@ async def save_profile(profile_data: UserProfile, request: Request, db: Session 
                 profile_id=new_profile.id,
                 name=proj.name,
                 description=proj.description,
-                date_range=proj.date
+                date_range=proj.date_range
             ))
 
-        for skill_name in profile_data.skills:
+        for skill in profile_data.skills:
             db.add(db_models.Skill(
                 profile_id=new_profile.id,
-                skill_name=skill_name
+                skill_name=skill.skill_name
             ))
 
         for cert in profile_data.certifications:

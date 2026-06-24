@@ -20,13 +20,13 @@ type Education = {
   description: string
 }
 type Experience = {
-  name: string
+  job_title: string
   company: string
   location: string
   description: string
-  date: string
+  date_range: string
 }
-type Project = { name: string; description: string; date: string }
+type Project = { name: string; description: string; date_range: string }
 type Certification = { name: string; issuer: string; date_issued: string }
 
 interface Profile {
@@ -40,7 +40,7 @@ interface Profile {
   education: Education[]
   experience: Experience[]
   projects: Project[]
-  skills: string[]
+  skills: { skill_name: string }[]
   certifications: Certification[]
 }
 
@@ -92,18 +92,18 @@ export default function DashboardPage() {
             description: e.description || "",
           })),
           experience: (data.experience || []).map((e: any) => ({
-            name: e.job_title,
+            job_title: e.job_title,
             company: e.company,
             location: e.location,
             description: e.description,
-            date: e.date_range,
+            date_range: e.date_range,
           })),
           projects: (data.projects || []).map((p: any) => ({
             name: p.name,
             description: p.description,
-            date: p.date_range,
+            date_range: p.date_range,
           })),
-          skills: (data.skills || []).map((s: any) => s.skill_name),
+          skills: (data.skills || []).map((s: any) => ({ skill_name: s.skill_name })),
           certifications: (data.certifications || []).map((c: any) => ({
             name: c.name || "",
             issuer: c.issuer || "",
@@ -296,8 +296,8 @@ export default function DashboardPage() {
                 <div className="grid grid-cols-2 gap-4 mb-3">
                   <div>
                     <label className={labelClass}>Job Title</label>
-                    <input className={inputClass} value={exp.name}
-                      onChange={(e) => updateListItem("experience", i, { ...exp, name: e.target.value })}
+                    <input className={inputClass} value={exp.job_title}
+                      onChange={(e) => updateListItem("experience", i, { ...exp, job_title: e.target.value })}
                       placeholder="Software Engineer" />
                   </div>
                   <div>
@@ -316,8 +316,8 @@ export default function DashboardPage() {
                   </div>
                   <div>
                     <label className={labelClass}>Date</label>
-                    <input className={inputClass} value={exp.date}
-                      onChange={(e) => updateListItem("experience", i, { ...exp, date: e.target.value })}
+                    <input className={inputClass} value={exp.date_range}
+                      onChange={(e) => updateListItem("experience", i, { ...exp, date_range: e.target.value })}
                       placeholder="Jan 2024 – Present" />
                   </div>
                 </div>
@@ -329,7 +329,7 @@ export default function DashboardPage() {
                 </div>
               </div>
             ))}
-            <button onClick={() => addListItem("experience", { name: "", company: "", location: "", description: "", date: "" })}
+            <button onClick={() => addListItem("experience", { job_title: "", company: "", location: "", description: "", date_range: "" })}
               className="w-full py-3 border border-dashed border-[#d4cfc7] text-[#b0aba4] text-xs tracking-widest uppercase hover:border-[#5a8a0044] hover:text-[#5a8a00] transition-colors rounded-sm">
               + Add Experience
             </button>
@@ -352,8 +352,8 @@ export default function DashboardPage() {
                   </div>
                   <div>
                     <label className={labelClass}>Date</label>
-                    <input className={inputClass} value={proj.date}
-                      onChange={(e) => updateListItem("projects", i, { ...proj, date: e.target.value })}
+                    <input className={inputClass} value={proj.date_range}
+                      onChange={(e) => updateListItem("projects", i, { ...proj, date_range: e.target.value })}
                       placeholder="2024" />
                   </div>
                 </div>
@@ -365,7 +365,7 @@ export default function DashboardPage() {
                 </div>
               </div>
             ))}
-            <button onClick={() => addListItem("projects", { name: "", description: "", date: "" })}
+            <button onClick={() => addListItem("projects", { name: "", description: "", date_range: "" })}
               className="w-full py-3 border border-dashed border-[#d4cfc7] text-[#b0aba4] text-xs tracking-widest uppercase hover:border-[#5a8a0044] hover:text-[#5a8a00] transition-colors rounded-sm">
               + Add Project
             </button>
@@ -378,13 +378,13 @@ export default function DashboardPage() {
             <div className="flex flex-wrap gap-2 mb-4">
               {profile.skills.map((skill, i) => (
                 <div key={i} className="flex items-center gap-2 px-3 py-1.5 bg-[#eeebe5] border border-[#d4cfc7] rounded-sm">
-                  <span className="text-xs text-[#1a1814]">{skill}</span>
+                  <span className="text-xs text-[#1a1814]">{skill.skill_name}</span>
                   <button onClick={() => removeListItem("skills", i)}
                     className="text-[#b0aba4] hover:text-[#cc3333] text-xs transition-colors">✕</button>
                 </div>
               ))}
             </div>
-            <SkillInput onAdd={(skill) => updateField("skills", [...profile.skills, skill])} />
+            <SkillInput onAdd={(skill) => updateField("skills", [...profile.skills, { skill_name: skill }])} />
           </div>
         )}
 

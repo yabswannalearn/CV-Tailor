@@ -11,7 +11,7 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/api/:path*",
-        destination: "https://cv-tailor-backend.fastapicloud.dev/:path*",
+        destination: `${process.env.BACKEND_URL || "http://localhost:8000"}/:path*`,
       },
     ];
   },
