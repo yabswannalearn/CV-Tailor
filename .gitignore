@@ -5,10 +5,10 @@
 
 # --- Python / FastAPI (ai-service) ---
 ai-service/venv/
-ai-service/__pycache__/
-ai-service/**/__pycache__/
-ai-service/*.pyc
-ai-service/**/*.pyc
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
 ai-service/debug_compile/
 ai-service/scratch/
 ai-service/*.pdf
