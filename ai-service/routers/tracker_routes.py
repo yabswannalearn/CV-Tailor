@@ -38,7 +38,7 @@ def serialize_job(job: db_models.JobApplication) -> dict:
         "cover_letter": job.cover_letter,
     }
 
-@router.get("/")
+@router.get("")
 async def get_all_jobs(request: Request, db: Session = Depends(get_db)):
     user_id = get_current_user_id(request)
     jobs = db.query(db_models.JobApplication).filter(
@@ -46,7 +46,7 @@ async def get_all_jobs(request: Request, db: Session = Depends(get_db)):
     ).order_by(db_models.JobApplication.created_at.desc()).all()
     return [serialize_job(j) for j in jobs]
 
-@router.post("/")
+@router.post("")
 async def create_job(data: JobApplicationCreate, request: Request, db: Session = Depends(get_db)):
     user_id = get_current_user_id(request)
     job = db_models.JobApplication(user_id=user_id, **data.model_dump())
