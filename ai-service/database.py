@@ -16,7 +16,7 @@ def normalize_database_url(url: str) -> str:
     query = dict(parse_qsl(parsed.query, keep_blank_values=True))
     host = parsed.hostname or ""
 
-    if "supabase.com" in host and "sslmode" not in query:
+    if "supabase.co" in host and "sslmode" not in query:
         query["sslmode"] = "require"
 
     return urlunsplit(parsed._replace(query=urlencode(query)))
