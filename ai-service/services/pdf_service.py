@@ -14,20 +14,63 @@ class PDFCompilationError(RuntimeError):
 
 def get_tectonic_command() -> str | None:
     path_command = which("tectonic") or which("tecto")
+    
+    # Check if a local downloaded static binary exists
+    cache_dir = Path(tempfile.gettempdir()) / "cv-tailor-tectonic-cache"
+    static_bin = cache_dir / "tectonic_static"
+    if static_bin.exists():
+        return str(static_bin)
+
     if path_command:
-        logger.info(f"Using Tectonic from PATH: {path_command}")
-        return path_command
+        # Check if it actually works (sometimes fails due to missing libgraphite2 on FastAPI Cloud)
+        try:
+            res = subprocess.run([path_command, "--version"], capture_output=True, text=True)
+            if res.returncode == 0:
+                logger.info(f"Using Tectonic from PATH: {path_command}")
+                return path_command
+        except Exception:
+            pass
 
     scripts_dir = Path(sys.executable).parent
     for name in ("tectonic.exe", "tectonic", "tecto.exe", "tecto"):
         candidate = scripts_dir / name
         if candidate.exists():
-            logger.info(f"Using Tectonic from Scripts: {candidate}")
-            return str(candidate)
+            try:
+                res = subprocess.run([str(candidate), "--version"], capture_output=True, text=True)
+                if res.returncode == 0:
+                    logger.info(f"Using Tectonic from Scripts: {candidate}")
+                    return str(candidate)
+            except Exception:
+                pass
 
-    logger.error("Tectonic binary not found!")
+    logger.warning("Local tectonic binary failed or missing. Downloading statically linked fallback...")
+    
+    # Download the statically linked musl binary (works on any Linux, bypassing libgraphite2 errors)
+    import urllib.request
+    import tarfile
+    import io
+    
+    try:
+        url = "https://github.com/tectonic-typesetting/tectonic/releases/download/tectonic%400.15.0/tectonic-0.15.0-x86_64-unknown-linux-musl.tar.gz"
+        logger.info(f"Downloading static tectonic from {url}...")
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req) as response:
+            with tarfile.open(fileobj=io.BytesIO(response.read()), mode="r:gz") as tar:
+                # Find the tectonic executable in the tarball
+                for member in tar.getmembers():
+                    if member.name.endswith("tectonic") or member.name.endswith("tectonic.exe"):
+                        f = tar.extractfile(member)
+                        if f:
+                            static_bin.write_bytes(f.read())
+                            static_bin.chmod(0o755)
+                            logger.info(f"Successfully installed static tectonic to {static_bin}")
+                            return str(static_bin)
+    except Exception as e:
+        logger.error(f"Failed to download static tectonic: {e}")
+
     return None
-
 
 def write_fontconfig(cache_dir: Path) -> Path:
     fonts_conf = cache_dir / "fonts.conf"
@@ -51,13 +94,11 @@ def write_fontconfig(cache_dir: Path) -> Path:
     )
     return fonts_conf
 
-
 def compile_latex_to_pdf(latex: str) -> bytes:
     compiler = get_tectonic_command()
     if not compiler:
         raise PDFCompilationError(
-            "Tectonic is not installed. Install the 'tecto' Python package "
-            "or make sure the 'tectonic' command is available on PATH."
+            "Tectonic is not installed and failed to download the static fallback binary."
         )
 
     with tempfile.TemporaryDirectory() as tmp_dir:
