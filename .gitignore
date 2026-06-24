@@ -39,3 +39,7 @@ pdf-service/*.exe
 
 # --- Graphify Plugin ---
 graphify-out/
+
+# --- Agent Configurations ---
+.agents/
+.claude/
