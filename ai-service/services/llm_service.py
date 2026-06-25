@@ -377,3 +377,50 @@ def extract_job_details(html: str) -> dict:
         return json.loads(raw)
     except Exception as e:
         raise Exception(f"Failed to extract job details: {str(e)}")
+
+def extract_profile_from_resume(text: str) -> dict:
+    prompt = f"""
+You are an expert resume parser. Extract the user's profile information from the following resume text.
+
+RAW RESUME TEXT:
+{text}
+
+OUTPUT RULES:
+1. Return ONLY valid JSON.
+2. Structure exactly like this:
+{{
+  "first_name": "string",
+  "last_name": "string",
+  "email": "string",
+  "mobile_no": "string",
+  "linkedin": "string url",
+  "github": "string url",
+  "portfolio": "string url",
+  "education": [
+    {{"school_name": "string", "course": "string", "location": "string", "description": "string"}}
+  ],
+  "experience": [
+    {{"job_title": "string", "company": "string", "location": "string", "date_range": "string", "description": "string"}}
+  ],
+  "projects": [
+    {{"name": "string", "date_range": "string", "description": "string"}}
+  ],
+  "skills": [
+    {{"skill_name": "string"}}
+  ],
+  "certifications": [
+    {{"name": "string", "issuer": "string", "date_issued": "string"}}
+  ]
+}}
+3. For missing data, omit the field or return an empty string/array.
+4. Extract everything you can find. Make sure descriptions contain the bullet points combined.
+"""
+    try:
+        response = client.models.generate_content(
+            model="gemini-3.1-flash-lite-preview",
+            contents=prompt,
+        )
+        raw = clean_json_response(response.text)
+        return json.loads(raw)
+    except Exception as e:
+        raise Exception(f"Failed to parse resume: {str(e)}")

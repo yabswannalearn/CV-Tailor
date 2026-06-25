@@ -1,13 +1,40 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File
 from sqlalchemy.orm import Session, joinedload
 from database import get_db
 from models import database_models as db_models
 from models.schemas import UserProfile
+import io
+from pypdf import PdfReader
+from services.llm_service import extract_profile_from_resume
 
 router = APIRouter(
     prefix="/profile",
     tags=["profile"]
 )
+
+@router.post("/auto-fill-resume")
+async def auto_fill_resume(request: Request, file: UploadFile = File(...)):
+    user_id = request.session.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    if not file.filename.endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported")
+        
+    try:
+        content = await file.read()
+        reader = PdfReader(io.BytesIO(content))
+        text = ""
+        for page in reader.pages:
+            text += page.extract_text() + "\n"
+            
+        if not text.strip():
+            raise HTTPException(status_code=400, detail="Could not extract text from PDF")
+            
+        profile_data = extract_profile_from_resume(text)
+        return {"status": "success", "data": profile_data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to parse resume: {str(e)}")
 
 @router.post("/save")
 async def save_profile(profile_data: UserProfile, request: Request, db: Session = Depends(get_db)):

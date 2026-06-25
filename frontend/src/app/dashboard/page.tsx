@@ -1,5 +1,5 @@
 "use client"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import AppLayout from "@/components/AppLayout";
 import { API_URL } from "@/lib/api";
@@ -59,6 +59,8 @@ export default function DashboardPage() {
   const [saving, setSaving] = useState(false)
   const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">("idle")
   const [userEmail, setUserEmail] = useState("")
+  const [uploading, setUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     fetch(`${API}/auth/me`, { credentials: "include" })
@@ -139,6 +141,52 @@ export default function DashboardPage() {
     router.push("/login")
   }
 
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    setUploading(true);
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const res = await fetch(`${API}/profile/auto-fill-resume`, {
+        method: "POST",
+        credentials: "include",
+        body: formData
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "Upload failed");
+      }
+      const data = await res.json();
+      if (data.status === "success" && data.data) {
+        const parsed = data.data;
+        setProfile((prev) => ({
+          ...prev,
+          first_name: parsed.first_name || prev.first_name,
+          last_name: parsed.last_name || prev.last_name,
+          mobile_no: parsed.mobile_no || prev.mobile_no,
+          email: parsed.email || prev.email,
+          linkedin: parsed.linkedin || prev.linkedin,
+          github: parsed.github || prev.github,
+          portfolio: parsed.portfolio || prev.portfolio,
+          education: parsed.education?.length ? parsed.education : prev.education,
+          experience: parsed.experience?.length ? parsed.experience : prev.experience,
+          projects: parsed.projects?.length ? parsed.projects : prev.projects,
+          skills: parsed.skills?.length ? parsed.skills : prev.skills,
+          certifications: parsed.certifications?.length ? parsed.certifications : prev.certifications,
+        }));
+        alert("Profile successfully auto-filled! Please review and click 'Save Profile'.");
+      }
+    } catch (error: any) {
+      alert(error.message);
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
   const updateField = (field: keyof Profile, value: any) =>
     setProfile((p) => ({ ...p, [field]: value }))
   const updateListItem = <T,>(field: keyof Profile, index: number, updated: T) =>
@@ -177,6 +225,17 @@ export default function DashboardPage() {
             <button onClick={() => router.push("/generate")}
               className="px-4 py-2 bg-[#1a1814] text-[#f5f2ed] text-xs font-bold tracking-[0.15em] uppercase rounded-sm hover:bg-[#2a2520] transition-colors">
               Generate CV →
+            </button>
+            <input 
+              type="file" 
+              accept=".pdf" 
+              ref={fileInputRef} 
+              onChange={handleFileUpload} 
+              className="hidden" 
+            />
+            <button onClick={() => fileInputRef.current?.click()} disabled={uploading}
+              className="px-4 py-2 bg-[#5a8a00] text-[#f5f2ed] text-xs font-bold tracking-[0.15em] uppercase rounded-sm hover:bg-[#4a7200] transition-colors disabled:opacity-50">
+              {uploading ? "Parsing..." : "Auto-Fill via PDF"}
             </button>
             <button onClick={handleLogout}
               className="px-4 py-2 border border-[#d4cfc7] text-[#7a7570] text-xs font-bold tracking-[0.15em] uppercase rounded-sm hover:border-[#b0aba4] hover:text-[#1a1814] transition-colors">
