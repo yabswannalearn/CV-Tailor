@@ -12,7 +12,7 @@ celery_app = Celery(
     "ai_service",
     broker=redis_url,
     backend=redis_url,
-    include=[] # Task modules will go here later, e.g., 'tasks.job_tasks'
+    include=[] # Task modules
 )
 
 # Optional configuration

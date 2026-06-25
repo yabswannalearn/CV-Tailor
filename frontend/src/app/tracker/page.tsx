@@ -691,6 +691,8 @@ export default function TrackerPage() {
                           )}
                         </button>
 
+                        <div className="w-px h-5 shrink-0" style={{ background: "#d4cfc7" }} />
+
                         {/* View Cover Letter */}
                         {job.cover_letter && (
                           <button

@@ -252,11 +252,22 @@ def fetch_job_details(data: FetchJobRequest, request: Request):
     
     from scrapling import Fetcher
     from services.llm_service import extract_job_details
+    import urllib.parse
 
     try:
+        url_to_fetch = data.url
+        # Normalize LinkedIn 'collections/easy-apply' URLs to public 'jobs/view' URLs to bypass the forced login wall
+        if "linkedin.com" in url_to_fetch and "currentJobId=" in url_to_fetch:
+            parsed_url = urllib.parse.urlparse(url_to_fetch)
+            query_params = urllib.parse.parse_qs(parsed_url.query)
+            if "currentJobId" in query_params:
+                job_id = query_params["currentJobId"][0]
+                url_to_fetch = f"https://www.linkedin.com/jobs/view/{job_id}/"
+                print(f"Normalized LinkedIn URL to bypass login: {url_to_fetch}")
+
         # 1. Fetch page using scrapling (bypasses anti-bot)
         fetcher = Fetcher(headless=True)
-        response = fetcher.get(data.url)
+        response = fetcher.get(url_to_fetch)
         
         html_content = response.body.decode('utf-8', errors='ignore')
         
@@ -269,3 +280,5 @@ def fetch_job_details(data: FetchJobRequest, request: Request):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch or parse job: {str(e)}")
+
+
