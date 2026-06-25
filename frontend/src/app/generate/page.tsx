@@ -84,6 +84,7 @@ function GeneratePageContent() {
   const [appState, setAppState] = useState<AppState>("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const [userEmail, setUserEmail] = useState("");
+  const [credits, setCredits] = useState(0);
   const [hasGenerated, setHasGenerated] = useState(false);
   const [scrollTop, setScrollTop] = useState(0);
   const [cursorPos, setCursorPos] = useState({ line: 1, col: 1 });
@@ -136,7 +137,7 @@ function GeneratePageContent() {
     // Auth check
     fetch(`${API_URL}/auth/me`, { credentials: "include" })
       .then(res => { if (!res.ok) { router.push("/login"); return null; } return res.json(); })
-      .then(data => { if (data) setUserEmail(data.email); })
+      .then(data => { if (data) { setUserEmail(data.email); setCredits(data.credits); } })
       .catch(() => router.push("/login"));
 
     // If coming from tracker, load existing LaTeX
@@ -274,9 +275,17 @@ function GeneratePageContent() {
         method: "POST", headers: { "Content-Type": "application/json" },
         credentials: "include", body: JSON.stringify({ email: userEmail, jd }),
       });
-      if (!res.ok) { const err = await res.json(); throw new Error(err.detail || "Generation failed"); }
+      if (!res.ok) { 
+        if (res.status === 402) {
+          setCredits(0);
+          throw new Error("Out of credits! Please upgrade to continue.");
+        }
+        const err = await res.json(); 
+        throw new Error(err.detail || "Generation failed"); 
+      }
       const { latex: gen } = await res.json();
       setLatex(gen);
+      setCredits(c => Math.max(0, c - 1));
       await compileLatex(gen);
       setHasGenerated(true);
     } catch (err: any) { setErrorMsg(err.message || "Generation failed"); setAppState("error"); }
@@ -333,7 +342,15 @@ function GeneratePageContent() {
               <p className="mt-4 text-sm leading-relaxed" style={{ color: C.textMuted }}>
                 Paste a job description. Gemini tailors your CV, then opens<br />a live LaTeX editor so you can fine-tune before exporting.
               </p>
-              {userEmail && <p className="mt-2 text-xs" style={{ color: C.textFaint }}>Signed in as {userEmail}</p>}
+              {userEmail && (
+                <div className="flex items-center gap-3 mt-4">
+                  <p className="text-xs" style={{ color: C.textFaint }}>Signed in as {userEmail}</p>
+                  <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm" style={{ background: C.bgCard, border: `1px solid ${C.border}` }}>
+                    <span style={{ color: C.green, fontSize: "10px" }}>⚡</span>
+                    <span style={{ color: C.text, fontSize: "10px", fontWeight: "bold", letterSpacing: "0.1em", textTransform: "uppercase" }}>{credits} Credits</span>
+                  </div>
+                </div>
+              )}
             </div>
             <div className="relative mb-5">
               <div className="absolute top-0 left-0 right-0 h-px" style={{ background: `linear-gradient(to right, ${C.greenBorder}, transparent)` }} />

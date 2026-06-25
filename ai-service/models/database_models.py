@@ -8,6 +8,7 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String(100), unique=True, index=True, nullable=False)
     hashed_password = Column(String(255), nullable=True) # nullable for backwards compatibility
+    credits = Column(Integer, default=5, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     job_applications = relationship("JobApplication", back_populates="owner", cascade="all, delete")
     profile = relationship("Profile", back_populates="owner", uselist=False, cascade="all, delete")

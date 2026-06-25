@@ -6,6 +6,7 @@ from models.schemas import UserProfile
 import io
 from pypdf import PdfReader
 from services.llm_service import extract_profile_from_resume
+from limiter import limiter
 
 router = APIRouter(
     prefix="/profile",
@@ -13,11 +14,16 @@ router = APIRouter(
 )
 
 @router.post("/auto-fill-resume")
-async def auto_fill_resume(request: Request, file: UploadFile = File(...)):
+@limiter.limit("3/minute")
+async def auto_fill_resume(request: Request, file: UploadFile = File(...), db: Session = Depends(get_db)):
     user_id = request.session.get("user_id")
     if not user_id:
         raise HTTPException(status_code=401, detail="Not authenticated")
     
+    user = db.query(db_models.User).filter(db_models.User.id == user_id).first()
+    if not user or user.credits <= 0:
+        raise HTTPException(status_code=402, detail="Out of credits. Please upgrade to auto-fill resumes.")
+        
     if not file.filename.endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
         
@@ -32,11 +38,17 @@ async def auto_fill_resume(request: Request, file: UploadFile = File(...)):
             raise HTTPException(status_code=400, detail="Could not extract text from PDF")
             
         profile_data = extract_profile_from_resume(text)
+        
+        # Deduct credit
+        user.credits -= 1
+        db.commit()
+        
         return {"status": "success", "data": profile_data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to parse resume: {str(e)}")
 
 @router.post("/save")
+@limiter.limit("30/minute")
 async def save_profile(profile_data: UserProfile, request: Request, db: Session = Depends(get_db)):
     user_id = request.session.get("user_id")
     if not user_id:
@@ -118,7 +130,8 @@ async def save_profile(profile_data: UserProfile, request: Request, db: Session 
 
 
 @router.get("/load/{email}")
-async def load_profile(email: str, db: Session = Depends(get_db)):
+@limiter.limit("30/minute")
+async def load_profile(email: str, request: Request, db: Session = Depends(get_db)):
     profile = db.query(db_models.Profile).options(
         joinedload(db_models.Profile.education),
         joinedload(db_models.Profile.experience),

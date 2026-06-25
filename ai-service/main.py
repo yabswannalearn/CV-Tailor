@@ -8,6 +8,9 @@ import logging
 import os
 from dotenv import load_dotenv
 from database import init_db
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from limiter import limiter
 
 # Configure logging
 logging.basicConfig(
@@ -39,6 +42,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 environment = os.getenv("ENVIRONMENT", "development").lower()
 is_production = environment == "production"

@@ -14,3 +14,4 @@ curl_cffi
 pypdf
 python-multipart
 argon2-cffi
+slowapi

@@ -5,6 +5,7 @@ from models import database_models as db_models
 from models.schemas import RegisterRequest, LoginRequest
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
+from limiter import limiter
 
 router = APIRouter(
     prefix="/auth",
@@ -14,7 +15,8 @@ router = APIRouter(
 ph = PasswordHasher()
 
 @router.post("/register")
-async def register(data: RegisterRequest, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+async def register(data: RegisterRequest, request: Request, db: Session = Depends(get_db)):
     existing = db.query(db_models.User).filter(
         db_models.User.email == data.email
     ).first()
@@ -30,6 +32,7 @@ async def register(data: RegisterRequest, db: Session = Depends(get_db)):
     return {"status": "success", "user_id": user.id, "email": user.email}
 
 @router.post("/login")
+@limiter.limit("5/minute")
 async def login(data: LoginRequest, request: Request, db: Session = Depends(get_db)):
     user = db.query(db_models.User).filter(
         db_models.User.email == data.email
@@ -63,8 +66,18 @@ async def logout(request: Request):
     return {"status": "success", "message": "Logged out"}
 
 @router.get("/me")
-async def me(request: Request):
+async def me(request: Request, db: Session = Depends(get_db)):
     user_id = request.session.get("user_id")
     if not user_id:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    return {"user_id": user_id, "email": request.session.get("email")}
+        
+    user = db.query(db_models.User).filter(db_models.User.id == user_id).first()
+    if not user:
+        request.session.clear()
+        raise HTTPException(status_code=401, detail="User not found")
+        
+    return {
+        "user_id": user.id, 
+        "email": user.email,
+        "credits": user.credits
+    }
