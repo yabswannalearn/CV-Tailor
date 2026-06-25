@@ -39,15 +39,18 @@ async def login(data: LoginRequest, request: Request, db: Session = Depends(get_
         raise HTTPException(status_code=404, detail="User not found")
 
     if not user.hashed_password:
-        raise HTTPException(status_code=400, detail="Account requires password reset/update")
-
-    try:
-        ph.verify(user.hashed_password, data.password)
-        if ph.check_needs_rehash(user.hashed_password):
-            user.hashed_password = ph.hash(data.password)
-            db.commit()
-    except VerifyMismatchError:
-        raise HTTPException(status_code=401, detail="Invalid password")
+        # Legacy account migration: Set the password to whatever they just typed
+        user.hashed_password = ph.hash(data.password)
+        db.commit()
+        db.refresh(user)
+    else:
+        try:
+            ph.verify(user.hashed_password, data.password)
+            if ph.check_needs_rehash(user.hashed_password):
+                user.hashed_password = ph.hash(data.password)
+                db.commit()
+        except VerifyMismatchError:
+            raise HTTPException(status_code=401, detail="Invalid password")
 
     request.session["user_id"] = user.id
     request.session["email"] = user.email
