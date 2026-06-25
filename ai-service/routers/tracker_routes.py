@@ -247,7 +247,7 @@ class FetchJobRequest(PydanticBaseModel):
     url: str
 
 @router.post("/fetch-job-details")
-async def fetch_job_details(data: FetchJobRequest, request: Request):
+def fetch_job_details(data: FetchJobRequest, request: Request):
     user_id = get_current_user_id(request)
     
     from scrapling import Fetcher

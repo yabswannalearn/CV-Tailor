@@ -1,0 +1,42 @@
+[*] Attempting to fetch: https://www.linkedin.com/jobs/view/4243682910
+[*] Initializing Scrapling fetcher (this may download Camoufox on the first run)...
+
+--- FETCH RESULTS ---
+Status Code: 200
+Title: 11,000+ Production Engineering Specialist jobs in United States
+
+Content Preview:
+<!DOCTYPE html>
+
+    
+    
+    
+    
+    
+    
+
+    
+    
+    
+    
+
+    
+    
+    
+    
+
+    
+    
+    
+    
+
+    
+    <html lang="en">
+      <head>
+        <meta name="pageKey" content="d_jobs_guest_search">
+          
+    <meta name="robots" content="max-image-preview:large, noarchive">
+    <meta name="bingbot" content="max-image-preview:large, archive">
+  
+<!---->          <meta name="linkedin:pageTag" content="urlType=jserp_canonical_other;emptyResult=false">
+        <meta name="locale" con...

@@ -304,6 +304,37 @@ export default function TrackerPage() {
   const [viewingPdfFor, setViewingPdfFor] = useState<Job | null>(null);
   const [viewingClFor, setViewingClFor] = useState<Job | null>(null);
   const [generateError, setGenerateError] = useState<{ id: number; msg: string } | null>(null);
+  const [autoFilling, setAutoFilling] = useState(false);
+
+  const handleAutoFill = async () => {
+    if (!form.job_url.trim()) return;
+    setAutoFilling(true);
+    try {
+      const res = await fetch(`${API}/tracker/fetch-job-details`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ url: form.job_url })
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.data) {
+          setForm(f => ({
+            ...f,
+            company_name: json.data.company_name || f.company_name,
+            job_title: json.data.job_title || f.job_title,
+            job_description: json.data.job_description || f.job_description
+          }));
+        }
+      } else {
+        alert("Failed to auto-fill job details.");
+      }
+    } catch (e) {
+      alert("Error auto-filling job details.");
+    } finally {
+      setAutoFilling(false);
+    }
+  };
 
   useEffect(() => {
     fetch(`${API}/auth/me`, { credentials: "include" })
@@ -794,7 +825,20 @@ export default function TrackerPage() {
                 <InputField label="Company Name" value={form.company_name} onChange={v => setField("company_name", v)} placeholder="Google, Meta..." required />
                 <InputField label="Job Title" value={form.job_title} onChange={v => setField("job_title", v)} placeholder="Software Engineer..." required />
               </div>
-              <InputField label="Job URL" value={form.job_url} onChange={v => setField("job_url", v)} placeholder="https://linkedin.com/jobs/..." />
+              
+              <div className="flex gap-3 items-end">
+                <div className="flex-1">
+                  <InputField label="Job URL" value={form.job_url} onChange={v => setField("job_url", v)} placeholder="https://linkedin.com/jobs/..." />
+                </div>
+                <button 
+                  onClick={handleAutoFill} 
+                  disabled={autoFilling || !form.job_url.trim()}
+                  className="px-4 text-xs font-bold tracking-[0.1em] uppercase rounded-sm transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed" 
+                  style={{ background: "#e8f5c0", color: "#3d6600", border: "1px solid #8ab030", height: "42px" }}>
+                  {autoFilling ? "Loading..." : "Auto-Fill"}
+                </button>
+              </div>
+
               <div>
                 <label className="block text-[10px] tracking-[0.2em] uppercase mb-1.5" style={{ color: "#7a7570" }}>Short Description</label>
                 <textarea value={form.short_description} onChange={e => setField("short_description", e.target.value)}

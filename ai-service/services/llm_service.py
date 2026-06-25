@@ -339,9 +339,9 @@ def generate_cover_letter(db_profile: db_models.Profile, jd: str, company_name: 
         raise Exception(f"SERVICE ERROR: {str(e)}")
 
 def build_job_extraction_prompt(html: str) -> str:
-    # Truncate HTML to avoid exceeding token limits (Gemini 1.5/3.1 handles large context, but just in case)
-    if len(html) > 50000:
-        html = html[:50000]
+    # Gemini 3.1 Flash has a 1M token context window. We can pass much larger HTML chunks securely.
+    if len(html) > 800000:
+        html = html[:800000]
         
     return f"""
 You are an expert data extractor.
