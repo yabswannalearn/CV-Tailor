@@ -11,3 +11,5 @@ redis
 scrapling
 camoufox
 curl_cffi
+pypdf
+python-multipart
