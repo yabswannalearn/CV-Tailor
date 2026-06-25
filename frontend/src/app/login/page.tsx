@@ -10,6 +10,7 @@ const inputClass = "w-full bg-[#e8e4dd] text-[#1a1814] text-sm p-3 outline-none 
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -23,7 +24,7 @@ export default function LoginPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, password }),
       });
 
       if (!res.ok) {
@@ -55,7 +56,7 @@ export default function LoginPage() {
             style={{ fontFamily: "'Georgia', serif", letterSpacing: "-0.02em" }}>
             Welcome back.
           </h1>
-          <p className="text-[#7a7570] text-sm mt-2">Enter your email to continue.</p>
+          <p className="text-[#7a7570] text-sm mt-2">Enter your email and password to continue.</p>
         </div>
 
         <div className="relative mb-6">
@@ -71,6 +72,18 @@ export default function LoginPage() {
             onChange={(e) => setEmail(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleLogin()}
           />
+          
+          <label className="block text-[10px] tracking-[0.25em] text-[#7a7570] uppercase mb-3 mt-4">
+            Password
+          </label>
+          <input
+            type="password"
+            className={inputClass}
+            placeholder="••••••••"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+          />
         </div>
 
         {error && (
@@ -81,11 +94,11 @@ export default function LoginPage() {
 
         <button
           onClick={handleLogin}
-          disabled={loading || !email.trim()}
+          disabled={loading || !email.trim() || !password.trim()}
           className="w-full py-4 text-sm tracking-[0.15em] uppercase font-bold transition-all duration-200 rounded-sm disabled:cursor-not-allowed"
           style={{
-            background: loading || !email.trim() ? "#d4cfc7" : "#1a1814",
-            color: loading || !email.trim() ? "#b0aba4" : "#f5f2ed",
+            background: loading || !email.trim() || !password.trim() ? "#d4cfc7" : "#1a1814",
+            color: loading || !email.trim() || !password.trim() ? "#b0aba4" : "#f5f2ed",
           }}
         >
           {loading ? "Signing in..." : "Sign In →"}

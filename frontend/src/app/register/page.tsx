@@ -10,6 +10,7 @@ const inputClass = "w-full bg-[#e8e4dd] text-[#1a1814] text-sm p-3 outline-none 
 export default function RegisterPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -23,7 +24,7 @@ export default function RegisterPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, password }),
       });
 
       if (!res.ok) {
@@ -36,7 +37,7 @@ export default function RegisterPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, password }),
       });
 
       if (!loginRes.ok) throw new Error("Login after register failed");
@@ -65,7 +66,7 @@ export default function RegisterPage() {
             style={{ fontFamily: "'Georgia', serif", letterSpacing: "-0.02em" }}>
             Create account.
           </h1>
-          <p className="text-[#7a7570] text-sm mt-2">Enter your email to get started.</p>
+          <p className="text-[#7a7570] text-sm mt-2">Enter your email and a secure password.</p>
         </div>
 
         <div className="relative mb-6">
@@ -81,6 +82,18 @@ export default function RegisterPage() {
             onChange={(e) => setEmail(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleRegister()}
           />
+          
+          <label className="block text-[10px] tracking-[0.25em] text-[#7a7570] uppercase mb-3 mt-4">
+            Password
+          </label>
+          <input
+            type="password"
+            className={inputClass}
+            placeholder="••••••••"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleRegister()}
+          />
         </div>
 
         {error && (
@@ -91,11 +104,11 @@ export default function RegisterPage() {
 
         <button
           onClick={handleRegister}
-          disabled={loading || !email.trim()}
+          disabled={loading || !email.trim() || !password.trim()}
           className="w-full py-4 text-sm tracking-[0.15em] uppercase font-bold transition-all duration-200 rounded-sm disabled:cursor-not-allowed"
           style={{
-            background: loading || !email.trim() ? "#d4cfc7" : "#1a1814",
-            color: loading || !email.trim() ? "#b0aba4" : "#f5f2ed",
+            background: loading || !email.trim() || !password.trim() ? "#d4cfc7" : "#1a1814",
+            color: loading || !email.trim() || !password.trim() ? "#b0aba4" : "#f5f2ed",
           }}
         >
           {loading ? "Creating account..." : "Create Account →"}

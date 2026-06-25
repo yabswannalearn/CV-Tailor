@@ -3,11 +3,15 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models import database_models as db_models
 from models.schemas import RegisterRequest, LoginRequest
+from argon2 import PasswordHasher
+from argon2.exceptions import VerifyMismatchError
 
 router = APIRouter(
     prefix="/auth",
     tags=["auth"]
 )
+
+ph = PasswordHasher()
 
 @router.post("/register")
 async def register(data: RegisterRequest, db: Session = Depends(get_db)):
@@ -17,7 +21,8 @@ async def register(data: RegisterRequest, db: Session = Depends(get_db)):
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    user = db_models.User(email=data.email)
+    hashed_pw = ph.hash(data.password)
+    user = db_models.User(email=data.email, hashed_password=hashed_pw)
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -31,7 +36,18 @@ async def login(data: LoginRequest, request: Request, db: Session = Depends(get_
     ).first()
 
     if not user:
-        raise HTTPException(status_code=404, detail="User not found — register first")
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if not user.hashed_password:
+        raise HTTPException(status_code=400, detail="Account requires password reset/update")
+
+    try:
+        ph.verify(user.hashed_password, data.password)
+        if ph.check_needs_rehash(user.hashed_password):
+            user.hashed_password = ph.hash(data.password)
+            db.commit()
+    except VerifyMismatchError:
+        raise HTTPException(status_code=401, detail="Invalid password")
 
     request.session["user_id"] = user.id
     request.session["email"] = user.email
