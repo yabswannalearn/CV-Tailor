@@ -5,7 +5,7 @@ import os
 from dotenv import load_dotenv
 from models.schemas import UserProfile, Education, Experience, Project, Certification, SkillItem
 from models import database_models as db_models
-from services.templates.jakes_resume import JAKES_RESUME
+from services.templates import TEMPLATES
 from google import genai
 
 load_dotenv()
@@ -263,9 +263,40 @@ def build_certifications(cert_line: str) -> str:
     }}
  \end{itemize}"""
 
-def assemble_latex(profile: UserProfile, ai_content: dict) -> str:
-    doc = JAKES_RESUME
-    doc = doc.replace("<<HEADING>>", build_heading(profile))
+def assemble_latex(profile: UserProfile, ai_content: dict, template_id: str = "classic") -> str:
+    doc = TEMPLATES.get(template_id, TEMPLATES["classic"])
+    
+    # Modern template heading overrides
+    heading = build_heading(profile)
+    if template_id == "modern":
+        name = f"{profile.first_name} {profile.last_name}".upper()
+        contact_parts = []
+        if profile.mobile_no:
+            contact_parts.append(r"\faPhone\ " + profile.mobile_no)
+        if profile.email:
+            contact_parts.append(r"\href{mailto:" + profile.email + r"}{\faEnvelope\ \underline{" + profile.email + r"}}")
+        if profile.linkedin:
+            display = profile.linkedin.replace("https://", "").replace("http://", "")
+            contact_parts.append(r"\href{" + profile.linkedin + r"}{\faLinkedinSquare\ \underline{" + display + r"}}")
+        if profile.github:
+            display = profile.github.replace("https://", "").replace("http://", "")
+            contact_parts.append(r"\href{" + profile.github + r"}{\faGithub\ \underline{" + display + r"}}")
+        
+        contact_line = " $|$ ".join(contact_parts)
+        portfolio_line = ""
+        if profile.portfolio:
+            display = profile.portfolio.replace("https://", "").replace("http://", "")
+            portfolio_line = r"\\ \href{" + profile.portfolio + r"}{\faGlobe\ \underline{" + display + r"}}"
+            
+        heading = (
+            r"\begin{center}" + "\n"
+            r"    {\Huge \textbf{\textcolor{primaryColor}{" + name + r"}}} \\ \vspace{4pt}" + "\n"
+            r"    \small\color{textColor} " + contact_line + portfolio_line + "\n"
+            r"    \vspace{-10pt}" + "\n"
+            r"\end{center}"
+        )
+
+    doc = doc.replace("<<HEADING>>", heading)
     doc = doc.replace("<<SUMMARY>>", ai_content.get("summary", ""))
     doc = doc.replace("<<EDUCATION>>", build_education(profile))
     doc = doc.replace("<<EXPERIENCE>>", build_experience(ai_content.get("experience", [])))
@@ -276,7 +307,7 @@ def assemble_latex(profile: UserProfile, ai_content: dict) -> str:
 
 
 
-def generate_latex_resume(db_profile: db_models.Profile, jd: str) -> str:
+def generate_latex_resume(db_profile: db_models.Profile, jd: str, template_id: str = "classic") -> str:
     profile = db_profile_to_schema(db_profile)
     prompt = build_prompt(profile, jd)
 
@@ -288,7 +319,7 @@ def generate_latex_resume(db_profile: db_models.Profile, jd: str) -> str:
 
         raw = clean_json_response(response.text)
         ai_content = json.loads(raw)
-        full_latex = assemble_latex(profile, ai_content)
+        full_latex = assemble_latex(profile, ai_content, template_id)
         return full_latex
 
     except json.JSONDecodeError as e:

@@ -24,6 +24,7 @@ class Profile(Base):
     linkedin = Column(String(255))
     github = Column(String(255))
     portfolio = Column(String(255))
+    preferred_template = Column(String(50), default="classic")
 
     owner = relationship("User", back_populates="profile")
     education = relationship("Education", back_populates="owner", cascade="all, delete")

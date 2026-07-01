@@ -46,6 +46,7 @@ class UserProfile(BaseModel):
 class GenerateRequest(BaseModel):
     email: str
     jd: str
+    template_id: str = "classic"
 
     @field_validator("jd")
     @classmethod

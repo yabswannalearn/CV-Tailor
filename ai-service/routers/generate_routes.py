@@ -14,6 +14,21 @@ router = APIRouter(
     tags=["generate"]
 )
 
+@router.get("/templates")
+async def get_templates():
+    return [
+        {
+            "id": "classic",
+            "name": "Classic Professional",
+            "description": "A traditional, single-column layout perfect for corporate and finance roles."
+        },
+        {
+            "id": "modern",
+            "name": "Modern Tech",
+            "description": "A sleek, contemporary layout with subtle color accents and clean typography."
+        }
+    ]
+
 
 class CompileLatexRequest(BaseModel):
     latex: str
@@ -33,7 +48,7 @@ async def generate_cv(data: GenerateRequest, request: Request, db: Session = Dep
     if user.credits <= 0:
         raise HTTPException(status_code=402, detail="Out of credits. Please upgrade to generate more CVs.")
 
-    latex_code = generate_latex_resume(profile, data.jd)
+    latex_code = generate_latex_resume(profile, data.jd, data.template_id)
     
     # Deduct credit
     user.credits -= 1
@@ -55,7 +70,7 @@ async def generate_pdf(data: GenerateRequest, request: Request, db: Session = De
     if user.credits <= 0:
         raise HTTPException(status_code=402, detail="Out of credits. Please upgrade to generate more PDFs.")
 
-    latex_code = generate_latex_resume(profile, data.jd)
+    latex_code = generate_latex_resume(profile, data.jd, data.template_id)
 
     try:
         pdf_bytes = compile_latex_to_pdf(latex_code)

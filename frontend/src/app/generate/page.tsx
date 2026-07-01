@@ -77,6 +77,7 @@ function GeneratePageContent() {
   const jobId = searchParams.get("job_id");
 
   const [jd, setJd] = useState("");
+  const [selectedTemplate, setSelectedTemplate] = useState("classic");
   const [latex, setLatex] = useState("");
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [numPages, setNumPages] = useState(0);
@@ -273,7 +274,7 @@ function GeneratePageContent() {
     try {
       const res = await fetch(`${API_URL}/generate/cv`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        credentials: "include", body: JSON.stringify({ email: userEmail, jd }),
+        credentials: "include", body: JSON.stringify({ email: userEmail, jd, template_id: selectedTemplate }),
       });
       if (!res.ok) { 
         if (res.status === 402) {
@@ -361,6 +362,34 @@ function GeneratePageContent() {
                 value={jd} onChange={e => setJd(e.target.value)} />
               <div className="absolute bottom-3 right-3 text-[10px]" style={{ color: C.textFaint }}>{jd.length} chars</div>
             </div>
+            
+            <div className="mb-6">
+              <label className="block text-[10px] tracking-[0.25em] uppercase mb-3" style={{ color: C.textMuted }}>Select Template</label>
+              <div className="grid grid-cols-2 gap-4">
+                {[
+                  {id: "classic", name: "Classic Professional", desc: "Traditional single-column layout"}, 
+                  {id: "modern", name: "Modern Tech", desc: "Sleek layout with clean typography and subtle color accents"}
+                ].map(tpl => (
+                  <div 
+                    key={tpl.id} 
+                    onClick={() => setSelectedTemplate(tpl.id)}
+                    className="cursor-pointer rounded-sm p-3 transition-all"
+                    style={{ 
+                      background: selectedTemplate === tpl.id ? C.greenLight : C.bgCard, 
+                      border: `1px solid ${selectedTemplate === tpl.id ? C.greenBorder : C.border}` 
+                    }}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-[12px] font-bold" style={{ color: selectedTemplate === tpl.id ? C.green : C.text }}>{tpl.name}</span>
+                      {selectedTemplate === tpl.id && <span className="text-[10px]" style={{ color: C.green }}>✓</span>}
+                    </div>
+                    <p className="text-[10px] leading-relaxed" style={{ color: C.textMuted }}>{tpl.desc}</p>
+                    {/* The user will add images later: <img src={`/templates/${tpl.id}.png`} className="w-full mt-2 rounded border" style={{ borderColor: C.border }} /> */}
+                  </div>
+                ))}
+              </div>
+            </div>
+
             {appState === "error" && (
               <div className="mb-4 px-4 py-3 text-xs rounded-sm" style={{ background: C.redBg, border: "1px solid #ffcccc", color: C.red }}>✗ {errorMsg}</div>
             )}
