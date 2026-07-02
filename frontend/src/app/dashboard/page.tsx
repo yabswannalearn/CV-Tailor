@@ -42,12 +42,14 @@ interface Profile {
   projects: Project[]
   skills: { skill_name: string }[]
   certifications: Certification[]
+  preset_slug: string
 }
 
 const emptyProfile: Profile = {
   first_name: "", last_name: "", mobile_no: "", email: "",
   linkedin: "", github: "", portfolio: "",
   education: [], experience: [], projects: [], skills: [], certifications: [],
+  preset_slug: "blank",
 }
 
 export default function DashboardPage() {
@@ -62,19 +64,10 @@ export default function DashboardPage() {
   const [credits, setCredits] = useState(0)
   const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [presets, setPresets] = useState<{slug: string, display_name: string}[]>([])
 
-  useEffect(() => {
-    fetch(`${API}/auth/me`, { credentials: "include" })
-      .then((res) => {
-        if (!res.ok) { router.push("/login"); return null }
-        return res.json()
-      })
-      .then((data) => {
-        if (!data) return
-        setUserEmail(data.email)
-        setCredits(data.credits)
-        return fetch(`${API}/profile/load/${data.email}`, { credentials: "include" })
-      })
+  const fetchProfile = (email: string) => {
+    return fetch(`${API}/profile/load/${email}`, { credentials: "include" })
       .then((res) => {
         if (!res || !res.ok) return null
         return res.json()
@@ -89,6 +82,7 @@ export default function DashboardPage() {
           linkedin: data.linkedin || "",
           github: data.github || "",
           portfolio: data.portfolio || "",
+          preset_slug: data.preset_slug || "blank",
           education: (data.education || []).map((e: any) => ({
             school_name: e.school_name,
             course: e.course,
@@ -115,6 +109,25 @@ export default function DashboardPage() {
           })),
         })
       })
+  }
+
+  useEffect(() => {
+    fetch(`${API}/presets`)
+      .then(res => res.json())
+      .then(data => setPresets(data))
+      .catch(console.error)
+
+    fetch(`${API}/auth/me`, { credentials: "include" })
+      .then((res) => {
+        if (!res.ok) { router.push("/login"); return null }
+        return res.json()
+      })
+      .then((data) => {
+        if (!data) return
+        setUserEmail(data.email)
+        setCredits(data.credits)
+        return fetchProfile(data.email)
+      })
       .catch(() => router.push("/login"))
   }, [])
 
@@ -131,6 +144,9 @@ export default function DashboardPage() {
       if (!res.ok) throw new Error()
       setSaveStatus("success")
       setTimeout(() => setSaveStatus("idle"), 3000)
+      if (userEmail) {
+        await fetchProfile(userEmail)
+      }
     } catch {
       setSaveStatus("error")
     } finally {
@@ -271,6 +287,22 @@ export default function DashboardPage() {
         {/* Personal Tab */}
         {activeTab === "personal" && (
           <div className="mb-10">
+            <div className="mb-4">
+              <label className={labelClass}>Your Role / Niche</label>
+              <select 
+                className={inputClass} 
+                value={profile.preset_slug}
+                onChange={(e) => updateField("preset_slug", e.target.value)}
+              >
+                <option value="blank">Blank / Custom</option>
+                {presets.map(p => (
+                  <option key={p.slug} value={p.slug}>{p.display_name}</option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-[#b0aba4]">
+                We'll tailor your resume toward {profile.preset_slug === 'blank' ? 'your custom' : presets.find(p => p.slug === profile.preset_slug)?.display_name} roles and suggest relevant skills.
+              </p>
+            </div>
             <div className="grid grid-cols-2 gap-4 mb-4">
               <div>
                 <label className={labelClass}>First Name</label>

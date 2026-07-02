@@ -75,7 +75,8 @@ async def save_profile(profile_data: UserProfile, request: Request, db: Session 
             email=profile_data.email,
             linkedin=profile_data.linkedin,
             github=profile_data.github,
-            portfolio=profile_data.portfolio
+            portfolio=profile_data.portfolio,
+            preset_slug=profile_data.preset_slug
         )
         db.add(new_profile)
         db.flush()
@@ -112,6 +113,18 @@ async def save_profile(profile_data: UserProfile, request: Request, db: Session 
                 profile_id=new_profile.id,
                 skill_name=skill.skill_name
             ))
+            
+        preset_slug = profile_data.preset_slug
+        existing_skills = {s.skill_name.lower() for s in profile_data.skills}
+        if preset_slug and preset_slug != "blank":
+            preset = db.query(db_models.ResumePreset).filter_by(slug=preset_slug).first()
+            if preset and preset.core_skills_bank:
+                for p_skill in preset.core_skills_bank:
+                    if p_skill.lower() not in existing_skills:
+                        db.add(db_models.Skill(
+                            profile_id=new_profile.id,
+                            skill_name=p_skill
+                        ))
 
         for cert in profile_data.certifications:
             db.add(db_models.Certification(
@@ -153,6 +166,7 @@ async def load_profile(email: str, request: Request, db: Session = Depends(get_d
         "linkedin": profile.linkedin,
         "github": profile.github,
         "portfolio": profile.portfolio,
+        "preset_slug": profile.preset_slug,
         "education": [
             {
                 "school_name": e.school_name,

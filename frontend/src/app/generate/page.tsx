@@ -103,6 +103,9 @@ function GeneratePageContent() {
   const [jobLabel, setJobLabel] = useState<string | null>(null);
   const [savingToJob, setSavingToJob] = useState(false);
   const [savedToJob, setSavedToJob] = useState(false);
+  const [presetSlug, setPresetSlug] = useState("blank");
+  const [presets, setPresets] = useState<{slug: string, display_name: string, recommended_template: string}[]>([]);
+  const [atsResult, setAtsResult] = useState<{pass: boolean, warnings: string[]} | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -115,7 +118,7 @@ function GeneratePageContent() {
     if (pdfUrl) { window.URL.revokeObjectURL(pdfUrl); setPdfUrl(null); }
     setAppState("compiling"); setErrorMsg("");
     try {
-      const res = await fetch(`${API_URL}/generate/compile`, {
+      const res = await fetch(`${API_URL}/generate/compile-with-check`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ latex: source }),
       });
@@ -127,18 +130,41 @@ function GeneratePageContent() {
         } catch {}
         throw new Error(message);
       }
-      const blob = await res.blob();
+      const { pdf_b64, ats } = await res.json();
+      const byteCharacters = atob(pdf_b64);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) { byteNumbers[i] = byteCharacters.charCodeAt(i); }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: "application/pdf" });
       setPdfUrl(window.URL.createObjectURL(blob));
+      setAtsResult(ats);
       setAppState("editing"); setNumPages(0); setCurrentPage(1);
     } catch (err: any) { setErrorMsg(err.message); setAppState("error"); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [latex]);
 
   useEffect(() => {
+    fetch(`${API_URL}/presets`)
+      .then(res => res.json())
+      .then(data => setPresets(data))
+      .catch(console.error);
+
     // Auth check
     fetch(`${API_URL}/auth/me`, { credentials: "include" })
       .then(res => { if (!res.ok) { router.push("/login"); return null; } return res.json(); })
-      .then(data => { if (data) { setUserEmail(data.email); setCredits(data.credits); } })
+      .then(data => { 
+        if (data) { 
+          setUserEmail(data.email); 
+          setCredits(data.credits); 
+          fetch(`${API_URL}/profile/load/${data.email}`, { credentials: "include" })
+            .then(res => res.ok ? res.json() : null)
+            .then(p => {
+              if (p && p.preset_slug) {
+                 setPresetSlug(p.preset_slug);
+              }
+            });
+        } 
+      })
       .catch(() => router.push("/login"));
 
     // If coming from tracker, load existing LaTeX
@@ -272,9 +298,9 @@ function GeneratePageContent() {
     if (pdfUrl) { window.URL.revokeObjectURL(pdfUrl); setPdfUrl(null); }
     setAppState("generating"); setErrorMsg("");
     try {
-      const res = await fetch(`${API_URL}/generate/cv`, {
+      const res = await fetch(`${API_URL}/generate/ats-check`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        credentials: "include", body: JSON.stringify({ email: userEmail, jd, template_id: selectedTemplate }),
+        credentials: "include", body: JSON.stringify({ email: userEmail, jd, template_id: selectedTemplate, preset_slug: presetSlug }),
       });
       if (!res.ok) { 
         if (res.status === 402) {
@@ -284,10 +310,19 @@ function GeneratePageContent() {
         const err = await res.json(); 
         throw new Error(err.detail || "Generation failed"); 
       }
-      const { latex: gen } = await res.json();
+      const { latex: gen, pdf_b64, ats } = await res.json();
       setLatex(gen);
       setCredits(c => Math.max(0, c - 1));
-      await compileLatex(gen);
+      
+      const byteCharacters = atob(pdf_b64);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) { byteNumbers[i] = byteCharacters.charCodeAt(i); }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: "application/pdf" });
+      setPdfUrl(window.URL.createObjectURL(blob));
+      setAtsResult(ats);
+      
+      setAppState("editing"); setNumPages(0); setCurrentPage(1);
       setHasGenerated(true);
     } catch (err: any) { setErrorMsg(err.message || "Generation failed"); setAppState("error"); }
   };
@@ -364,6 +399,23 @@ function GeneratePageContent() {
             </div>
             
             <div className="mb-6">
+              <label className="block text-[10px] tracking-[0.25em] uppercase mb-3" style={{ color: C.textMuted }}>Your Role (Optional Steering)</label>
+              <select 
+                className="w-full p-3 text-sm outline-none rounded-sm transition-colors mb-6"
+                style={{ background: C.bgCard, color: C.text, border: `1px solid ${C.border}` }}
+                value={presetSlug}
+                onChange={(e) => {
+                  setPresetSlug(e.target.value);
+                  const p = presets.find(x => x.slug === e.target.value);
+                  if (p && p.recommended_template) setSelectedTemplate(p.recommended_template);
+                }}
+              >
+                <option value="blank">Blank / Custom</option>
+                {presets.map(p => (
+                  <option key={p.slug} value={p.slug}>{p.display_name}</option>
+                ))}
+              </select>
+
               <label className="block text-[10px] tracking-[0.25em] uppercase mb-3" style={{ color: C.textMuted }}>Select Template</label>
               <div className="grid grid-cols-2 gap-4">
                 {[
@@ -688,6 +740,22 @@ function GeneratePageContent() {
                 <span className="text-[10px] px-2 py-0.5 rounded" style={{ background: C.greenLight, color: C.green, border: `1px solid ${C.greenBorder}` }}>
                   Double-click text to jump to editor
                 </span>
+                {atsResult && (
+                  <div className="relative group flex items-center ml-2">
+                    {atsResult.pass ? (
+                       <span className="text-[10px] px-2 py-0.5 rounded cursor-help font-bold tracking-wider" style={{ background: C.greenLight, color: C.green, border: `1px solid ${C.greenBorder}` }}>ATS: PASS</span>
+                    ) : (
+                       <span className="text-[10px] px-2 py-0.5 rounded cursor-help font-bold tracking-wider" style={{ background: C.redBg, color: C.red, border: "1px solid #ffcccc" }}>ATS: WARNINGS</span>
+                    )}
+                    {atsResult.warnings.length > 0 && (
+                      <div className="absolute top-full mt-2 left-0 w-64 p-3 bg-[#1a1814] text-[#f5f2ed] text-[10px] rounded shadow-lg hidden group-hover:block z-50">
+                        <ul className="list-disc pl-4 space-y-1">
+                          {atsResult.warnings.map((w, i) => <li key={i}>{w}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="flex items-center gap-3">
                 {clickedWord && <span className="text-[10px]" style={{ color: C.green }}>→ "{clickedWord}"</span>}

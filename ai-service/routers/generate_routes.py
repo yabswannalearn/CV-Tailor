@@ -48,7 +48,7 @@ async def generate_cv(data: GenerateRequest, request: Request, db: Session = Dep
     if user.credits <= 0:
         raise HTTPException(status_code=402, detail="Out of credits. Please upgrade to generate more CVs.")
 
-    latex_code = generate_latex_resume(profile, data.jd, data.template_id)
+    latex_code = generate_latex_resume(profile, data.jd, data.template_id, preset_slug=data.preset_slug, db=db)
     
     # Deduct credit
     user.credits -= 1
@@ -70,7 +70,7 @@ async def generate_pdf(data: GenerateRequest, request: Request, db: Session = De
     if user.credits <= 0:
         raise HTTPException(status_code=402, detail="Out of credits. Please upgrade to generate more PDFs.")
 
-    latex_code = generate_latex_resume(profile, data.jd, data.template_id)
+    latex_code = generate_latex_resume(profile, data.jd, data.template_id, preset_slug=data.preset_slug, db=db)
 
     try:
         pdf_bytes = compile_latex_to_pdf(latex_code)
@@ -101,6 +101,61 @@ async def compile_latex(data: CompileLatexRequest, request: Request):
         media_type="application/pdf",
         headers={"Content-Disposition": "inline; filename=tailored_resume.pdf"}
     )
+
+@router.post("/compile-with-check")
+@limiter.limit("10/minute")
+async def compile_latex_with_check(data: CompileLatexRequest, request: Request):
+    try:
+        pdf_bytes = compile_latex_to_pdf(data.latex)
+    except PDFCompilationError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    from services.ats_check import ats_check
+    import base64
+    ats_result = ats_check(pdf_bytes, None)
+    
+    return {
+        "pdf_b64": base64.b64encode(pdf_bytes).decode("utf-8"),
+        "ats": ats_result
+    }
+
+@router.post("/ats-check")
+@limiter.limit("5/minute")
+async def generate_ats_check(data: GenerateRequest, request: Request, db: Session = Depends(get_db)):
+    profile = db.query(db_models.Profile).filter(db_models.Profile.email == data.email).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+        
+    user = profile.owner
+    if user.credits <= 0:
+        raise HTTPException(status_code=402, detail="Out of credits. Please upgrade to generate more CVs.")
+        
+    latex_code = generate_latex_resume(profile, data.jd, data.template_id, data.preset_slug, db)
+    
+    try:
+        pdf_bytes = compile_latex_to_pdf(latex_code)
+    except PDFCompilationError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        
+    preset_section_order = None
+    if data.preset_slug and data.preset_slug != "blank":
+        preset = db.query(db_models.ResumePreset).filter_by(slug=data.preset_slug).first()
+        if preset:
+            preset_section_order = preset.section_order
+            
+    from services.ats_check import ats_check
+    import base64
+    ats_result = ats_check(pdf_bytes, preset_section_order)
+    
+    # Deduct credit
+    user.credits -= 1
+    db.commit()
+    
+    return {
+        "latex": latex_code,
+        "pdf_b64": base64.b64encode(pdf_bytes).decode("utf-8"),
+        "ats": ats_result
+    }
 
 
 @router.post("/cover-letter")

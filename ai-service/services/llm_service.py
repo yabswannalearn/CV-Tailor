@@ -59,11 +59,27 @@ def truncate_jd(jd: str, max_chars: int = 1500) -> str:
         return jd[:max_chars] + "... [truncated]"
     return jd
 
-def build_prompt(profile: UserProfile, jd: str) -> str:
+def build_prompt(profile: UserProfile, jd: str, preset: dict | None = None) -> str:
     jd = truncate_jd(jd)
+    
+    persona_suffix = f" specializing in {preset['display_name']} roles" if preset else " specializing in software developer roles"
+    
+    summary_rule = "- Summary: 3 sentences that directly speak to what THIS specific job needs. Mirror JD language."
+    if preset:
+        summary_rule += f" {preset['target_summary_prompt']}"
+        
+    action_verbs_rule = "- Lead bullets with strong action verbs appropriate to the role." if preset else "- Lead bullets with strong action verbs (Architected, Engineered, Designed, Implemented, etc.)."
+    
+    metric_prompts_rule = ""
+    if preset:
+        metric_prompts_rule = f"\n- Quantify achievements wherever possible. Use templates like these as the shape: {'; '.join(preset['metric_prompts'])}"
+        
+    page_filling_lever = preset['lever_guidance'] if preset else """- Projects are your main lever — write 3 detailed bullets per project, each 1.5-2 lines long.
+- Each project bullet should explain: WHAT you built + HOW you built it + the IMPACT or result.
+- Experience bullets should also be detailed — 1.5 lines each, not just one short sentence."""
 
     return f"""
-You are an elite technical resume writer and career strategist.
+You are an elite resume writer and career strategist{persona_suffix}.
 
 Your job is TWO things:
 1. SELECTION — Pick only the BEST and MOST RELEVANT items from the profile that match the job description.
@@ -80,19 +96,17 @@ SELECTION RULES:
 - Projects: Pick TOP 2-3 projects most relevant to the JD. IGNORE irrelevant ones.
 - Skills: Filter to only skills the JD cares about. Group into 2-3 meaningful categories.
 - Certifications: Only include certifications relevant to the JD role.
-- Summary: 3 sentences that directly speak to what THIS specific job needs. Mirror JD language.
+{summary_rule}
 
 TAILORING RULES:
 - Use EXACT keywords from the JD in bullets (if JD says "data pipelines", use that phrase).
 - Quantify achievements wherever possible (%, time saved, scale, users, etc.).
-- Lead bullets with strong action verbs (Architected, Engineered, Designed, Implemented, etc.).
-- Never invent experience. Only reframe what exists using JD language.
+{action_verbs_rule}
+- Never invent experience. Only reframe what exists using JD language.{metric_prompts_rule}
 
 PAGE FILLING RULES — CRITICAL:
 - The resume MUST fill close to one full page. No large empty space at the bottom.
-- Projects are your main lever — write 3 detailed bullets per project, each 1.5-2 lines long.
-- Each project bullet should explain: WHAT you built + HOW you built it + the IMPACT or result.
-- Experience bullets should also be detailed — 1.5 lines each, not just one short sentence.
+{page_filling_lever}
 - Summary should be 3 full sentences.
 - If there is still space, add a 3rd project from the profile if relevant.
 - Skills section should have 2-3 categories with 5-7 items each.
@@ -307,9 +321,16 @@ def assemble_latex(profile: UserProfile, ai_content: dict, template_id: str = "c
 
 
 
-def generate_latex_resume(db_profile: db_models.Profile, jd: str, template_id: str = "classic") -> str:
+def generate_latex_resume(db_profile: db_models.Profile, jd: str, template_id: str = "classic", preset_slug: str = "blank", db = None) -> str:
     profile = db_profile_to_schema(db_profile)
-    prompt = build_prompt(profile, jd)
+    
+    preset_dict = None
+    if preset_slug and preset_slug != "blank" and db:
+        preset = db.query(db_models.ResumePreset).filter_by(slug=preset_slug).first()
+        if preset:
+            preset_dict = preset.__dict__
+            
+    prompt = build_prompt(profile, jd, preset_dict)
 
     try:
         response = client.models.generate_content(

@@ -42,11 +42,13 @@ class UserProfile(BaseModel):
     projects: List[Project]
     skills: List[SkillItem]
     certifications: List[Certification] = []
+    preset_slug: Optional[str] = "blank"
 
 class GenerateRequest(BaseModel):
     email: str
     jd: str
     template_id: str = "classic"
+    preset_slug: str = "blank"
 
     @field_validator("jd")
     @classmethod
@@ -216,3 +218,18 @@ class CodeGenerateRequest(BaseModel):
     jd: str
     difficulty: str = "Medium"           # Easy / Medium / Hard
     count: int = 3
+
+class PresetListItem(BaseModel):
+    slug: str
+    display_name: str
+    recommended_template: str
+
+class PresetDetail(BaseModel):
+    slug: str
+    display_name: str
+    target_summary_prompt: str
+    core_skills_bank: List[str]
+    metric_prompts: List[str]
+    section_order: List[str]
+    recommended_template: str
+    lever_guidance: str

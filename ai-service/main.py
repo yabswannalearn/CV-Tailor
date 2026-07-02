@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
-from routers import database_routes, generate_routes, auth_routes, tracker_routes, interview_routes, code_routes
+from routers import database_routes, generate_routes, auth_routes, tracker_routes, interview_routes, code_routes, presets_routes
 import logging
 import os
 from dotenv import load_dotenv
@@ -72,6 +72,7 @@ app.include_router(generate_routes.router)
 app.include_router(tracker_routes.router)
 app.include_router(interview_routes.router)
 app.include_router(code_routes.router)
+app.include_router(presets_routes.router)
 
 @app.get("/")
 def root():
