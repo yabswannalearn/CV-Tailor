@@ -139,7 +139,10 @@ async def generate_ats_check(data: GenerateRequest, request: Request, db: Sessio
         
     preset_section_order = None
     if data.preset_slug and data.preset_slug != "blank":
-        preset = db.query(db_models.ResumePreset).filter_by(slug=data.preset_slug).first()
+        preset = db.query(db_models.ResumePreset).filter(
+            (db_models.ResumePreset.slug == data.preset_slug) |
+            (db_models.ResumePreset.display_name.ilike(data.preset_slug))
+        ).first()
         if preset:
             preset_section_order = preset.section_order
             

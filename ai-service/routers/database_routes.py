@@ -117,7 +117,10 @@ async def save_profile(profile_data: UserProfile, request: Request, db: Session 
         preset_slug = profile_data.preset_slug
         existing_skills = {s.skill_name.lower() for s in profile_data.skills}
         if preset_slug and preset_slug != "blank":
-            preset = db.query(db_models.ResumePreset).filter_by(slug=preset_slug).first()
+            preset = db.query(db_models.ResumePreset).filter(
+                (db_models.ResumePreset.slug == preset_slug) |
+                (db_models.ResumePreset.display_name.ilike(preset_slug))
+            ).first()
             if preset and preset.core_skills_bank:
                 for p_skill in preset.core_skills_bank:
                     if p_skill.lower() not in existing_skills:

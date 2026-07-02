@@ -59,10 +59,15 @@ def truncate_jd(jd: str, max_chars: int = 1500) -> str:
         return jd[:max_chars] + "... [truncated]"
     return jd
 
-def build_prompt(profile: UserProfile, jd: str, preset: dict | None = None) -> str:
+def build_prompt(profile: UserProfile, jd: str, preset: dict | None = None, custom_role: str = "") -> str:
     jd = truncate_jd(jd)
     
-    persona_suffix = f" specializing in {preset['display_name']} roles" if preset else " specializing in software developer roles"
+    if preset:
+        persona_suffix = f" specializing in {preset['display_name']} roles"
+    elif custom_role and custom_role != "blank":
+        persona_suffix = f" specializing in {custom_role} roles"
+    else:
+        persona_suffix = " specializing in software developer roles"
     
     summary_rule = "- Summary: 3 sentences that directly speak to what THIS specific job needs. Mirror JD language."
     if preset:
@@ -326,11 +331,14 @@ def generate_latex_resume(db_profile: db_models.Profile, jd: str, template_id: s
     
     preset_dict = None
     if preset_slug and preset_slug != "blank" and db:
-        preset = db.query(db_models.ResumePreset).filter_by(slug=preset_slug).first()
+        preset = db.query(db_models.ResumePreset).filter(
+            (db_models.ResumePreset.slug == preset_slug) |
+            (db_models.ResumePreset.display_name.ilike(preset_slug))
+        ).first()
         if preset:
             preset_dict = preset.__dict__
             
-    prompt = build_prompt(profile, jd, preset_dict)
+    prompt = build_prompt(profile, jd, preset_dict, custom_role=preset_slug)
 
     try:
         response = client.models.generate_content(

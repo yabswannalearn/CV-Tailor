@@ -289,18 +289,20 @@ export default function DashboardPage() {
           <div className="mb-10">
             <div className="mb-4">
               <label className={labelClass}>Your Role / Niche</label>
-              <select 
+              <input 
+                list="role-presets"
                 className={inputClass} 
-                value={profile.preset_slug}
-                onChange={(e) => updateField("preset_slug", e.target.value)}
-              >
-                <option value="blank">Blank / Custom</option>
+                value={profile.preset_slug === 'blank' ? '' : profile.preset_slug}
+                onChange={(e) => updateField("preset_slug", e.target.value || "blank")}
+                placeholder="e.g. Full Stack Developer, Product Manager..."
+              />
+              <datalist id="role-presets">
                 {presets.map(p => (
-                  <option key={p.slug} value={p.slug}>{p.display_name}</option>
+                  <option key={p.slug} value={p.display_name} />
                 ))}
-              </select>
+              </datalist>
               <p className="mt-1 text-xs text-[#b0aba4]">
-                We'll tailor your resume toward {profile.preset_slug === 'blank' ? 'your custom' : presets.find(p => p.slug === profile.preset_slug)?.display_name} roles and suggest relevant skills.
+                We'll tailor your resume toward {profile.preset_slug && profile.preset_slug !== 'blank' ? profile.preset_slug : 'your custom'} roles and suggest relevant skills.
               </p>
             </div>
             <div className="grid grid-cols-2 gap-4 mb-4">

@@ -400,21 +400,24 @@ function GeneratePageContent() {
             
             <div className="mb-6">
               <label className="block text-[10px] tracking-[0.25em] uppercase mb-3" style={{ color: C.textMuted }}>Your Role (Optional Steering)</label>
-              <select 
+              <input 
+                list="generate-presets"
                 className="w-full p-3 text-sm outline-none rounded-sm transition-colors mb-6"
                 style={{ background: C.bgCard, color: C.text, border: `1px solid ${C.border}` }}
-                value={presetSlug}
+                value={presetSlug === 'blank' ? '' : presetSlug}
                 onChange={(e) => {
-                  setPresetSlug(e.target.value);
-                  const p = presets.find(x => x.slug === e.target.value);
+                  const val = e.target.value;
+                  setPresetSlug(val || 'blank');
+                  const p = presets.find(x => x.display_name.toLowerCase() === val.toLowerCase());
                   if (p && p.recommended_template) setSelectedTemplate(p.recommended_template);
                 }}
-              >
-                <option value="blank">Blank / Custom</option>
+                placeholder="e.g. Full Stack Developer, Marketing Manager..."
+              />
+              <datalist id="generate-presets">
                 {presets.map(p => (
-                  <option key={p.slug} value={p.slug}>{p.display_name}</option>
+                  <option key={p.slug} value={p.display_name} />
                 ))}
-              </select>
+              </datalist>
 
               <label className="block text-[10px] tracking-[0.25em] uppercase mb-3" style={{ color: C.textMuted }}>Select Template</label>
               <div className="grid grid-cols-2 gap-4">
