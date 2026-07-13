@@ -1,7 +1,9 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { API_URL } from "@/lib/api";
+import { useCurrentUser } from "@/lib/queries";
+import { queryClient } from "@/lib/queryClient";
 
 const API = API_URL;
 
@@ -64,18 +66,13 @@ export default function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
-  const [userEmail, setUserEmail] = useState("");
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetch(`${API}/auth/me`, { credentials: "include" })
-      .then(res => res.ok ? res.json() : null)
-      .then(data => { if (data) setUserEmail(data.email); })
-      .catch(() => {});
-  }, []);
+  const { data: user } = useCurrentUser();
+  const userEmail = user?.email || "";
 
   const handleLogout = async () => {
     await fetch(`${API}/auth/logout`, { method: "POST", credentials: "include" });
+    queryClient.clear();
     router.push("/login");
   };
 

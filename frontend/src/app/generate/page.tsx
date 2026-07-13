@@ -6,6 +6,7 @@ import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 import AppLayout from "@/components/AppLayout";
 import { API_URL } from "@/lib/api";
+import { useResumeUiStore } from "@/lib/uiStore";
 
 const Document = dynamic(() => import("react-pdf").then(m => m.Document), { ssr: false });
 const Page = dynamic(() => import("react-pdf").then(m => m.Page), { ssr: false });
@@ -264,7 +265,7 @@ function GeneratePageContent() {
   const jobId = searchParams.get("job_id");
 
   const [jd, setJd] = useState("");
-  const [selectedTemplate, setSelectedTemplate] = useState("classic");
+  const { selectedTemplate, setSelectedTemplate, editorMode, setEditorMode } = useResumeUiStore();
   const [latex, setLatex] = useState("");
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [numPages, setNumPages] = useState(0);
@@ -293,7 +294,6 @@ function GeneratePageContent() {
   const [presetSlug, setPresetSlug] = useState("blank");
   const [presets, setPresets] = useState<{slug: string, display_name: string, recommended_template: string}[]>([]);
   const [atsResult, setAtsResult] = useState<{pass: boolean, warnings: string[]} | null>(null);
-  const [editorMode, setEditorMode] = useState<EditorMode>("friendly");
   const [draft, setDraft] = useState<ResumeDraft>({ name: "", summary: "", bullets: [], sections: [] });
   const [draftReady, setDraftReady] = useState(false);
 
@@ -660,7 +660,9 @@ function GeneratePageContent() {
                   const val = e.target.value;
                   setPresetSlug(val || 'blank');
                   const p = presets.find(x => x.display_name.toLowerCase() === val.toLowerCase());
-                  if (p && p.recommended_template) setSelectedTemplate(p.recommended_template);
+                   if (p?.recommended_template === "classic" || p?.recommended_template === "modern") {
+                     setSelectedTemplate(p.recommended_template);
+                   }
                 }}
                 placeholder="e.g. Full Stack Developer, Marketing Manager..."
               />
@@ -678,7 +680,7 @@ function GeneratePageContent() {
                 ].map(tpl => (
                   <div 
                     key={tpl.id} 
-                    onClick={() => setSelectedTemplate(tpl.id)}
+                    onClick={() => setSelectedTemplate(tpl.id as "classic" | "modern")}
                     className="cursor-pointer rounded-sm p-3 transition-all"
                     style={{ 
                       background: selectedTemplate === tpl.id ? C.greenLight : C.bgCard, 

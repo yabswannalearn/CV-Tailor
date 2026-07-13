@@ -2,7 +2,9 @@
 import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import AppLayout from "@/components/AppLayout";
-import { API_URL } from "@/lib/api";
+import { API_URL, getApiError } from "@/lib/api";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCurrentUser } from "@/lib/queries";
 
 const GRAIN = `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`
 
@@ -61,76 +63,55 @@ export default function DashboardPage() {
   const [mobileSectionsOpen, setMobileSectionsOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">("idle")
-  const [userEmail, setUserEmail] = useState("")
   const [credits, setCredits] = useState(0)
   const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [presets, setPresets] = useState<{slug: string, display_name: string}[]>([])
-
-  const fetchProfile = (email: string) => {
-    return fetch(`${API}/profile/load/${email}`, { credentials: "include" })
-      .then((res) => {
-        if (!res || !res.ok) return null
-        return res.json()
-      })
-      .then((data) => {
-        if (!data) return
-        setProfile({
-          first_name: data.first_name || "",
-          last_name: data.last_name || "",
-          mobile_no: data.mobile_no || "",
-          email: data.email || "",
-          linkedin: data.linkedin || "",
-          github: data.github || "",
-          portfolio: data.portfolio || "",
-          preset_slug: data.preset_slug || "blank",
-          education: (data.education || []).map((e: any) => ({
-            school_name: e.school_name,
-            course: e.course,
-            location: e.location,
-            description: e.description || "",
-          })),
-          experience: (data.experience || []).map((e: any) => ({
-            job_title: e.job_title,
-            company: e.company,
-            location: e.location,
-            description: e.description,
-            date_range: e.date_range,
-          })),
-          projects: (data.projects || []).map((p: any) => ({
-            name: p.name,
-            description: p.description,
-            date_range: p.date_range,
-          })),
-          skills: (data.skills || []).map((s: any) => ({ skill_name: s.skill_name })),
-          certifications: (data.certifications || []).map((c: any) => ({
-            name: c.name || "",
-            issuer: c.issuer || "",
-            date_issued: c.date_issued || "",
-          })),
-        })
-      })
-  }
+  const queryClient = useQueryClient()
+  const { data: user, isError: userError } = useCurrentUser()
+  const { data: profileData } = useQuery<Profile>({
+    queryKey: ["profile", user?.email],
+    enabled: Boolean(user?.email),
+    queryFn: async () => {
+      const res = await fetch(`${API}/profile/load/${encodeURIComponent(user!.email)}`, { credentials: "include" })
+      if (!res.ok) throw new Error(await getApiError(res, "Unable to load your profile."))
+      return res.json()
+    },
+  })
+  const { data: presets = [] } = useQuery<{slug: string, display_name: string}[]>({
+    queryKey: ["presets"],
+    queryFn: async () => {
+      const res = await fetch(`${API}/presets`)
+      if (!res.ok) throw new Error("Unable to load resume presets.")
+      return res.json()
+    },
+    staleTime: 10 * 60_000,
+  })
+  const userEmail = user?.email || ""
 
   useEffect(() => {
-    fetch(`${API}/presets`)
-      .then(res => res.json())
-      .then(data => setPresets(data))
-      .catch(console.error)
+    if (user) setCredits(user.credits)
+    if (userError) router.push("/login")
+  }, [user, userError, router])
 
-    fetch(`${API}/auth/me`, { credentials: "include" })
-      .then((res) => {
-        if (!res.ok) { router.push("/login"); return null }
-        return res.json()
-      })
-      .then((data) => {
-        if (!data) return
-        setUserEmail(data.email)
-        setCredits(data.credits)
-        return fetchProfile(data.email)
-      })
-      .catch(() => router.push("/login"))
-  }, [])
+  useEffect(() => {
+    if (!profileData) return
+    const data = profileData
+    setProfile({
+      first_name: data.first_name || "",
+      last_name: data.last_name || "",
+      mobile_no: data.mobile_no || "",
+      email: data.email || "",
+      linkedin: data.linkedin || "",
+      github: data.github || "",
+      portfolio: data.portfolio || "",
+      preset_slug: data.preset_slug || "blank",
+      education: (data.education || []).map((e) => ({ school_name: e.school_name, course: e.course, location: e.location, description: e.description || "" })),
+      experience: (data.experience || []).map((e) => ({ job_title: e.job_title, company: e.company, location: e.location, description: e.description || "", date_range: e.date_range || "" })),
+      projects: (data.projects || []).map((p) => ({ name: p.name, description: p.description || "", date_range: p.date_range || "" })),
+      skills: (data.skills || []).map((s) => ({ skill_name: s.skill_name })),
+      certifications: (data.certifications || []).map((c) => ({ name: c.name || "", issuer: c.issuer || "", date_issued: c.date_issued || "" })),
+    })
+  }, [profileData])
 
   const handleSave = async () => {
     setSaving(true)
@@ -145,9 +126,7 @@ export default function DashboardPage() {
       if (!res.ok) throw new Error()
       setSaveStatus("success")
       setTimeout(() => setSaveStatus("idle"), 3000)
-      if (userEmail) {
-        await fetchProfile(userEmail)
-      }
+      await queryClient.invalidateQueries({ queryKey: ["profile", userEmail] })
     } catch {
       setSaveStatus("error")
     } finally {
@@ -157,6 +136,7 @@ export default function DashboardPage() {
 
   const handleLogout = async () => {
     await fetch(`${API}/auth/logout`, { method: "POST", credentials: "include" })
+    queryClient.clear()
     router.push("/login")
   }
 
@@ -200,15 +180,15 @@ export default function DashboardPage() {
         setCredits((c) => Math.max(0, c - 1));
         alert("Profile successfully auto-filled! Please review and click 'Save Profile'.");
       }
-    } catch (error: any) {
-      alert(error.message);
+    } catch (error: unknown) {
+      alert(error instanceof Error ? error.message : "Upload failed");
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
-  const updateField = (field: keyof Profile, value: any) =>
+  const updateField = (field: keyof Profile, value: unknown) =>
     setProfile((p) => ({ ...p, [field]: value }))
   const updateListItem = <T,>(field: keyof Profile, index: number, updated: T) =>
     setProfile((p) => ({
@@ -220,7 +200,7 @@ export default function DashboardPage() {
   const removeListItem = (field: keyof Profile, index: number) =>
     setProfile((p) => ({
       ...p,
-      [field]: (p[field] as any[]).filter((_, i) => i !== index),
+      [field]: (p[field] as unknown[]).filter((_, i) => i !== index),
     }))
 
   const tabs = ["personal", "education", "experience", "projects", "skills", "certifications"] as const
@@ -336,7 +316,7 @@ export default function DashboardPage() {
                 ))}
               </datalist>
               <p className="mt-1 text-xs text-[#b0aba4]">
-                We'll tailor your resume toward {profile.preset_slug && profile.preset_slug !== 'blank' ? profile.preset_slug : 'your custom'} roles and suggest relevant skills.
+                We&apos;ll tailor your resume toward {profile.preset_slug && profile.preset_slug !== 'blank' ? profile.preset_slug : 'your custom'} roles and suggest relevant skills.
               </p>
             </div>
             <div className="grid grid-cols-1 gap-4 mb-4 sm:grid-cols-2">
