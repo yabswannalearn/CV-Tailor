@@ -154,7 +154,7 @@ async def load_profile(email: str, request: Request, db: Session = Depends(get_d
         joinedload(db_models.Profile.projects),
         joinedload(db_models.Profile.skills),
         joinedload(db_models.Profile.certifications),
-    ).filter(db_models.Profile.email == email).first()
+    ).join(db_models.User).filter(db_models.User.email == email).first()
 
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
