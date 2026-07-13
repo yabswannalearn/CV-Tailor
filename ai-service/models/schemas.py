@@ -82,6 +82,16 @@ class LoginRequest(BaseModel):
     email: str
     password: str
 
+class EmailRequest(BaseModel):
+    email: str
+
+class PasswordResetRequest(BaseModel):
+    email: str
+
+class PasswordResetConfirmRequest(BaseModel):
+    token: str
+    password: str
+
 
 class JobApplicationCreate(BaseModel):
     company_name: str

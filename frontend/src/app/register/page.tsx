@@ -13,6 +13,7 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [registered, setRegistered] = useState(false);
 
   const handleRegister = async () => {
     if (!email.trim()) return;
@@ -32,17 +33,7 @@ export default function RegisterPage() {
         throw new Error(err.detail || "Registration failed");
       }
 
-      // Auto login after register
-      const loginRes = await fetch(`${API_URL}/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ email, password }),
-      });
-
-      if (!loginRes.ok) throw new Error("Login after register failed");
-
-      router.push("/dashboard");
+      setRegistered(true);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -69,6 +60,11 @@ export default function RegisterPage() {
           <p className="text-[#7a7570] text-sm mt-2">Enter your email and a secure password.</p>
         </div>
 
+        {registered ? (
+          <div className="rounded-sm border border-[#8ab030] bg-[#e8f5c0] px-4 py-4 text-sm leading-relaxed text-[#3d6600]">
+            Your account was created. Check your email to verify your account before signing in.
+          </div>
+        ) : <>
         <div className="relative mb-6">
           <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-[#c8f060] via-[#c8f06044] to-transparent" />
           <label className="block text-[10px] tracking-[0.25em] text-[#7a7570] uppercase mb-3 mt-4">
@@ -113,9 +109,10 @@ export default function RegisterPage() {
         >
           {loading ? "Creating account..." : "Create Account →"}
         </button>
+        </>}
 
         <p className="mt-6 text-center text-[#b0aba4] text-xs">
-          Already have an account?{" "}
+          {registered ? "Already verified?" : "Already have an account?"}{" "}
           <button onClick={() => router.push("/login")}
             className="text-[#5a8a00] hover:opacity-70 transition-opacity">
             Sign in

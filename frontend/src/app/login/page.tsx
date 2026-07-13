@@ -104,6 +104,13 @@ export default function LoginPage() {
           {loading ? "Signing in..." : "Sign In →"}
         </button>
 
+        <button
+          onClick={() => router.push("/forgot-password")}
+          className="mt-4 block w-full text-center text-xs text-[#5a8a00] hover:opacity-70 transition-opacity"
+        >
+          Forgot your password?
+        </button>
+
         <p className="mt-6 text-center text-[#b0aba4] text-xs">
           No account?{" "}
           <button onClick={() => router.push("/register")}
