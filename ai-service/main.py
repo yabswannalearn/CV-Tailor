@@ -3,11 +3,14 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
-from routers import database_routes, generate_routes, auth_routes, tracker_routes, interview_routes, code_routes
+from routers import database_routes, generate_routes, auth_routes, tracker_routes, interview_routes, code_routes, presets_routes
 import logging
 import os
 from dotenv import load_dotenv
 from database import init_db
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from limiter import limiter
 
 # Configure logging
 logging.basicConfig(
@@ -40,6 +43,9 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 environment = os.getenv("ENVIRONMENT", "development").lower()
 is_production = environment == "production"
 
@@ -66,6 +72,7 @@ app.include_router(generate_routes.router)
 app.include_router(tracker_routes.router)
 app.include_router(interview_routes.router)
 app.include_router(code_routes.router)
+app.include_router(presets_routes.router)
 
 @app.get("/")
 def root():

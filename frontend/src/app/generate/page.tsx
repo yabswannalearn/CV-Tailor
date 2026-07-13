@@ -40,6 +40,7 @@ const C = {
 };
 
 type AppState = "idle" | "generating" | "editing" | "compiling" | "error";
+type EditorMode = "friendly" | "preview" | "source";
 
 function parseSections(code: string) {
   return code.split("\n").reduce<{ name: string; line: number }[]>((acc, l, i) => {
@@ -47,6 +48,177 @@ function parseSections(code: string) {
     if (m) acc.push({ name: m[1], line: i + 1 });
     return acc;
   }, []);
+}
+
+type ResumeDraft = {
+  name: string;
+  summary: string;
+  bullets: string[];
+  sections: {
+    name: string;
+    bullets: { index: number; text: string }[];
+    detailType: "skills" | "certifications" | null;
+    details: { label: string; value: string; index: number }[];
+    entries: {
+      command: "resumeSubheading" | "resumeProjectHeading";
+      occurrence: number;
+      title: string;
+      subtitle: string;
+      meta: string;
+      items: { index: number; text: string }[];
+    }[];
+  }[];
+};
+
+function latexText(value: string) {
+  let clean = value.replace(/%.*$/gm, "")
+    .replace(/\\href\{[^{}]*\}\{([^{}]*)\}/g, "$1")
+    .replace(/\$\|\$/g, "|")
+    .replace(/\\vspace\*?\s*\{[^{}]*\}/g, "")
+    .replace(/\\(?:small|Huge|Large|large|color)\s*\{([^{}]*)\}/g, "$1")
+    .replace(/\\(?:small|smallskip|medskip|bigskip|Huge|Large|large|color)\b/g, "");
+  for (let pass = 0; pass < 3; pass += 1) {
+    clean = clean
+      .replace(/\\(?:textbf|textit|emph)\s*\{([^{}]*)\}/g, "$1")
+      .replace(/\\[a-zA-Z]+\*?(?:\[[^]]*\])?\s*(?:\{[^{}]*\})?/g, "");
+  }
+  return clean.replace(/\\\\/g, " ")
+    .replace(/[{}]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function commandArguments(code: string, command: string) {
+  const result: { occurrence: number; args: string[]; start: number; end: number }[] = [];
+  const pattern = new RegExp("\\\\?" + command + "\\s*", "g");
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(code))) {
+    const beforeMatch = code.slice(Math.max(0, match.index - 20), match.index);
+    if (/newcommand\s*\{\s*$/.test(beforeMatch)) continue;
+    let cursor = match.index + match[0].length;
+    const args: string[] = [];
+    const commandStart = match.index;
+    while (code[cursor] === "{") {
+      let depth = 0;
+      const start = cursor + 1;
+      for (; cursor < code.length; cursor += 1) {
+        if (code[cursor] === "{") depth += 1;
+        if (code[cursor] === "}") depth -= 1;
+        if (depth === 0) break;
+      }
+      args.push(code.slice(start, cursor));
+      cursor += 1;
+    }
+    result.push({ occurrence: result.length, args, start: commandStart, end: cursor });
+  }
+  return result;
+}
+
+function replaceCommandArgument(code: string, command: string, occurrence: number, argIndex: number, value: string) {
+  const target = commandArguments(code, command)[occurrence];
+  if (!target) return code;
+  const prefix = new RegExp("^\\\\?" + command + "\\s*").exec(code.slice(target.start))?.[0] || "";
+  let cursor = target.start + prefix.length;
+  let start = -1;
+  let end = -1;
+  for (let index = 0; index <= argIndex; index += 1) {
+    while (code[cursor] !== "{" && cursor < code.length) cursor += 1;
+    start = cursor + 1;
+    let depth = 1;
+    cursor += 1;
+    while (depth > 0 && cursor < code.length) {
+      if (code[cursor] === "{") depth += 1;
+      if (code[cursor] === "}") depth -= 1;
+      cursor += 1;
+    }
+    end = cursor - 1;
+  }
+  return start >= 0 ? code.slice(0, start) + value.replace(/[{}]/g, "") + code.slice(end) : code;
+}
+
+function parseResumeDraft(code: string): ResumeDraft {
+  const nameMatch = code.match(/\\textcolor\{[^}]+\}\{([^{}]+)\}/);
+  const summaryMatch = code.match(/\\section\{Summary\}([\s\S]*?)(?=\\section\{|\\end\{document\})/i);
+  const bulletMatches = Array.from(code.matchAll(/\\resumeItem\{([^{}]*)\}/g));
+  const bullets = bulletMatches.map(m => latexText(m[1]));
+  const sections = Array.from(code.matchAll(/\\section\{([^{}]+)\}([\s\S]*?)(?=\\section\{|\\end\{document\})/gi))
+    .map(match => {
+      const start = match.index ?? 0;
+      const end = start + match[0].length;
+      const subheadings = commandArguments(code, "resumeSubheading").filter(entry => entry.start >= start && entry.start <= end);
+      const projectHeadings = commandArguments(code, "resumeProjectHeading").filter(entry => entry.start >= start && entry.start <= end);
+      const rawEntries = [
+        ...subheadings.map(entry => ({
+          command: "resumeSubheading" as const,
+          occurrence: entry.occurrence,
+          title: latexText(entry.args[0] || ""),
+          subtitle: latexText(entry.args[2] || ""),
+          meta: [latexText(entry.args[1] || ""), latexText(entry.args[3] || "")].filter(Boolean).join(" · "),
+          start: entry.start,
+        })),
+        ...projectHeadings.map(entry => ({
+          command: "resumeProjectHeading" as const,
+          occurrence: entry.occurrence,
+          title: latexText((entry.args[0] || "").split("$|$")[0]),
+          subtitle: latexText((entry.args[0] || "").split("$|$")[1] || ""),
+          meta: latexText(entry.args[1] || ""),
+          start: entry.start,
+        })),
+      ].sort((a, b) => a.start - b.start);
+      const normalizedName = match[1].trim().toLowerCase();
+      const detailType = normalizedName === "technical skills" ? "skills" as const : normalizedName === "certifications" ? "certifications" as const : null;
+      const sectionBody = match[2];
+      const details = detailType === "skills"
+        ? Array.from(sectionBody.matchAll(/\\textbf\{([^{}]*)\}\{\s*:\s*([^{}]*)\}/g)).map((skill, index) => ({ label: latexText(skill[1]), value: latexText(skill[2]), index }))
+        : detailType === "certifications"
+          ? Array.from(sectionBody.matchAll(/\\item\{([^{}]*)\}/g)).map((cert, index) => ({ label: "Certifications", value: latexText(cert[1]), index }))
+          : [];
+      return {
+        name: match[1].trim(),
+        detailType,
+        details,
+        bullets: bulletMatches
+          .map((bullet, index) => ({ index, text: latexText(bullet[1]), position: bullet.index ?? 0 }))
+          .filter(bullet => bullet.position >= start && bullet.position <= end)
+          .map(({ index, text }) => ({ index, text })),
+        entries: rawEntries.map((entry, index) => {
+          const nextStart = rawEntries[index + 1]?.start ?? end;
+          return {
+            ...entry,
+            items: bulletMatches
+              .map((bullet, bulletIndex) => ({ index: bulletIndex, text: latexText(bullet[1]), position: bullet.index ?? 0 }))
+              .filter(bullet => bullet.position > entry.start && bullet.position < nextStart)
+              .map(({ index: bulletIndex, text }) => ({ index: bulletIndex, text })),
+          };
+        }),
+      };
+    });
+  return {
+    name: nameMatch?.[1] || "Your name",
+    summary: summaryMatch ? latexText(summaryMatch[1]) : "",
+    bullets,
+    sections,
+  };
+}
+
+function replaceFirst(code: string, pattern: RegExp, replacement: string) {
+  return code.replace(pattern, replacement);
+}
+
+function replaceResumeItem(code: string, index: number, value: string) {
+  let seen = -1;
+  return code.replace(/\\resumeItem\{([^{}]*)\}/g, (full) => {
+    seen += 1;
+    return seen === index ? `\\resumeItem{${value.replace(/[{}]/g, "")}}` : full;
+  });
+}
+
+function replaceNthMatch(code: string, pattern: RegExp, index: number, replacement: string | ((full: string) => string)) {
+  let seen = -1;
+  return code.replace(pattern, (full) => {
+    seen += 1;
+    return seen === index ? (typeof replacement === "function" ? replacement(full) : replacement) : full;
+  });
 }
 
 function scrollToLine(ta: HTMLTextAreaElement, lineNum: number) {
@@ -71,12 +243,28 @@ const Icon = ({ children, title, onClick, active }: { children: React.ReactNode;
 
 const Divider = () => <div className="w-px h-4 mx-1 shrink-0" style={{ background: C.border }} />;
 
+const ViewToggle = ({ mode, onChange }: { mode: EditorMode; onChange: (mode: EditorMode) => void }) => (
+  <div className="flex items-center rounded-lg border p-0.5" style={{ borderColor: C.border, background: "#f2eee8" }}>
+    {([
+      ["friendly", "Edit"],
+      ["preview", "Preview"],
+      ["source", "LaTeX"],
+    ] as [EditorMode, string][]).map(([value, label]) => (
+      <button key={value} onClick={() => onChange(value)} className="rounded-md px-2.5 py-1.5 text-[11px] font-semibold transition-colors"
+        style={{ background: mode === value ? "#fffdf9" : "transparent", color: mode === value ? C.green : C.textMuted, boxShadow: mode === value ? "0 1px 3px rgba(40,32,20,0.12)" : "none" }}>
+        {label}
+      </button>
+    ))}
+  </div>
+);
+
 function GeneratePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const jobId = searchParams.get("job_id");
 
   const [jd, setJd] = useState("");
+  const [selectedTemplate, setSelectedTemplate] = useState("classic");
   const [latex, setLatex] = useState("");
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [numPages, setNumPages] = useState(0);
@@ -84,6 +272,7 @@ function GeneratePageContent() {
   const [appState, setAppState] = useState<AppState>("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const [userEmail, setUserEmail] = useState("");
+  const [credits, setCredits] = useState(0);
   const [hasGenerated, setHasGenerated] = useState(false);
   const [scrollTop, setScrollTop] = useState(0);
   const [cursorPos, setCursorPos] = useState({ line: 1, col: 1 });
@@ -101,6 +290,12 @@ function GeneratePageContent() {
   const [jobLabel, setJobLabel] = useState<string | null>(null);
   const [savingToJob, setSavingToJob] = useState(false);
   const [savedToJob, setSavedToJob] = useState(false);
+  const [presetSlug, setPresetSlug] = useState("blank");
+  const [presets, setPresets] = useState<{slug: string, display_name: string, recommended_template: string}[]>([]);
+  const [atsResult, setAtsResult] = useState<{pass: boolean, warnings: string[]} | null>(null);
+  const [editorMode, setEditorMode] = useState<EditorMode>("friendly");
+  const [draft, setDraft] = useState<ResumeDraft>({ name: "", summary: "", bullets: [], sections: [] });
+  const [draftReady, setDraftReady] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -113,7 +308,7 @@ function GeneratePageContent() {
     if (pdfUrl) { window.URL.revokeObjectURL(pdfUrl); setPdfUrl(null); }
     setAppState("compiling"); setErrorMsg("");
     try {
-      const res = await fetch(`${API_URL}/generate/compile`, {
+      const res = await fetch(`${API_URL}/generate/compile-with-check`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ latex: source }),
       });
@@ -125,18 +320,41 @@ function GeneratePageContent() {
         } catch {}
         throw new Error(message);
       }
-      const blob = await res.blob();
+      const { pdf_b64, ats } = await res.json();
+      const byteCharacters = atob(pdf_b64);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) { byteNumbers[i] = byteCharacters.charCodeAt(i); }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: "application/pdf" });
       setPdfUrl(window.URL.createObjectURL(blob));
+      setAtsResult(ats);
       setAppState("editing"); setNumPages(0); setCurrentPage(1);
-    } catch (err: any) { setErrorMsg(err.message); setAppState("error"); }
+    } catch (err: unknown) { setErrorMsg(err instanceof Error ? err.message : "Compile failed"); setAppState("error"); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [latex]);
 
   useEffect(() => {
+    fetch(`${API_URL}/presets`)
+      .then(res => res.json())
+      .then(data => setPresets(data))
+      .catch(console.error);
+
     // Auth check
     fetch(`${API_URL}/auth/me`, { credentials: "include" })
       .then(res => { if (!res.ok) { router.push("/login"); return null; } return res.json(); })
-      .then(data => { if (data) setUserEmail(data.email); })
+      .then(data => { 
+        if (data) { 
+          setUserEmail(data.email); 
+          setCredits(data.credits); 
+          fetch(`${API_URL}/profile/load/${data.email}`, { credentials: "include" })
+            .then(res => res.ok ? res.json() : null)
+            .then(p => {
+              if (p && p.preset_slug) {
+                 setPresetSlug(p.preset_slug);
+              }
+            });
+        } 
+      })
       .catch(() => router.push("/login"));
 
     // If coming from tracker, load existing LaTeX
@@ -157,9 +375,9 @@ function GeneratePageContent() {
       // Also fetch job info for label
       fetch(`${API_URL}/tracker/`, { credentials: "include" })
         .then(res => res.ok ? res.json() : null)
-        .then(jobs => {
+        .then((jobs: { id: number; company_name: string; job_title: string }[] | null) => {
           if (jobs) {
-            const job = jobs.find((j: any) => j.id === parseInt(jobId));
+            const job = jobs.find(j => j.id === parseInt(jobId));
             if (job) setJobLabel(`${job.company_name} — ${job.job_title}`);
           }
         });
@@ -167,7 +385,13 @@ function GeneratePageContent() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobId]);
 
-  useEffect(() => { setSections(parseSections(latex)); }, [latex]);
+  useEffect(() => { 
+    setSections(parseSections(latex));
+    if (hasGenerated && !draftReady && latex) {
+      setDraft(parseResumeDraft(latex));
+      setDraftReady(true);
+    }
+  }, [latex, hasGenerated, draftReady]);
 
   useEffect(() => {
     if (highlightedLine !== null) {
@@ -270,16 +494,34 @@ function GeneratePageContent() {
     if (pdfUrl) { window.URL.revokeObjectURL(pdfUrl); setPdfUrl(null); }
     setAppState("generating"); setErrorMsg("");
     try {
-      const res = await fetch(`${API_URL}/generate/cv`, {
+      const res = await fetch(`${API_URL}/generate/ats-check`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        credentials: "include", body: JSON.stringify({ email: userEmail, jd }),
+        credentials: "include", body: JSON.stringify({ email: userEmail, jd, template_id: selectedTemplate, preset_slug: presetSlug }),
       });
-      if (!res.ok) { const err = await res.json(); throw new Error(err.detail || "Generation failed"); }
-      const { latex: gen } = await res.json();
+      if (!res.ok) { 
+        if (res.status === 402) {
+          setCredits(0);
+          throw new Error("Out of credits! Please upgrade to continue.");
+        }
+        const err = await res.json(); 
+        throw new Error(err.detail || "Generation failed"); 
+      }
+      const { latex: gen, pdf_b64, ats } = await res.json();
       setLatex(gen);
-      await compileLatex(gen);
+      setDraftReady(false);
+      setCredits(c => Math.max(0, c - 1));
+      
+      const byteCharacters = atob(pdf_b64);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) { byteNumbers[i] = byteCharacters.charCodeAt(i); }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: "application/pdf" });
+      setPdfUrl(window.URL.createObjectURL(blob));
+      setAtsResult(ats);
+      
+      setAppState("editing"); setNumPages(0); setCurrentPage(1);
       setHasGenerated(true);
-    } catch (err: any) { setErrorMsg(err.message || "Generation failed"); setAppState("error"); }
+    } catch (err: unknown) { setErrorMsg(err instanceof Error ? err.message : "Generation failed"); setAppState("error"); }
   };
 
   const handleDownload = () => {
@@ -312,6 +554,60 @@ function GeneratePageContent() {
   const isBusy = appState === "generating" || appState === "compiling";
   const lineCount = latex.split("\n").length;
 
+  const updateDraft = (key: "name" | "summary", value: string) => {
+    setDraft(d => ({ ...d, [key]: value }));
+    if (key === "name") {
+      setLatex(current => replaceFirst(current, /\\textcolor\{[^}]+\}\{([^{}]+)\}/, `\\textcolor{NavyBlue}{${value}}`));
+    } else {
+      setLatex(current => replaceFirst(current, /(\\section\{Summary\}[\s\S]*?)(?=\\section\{|\\end\{document\})/i,
+        `\\section{Summary}\n{\\small ${value}\\par}\n`));
+    }
+  };
+
+  const updateBullet = (index: number, value: string) => {
+    setDraft(d => ({ ...d, bullets: d.bullets.map((b, i) => i === index ? value : b) }));
+    setLatex(current => replaceResumeItem(current, index, value));
+  };
+
+  const updateEntry = (entry: ResumeDraft["sections"][number]["entries"][number], field: "title" | "subtitle" | "meta", value: string) => {
+    setDraft(d => ({
+      ...d,
+      sections: d.sections.map(section => ({
+        ...section,
+        entries: section.entries.map(item => item === entry ? { ...item, [field]: value } : item),
+      })),
+    }));
+    if (entry.command === "resumeSubheading") {
+      const fieldIndex = field === "title" ? 0 : field === "subtitle" ? 2 : 1;
+      setLatex(current => replaceCommandArgument(current, entry.command, entry.occurrence, fieldIndex, value));
+    } else {
+      const fieldIndex = field === "meta" ? 1 : 0;
+      setLatex(current => replaceCommandArgument(current, entry.command, entry.occurrence, fieldIndex, value));
+    }
+  };
+
+  const updateSectionDetail = (sectionName: string, detail: ResumeDraft["sections"][number]["details"][number], value: string) => {
+    setDraft(d => ({
+      ...d,
+      sections: d.sections.map(section => section.name === sectionName
+        ? { ...section, details: section.details.map(item => item.index === detail.index ? { ...item, value } : item) }
+        : section),
+    }));
+    setLatex(current => {
+      const section = draft.sections.find(item => item.name === sectionName);
+      if (section?.detailType === "skills") {
+        return replaceNthMatch(current, /\\textbf\{([^{}]*)\}\{\s*:\s*([^{}]*)\}/g, detail.index, (full: string) => {
+          const label = full.match(/\\textbf\{([^{}]*)\}/)?.[1] || detail.label;
+          return "\\textbf{" + label + "}{: " + value.replace(/[{}]/g, "") + "}";
+        });
+      }
+      if (section?.detailType === "certifications") {
+        return replaceNthMatch(current, /\\item\{([^{}]*)\}/g, detail.index, "\\item{" + value.replace(/[{}]/g, "") + "}");
+      }
+      return current;
+    });
+  };
+
   // ── Pre-generation ─────────────────────────────────────────────
   if (!hasGenerated) {
     return (
@@ -333,7 +629,15 @@ function GeneratePageContent() {
               <p className="mt-4 text-sm leading-relaxed" style={{ color: C.textMuted }}>
                 Paste a job description. Gemini tailors your CV, then opens<br />a live LaTeX editor so you can fine-tune before exporting.
               </p>
-              {userEmail && <p className="mt-2 text-xs" style={{ color: C.textFaint }}>Signed in as {userEmail}</p>}
+              {userEmail && (
+                <div className="flex items-center gap-3 mt-4">
+                  <p className="text-xs" style={{ color: C.textFaint }}>Signed in as {userEmail}</p>
+                  <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm" style={{ background: C.bgCard, border: `1px solid ${C.border}` }}>
+                    <span style={{ color: C.green, fontSize: "10px" }}>⚡</span>
+                    <span style={{ color: C.text, fontSize: "10px", fontWeight: "bold", letterSpacing: "0.1em", textTransform: "uppercase" }}>{credits} Credits</span>
+                  </div>
+                </div>
+              )}
             </div>
             <div className="relative mb-5">
               <div className="absolute top-0 left-0 right-0 h-px" style={{ background: `linear-gradient(to right, ${C.greenBorder}, transparent)` }} />
@@ -344,6 +648,54 @@ function GeneratePageContent() {
                 value={jd} onChange={e => setJd(e.target.value)} />
               <div className="absolute bottom-3 right-3 text-[10px]" style={{ color: C.textFaint }}>{jd.length} chars</div>
             </div>
+            
+            <div className="mb-6">
+              <label className="block text-[10px] tracking-[0.25em] uppercase mb-3" style={{ color: C.textMuted }}>Your Role (Optional Steering)</label>
+              <input 
+                list="generate-presets"
+                className="w-full p-3 text-sm outline-none rounded-sm transition-colors mb-6"
+                style={{ background: C.bgCard, color: C.text, border: `1px solid ${C.border}` }}
+                value={presetSlug === 'blank' ? '' : presetSlug}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setPresetSlug(val || 'blank');
+                  const p = presets.find(x => x.display_name.toLowerCase() === val.toLowerCase());
+                  if (p && p.recommended_template) setSelectedTemplate(p.recommended_template);
+                }}
+                placeholder="e.g. Full Stack Developer, Marketing Manager..."
+              />
+              <datalist id="generate-presets">
+                {presets.map(p => (
+                  <option key={p.slug} value={p.display_name} />
+                ))}
+              </datalist>
+
+              <label className="block text-[10px] tracking-[0.25em] uppercase mb-3" style={{ color: C.textMuted }}>Select Template</label>
+              <div className="grid grid-cols-2 gap-4">
+                {[
+                  {id: "classic", name: "Classic Professional", desc: "Traditional single-column layout"}, 
+                  {id: "modern", name: "Modern Tech", desc: "Sleek layout with clean typography and subtle color accents"}
+                ].map(tpl => (
+                  <div 
+                    key={tpl.id} 
+                    onClick={() => setSelectedTemplate(tpl.id)}
+                    className="cursor-pointer rounded-sm p-3 transition-all"
+                    style={{ 
+                      background: selectedTemplate === tpl.id ? C.greenLight : C.bgCard, 
+                      border: `1px solid ${selectedTemplate === tpl.id ? C.greenBorder : C.border}` 
+                    }}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-[12px] font-bold" style={{ color: selectedTemplate === tpl.id ? C.green : C.text }}>{tpl.name}</span>
+                      {selectedTemplate === tpl.id && <span className="text-[10px]" style={{ color: C.green }}>✓</span>}
+                    </div>
+                    <p className="text-[10px] leading-relaxed" style={{ color: C.textMuted }}>{tpl.desc}</p>
+                    {/* The user will add images later: <img src={`/templates/${tpl.id}.png`} className="w-full mt-2 rounded border" style={{ borderColor: C.border }} /> */}
+                  </div>
+                ))}
+              </div>
+            </div>
+
             {appState === "error" && (
               <div className="mb-4 px-4 py-3 text-xs rounded-sm" style={{ background: C.redBg, border: "1px solid #ffcccc", color: C.red }}>✗ {errorMsg}</div>
             )}
@@ -366,6 +718,113 @@ function GeneratePageContent() {
     );
   }
 
+  if (editorMode === "friendly") {
+    return (
+      <AppLayout>
+        <div className="flex h-full min-h-0 flex-col" style={{ background: "#f7f5f0", color: C.text }}>
+          <header className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3 sm:px-7 sm:py-4" style={{ background: "#fffdf9", borderColor: C.border }}>
+            <div className="flex items-center gap-4">
+              <button onClick={() => jobId ? router.push("/tracker") : router.push("/dashboard")} className="text-xs font-semibold" style={{ color: C.green }}>← Back</button>
+              <div className="h-5 w-px" style={{ background: C.border }} />
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: C.textFaint }}>Resume editor</p>
+                <h1 className="text-lg font-semibold" style={{ fontFamily: "Georgia, serif" }}>{jobLabel || "Tailored resume"}</h1>
+              </div>
+            </div>
+            <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
+              <span className="hidden text-xs lg:inline" style={{ color: C.textMuted }}>Your changes are ready to preview</span>
+              <button onClick={() => compileLatex()} disabled={isBusy} className="rounded-md px-4 py-2 text-xs font-bold text-white shadow-sm disabled:opacity-50" style={{ background: C.green }}>
+                {appState === "compiling" ? "Updating preview…" : "Update preview"}
+              </button>
+              <button onClick={handleDownload} disabled={!pdfUrl} className="rounded-md border px-3 py-2 text-xs font-semibold disabled:opacity-40" style={{ borderColor: C.border, color: C.textMid }}>Download PDF</button>
+              <ViewToggle mode={editorMode} onChange={setEditorMode} />
+            </div>
+          </header>
+
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto lg:flex-row lg:overflow-hidden">
+            <section className="w-full shrink-0 px-4 py-6 sm:px-5 lg:w-[53%] lg:flex-1 lg:overflow-y-auto lg:px-10 lg:py-7">
+              <div className="mx-auto max-w-2xl">
+                <div className="mb-7">
+                  <div className="mb-2 flex items-center gap-2"><span className="h-2 w-2 rounded-full" style={{ background: C.green }} /><span className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: C.green }}>Step 1 of 1</span></div>
+                  <h2 className="text-3xl font-semibold" style={{ fontFamily: "Georgia, serif" }}>Make it yours.</h2>
+                  <p className="mt-2 max-w-lg text-sm leading-6" style={{ color: C.textMuted }}>Edit the words you want to change. The layout and formatting are handled for you.</p>
+                </div>
+
+                <div className="space-y-5">
+                  <div className="rounded-xl border p-5 shadow-[0_8px_30px_rgba(40,32,20,0.04)]" style={{ background: "#fffdf9", borderColor: C.border }}>
+                    <div className="mb-4 flex items-start justify-between"><div><h3 className="font-semibold">Header</h3><p className="mt-1 text-xs" style={{ color: C.textMuted }}>Your name appears at the top of the page.</p></div><span className="rounded-full px-2 py-1 text-[10px] font-bold" style={{ color: C.green, background: C.greenLight }}>Looks good</span></div>
+                    <label className="mb-2 block text-xs font-semibold" htmlFor="resume-name">Full name</label>
+                    <input id="resume-name" value={draft.name} onChange={e => updateDraft("name", e.target.value)} className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none focus:ring-2" style={{ borderColor: C.border, background: "#faf8f4", color: C.text, outlineColor: C.greenBorder }} />
+                  </div>
+
+                  <div className="rounded-xl border p-5 shadow-[0_8px_30px_rgba(40,32,20,0.04)]" style={{ background: "#fffdf9", borderColor: C.border }}>
+                    <div className="mb-4"><h3 className="font-semibold">Professional summary</h3><p className="mt-1 text-xs" style={{ color: C.textMuted }}>A short introduction tailored to this role.</p></div>
+                    <textarea value={draft.summary} onChange={e => updateDraft("summary", e.target.value)} rows={Math.max(3, Math.ceil(draft.summary.length / 78) + 1)} className="w-full resize-y rounded-lg border px-3 py-2.5 text-sm leading-6 outline-none focus:ring-2" style={{ borderColor: C.border, background: "#faf8f4", color: C.text, outlineColor: C.greenBorder }} />
+                    <p className="mt-2 text-[11px]" style={{ color: C.textFaint }}>Tip: Keep this to 2–4 sentences.</p>
+                  </div>
+
+                  <div className="rounded-xl border p-5 shadow-[0_8px_30px_rgba(40,32,20,0.04)]" style={{ background: "#fffdf9", borderColor: C.border }}>
+                    <div className="mb-4"><h3 className="font-semibold">Resume sections</h3><p className="mt-1 text-xs" style={{ color: C.textMuted }}>Summary, education, experience, projects, and other sections from your resume.</p></div>
+                    <div className="space-y-3">
+                      {draft.sections.filter(section => section.name.toLowerCase() !== "summary").map(section => (
+                        <div key={section.name} className="border-t pt-5 first:border-t-0 first:pt-0" style={{ borderColor: C.border }}>
+                          <div className="mb-3 flex items-center justify-between"><h4 className="font-semibold">{section.name}</h4><span className="text-[11px]" style={{ color: C.textFaint }}>{section.entries.length || section.bullets.length || section.details.length} {section.entries.length === 1 ? "entry" : section.entries.length > 1 ? "entries" : section.details.length === 1 ? "row" : section.details.length > 1 ? "rows" : section.bullets.length === 1 ? "item" : "items"}</span></div>
+                          <div className="space-y-3">
+                            {section.detailType === "skills" && section.details.map(detail => <div key={detail.index} className="grid gap-2 sm:grid-cols-[minmax(150px,0.35fr)_1fr]"><label className="text-xs font-semibold">Category<input value={detail.label} readOnly className="mt-1 w-full rounded-md border px-2.5 py-2 text-sm font-normal" style={{ borderColor: C.border, background: "#f2eee8", color: C.textMuted }} /></label><label className="text-xs font-semibold">Skills / tools<textarea value={detail.value} onChange={e => updateSectionDetail(section.name, detail, e.target.value)} rows={Math.max(2, Math.ceil(detail.value.length / 78) + 1)} className="mt-1 w-full resize-y overflow-hidden rounded-md border px-2.5 py-2 text-sm font-normal leading-5 outline-none focus:ring-2" style={{ borderColor: C.border, background: "#faf8f4", color: C.text, outlineColor: C.greenBorder }} /></label></div>)}
+                            {section.detailType === "certifications" && section.details.map(detail => <label key={detail.index} className="text-xs font-semibold">Certification list<textarea value={detail.value} onChange={e => updateSectionDetail(section.name, detail, e.target.value)} rows={Math.max(3, Math.ceil(detail.value.length / 78) + 1)} className="mt-1 w-full resize-y overflow-hidden rounded-md border px-2.5 py-2 text-sm font-normal leading-5 outline-none focus:ring-2" style={{ borderColor: C.border, background: "#faf8f4", color: C.text, outlineColor: C.greenBorder }} /></label>)}
+                            {section.entries.map(entry => <div key={entry.command + entry.occurrence} className="rounded-lg border p-4" style={{ background: "#faf8f4", borderColor: C.border }}>
+                              <div className="grid gap-3 sm:grid-cols-2">
+                                <label className="text-xs font-semibold">Title<input value={entry.title} onChange={e => updateEntry(entry, "title", e.target.value)} className="mt-1 w-full rounded-md border px-2.5 py-2 text-sm font-normal outline-none focus:ring-2" style={{ borderColor: C.border, background: "#fffdf9", color: C.text, outlineColor: C.greenBorder }} /></label>
+                                <label className="text-xs font-semibold">{entry.command === "resumeProjectHeading" ? "Tools / stack" : "Role"}<input value={entry.subtitle} onChange={e => updateEntry(entry, "subtitle", e.target.value)} className="mt-1 w-full rounded-md border px-2.5 py-2 text-sm font-normal outline-none focus:ring-2" style={{ borderColor: C.border, background: "#fffdf9", color: C.text, outlineColor: C.greenBorder }} /></label>
+                                <label className="text-xs font-semibold sm:col-span-2">{entry.command === "resumeProjectHeading" ? "Dates" : "Location · dates"}<input value={entry.meta} onChange={e => updateEntry(entry, "meta", e.target.value)} className="mt-1 w-full rounded-md border px-2.5 py-2 text-sm font-normal outline-none focus:ring-2" style={{ borderColor: C.border, background: "#fffdf9", color: C.text, outlineColor: C.greenBorder }} /></label>
+                              </div>
+                              <div className="mt-4 space-y-3">
+                                {entry.items.map((bullet, itemIndex) => <div key={bullet.index} className="flex gap-2"><span className="mt-3 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: C.greenBorder }} /><textarea aria-label={section.name + " description " + (itemIndex + 1)} value={bullet.text} onChange={e => updateBullet(bullet.index, e.target.value)} rows={Math.max(2, Math.ceil(bullet.text.length / 78) + 1)} className="w-full resize-y overflow-hidden rounded-lg border px-3 py-2 text-sm leading-5 outline-none focus:ring-2" style={{ borderColor: C.border, background: "#fffdf9", color: C.text, outlineColor: C.greenBorder }} /></div>)}
+                              </div>
+                            </div>)}
+                            {section.entries.length === 0 && section.bullets.map((bullet, itemIndex) => <div key={bullet.index} className="flex gap-2"><span className="mt-3 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: C.greenBorder }} /><textarea aria-label={section.name + " description " + (itemIndex + 1)} value={bullet.text} onChange={e => updateBullet(bullet.index, e.target.value)} rows={Math.max(2, Math.ceil(bullet.text.length / 78) + 1)} className="w-full resize-y overflow-hidden rounded-lg border px-3 py-2 text-sm leading-5 outline-none focus:ring-2" style={{ borderColor: C.border, background: "#faf8f4", color: C.text, outlineColor: C.greenBorder }} /></div>)}
+                            {section.entries.length === 0 && section.bullets.length === 0 && section.details.length === 0 && <p className="rounded-lg px-3 py-4 text-sm" style={{ background: "#f5f2ed", color: C.textMuted }}>This section has no editable descriptions yet. Its existing layout stays preserved.</p>}
+                          </div>
+                        </div>
+                      ))}
+                      {draft.sections.length === 0 && <p className="rounded-lg px-3 py-4 text-sm" style={{ background: "#f5f2ed", color: C.textMuted }}>No sections were detected in this resume.</p>}
+                    </div>
+                  </div>
+                </div>
+                {appState === "error" && <div className="mt-5 rounded-lg border px-4 py-3 text-sm" style={{ color: C.red, background: C.redBg, borderColor: "#ffcccc" }}>The preview could not be updated. {errorMsg}</div>}
+              </div>
+            </section>
+
+            <section className="flex min-h-[560px] w-full shrink-0 flex-col border-t lg:min-h-0 lg:w-auto lg:flex-1 lg:border-l lg:border-t-0" style={{ background: "#e9e5de", borderColor: C.border }}>
+              <div className="flex items-center justify-between border-b px-6 py-3" style={{ background: "#f3f0ea", borderColor: C.border }}><div><p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: C.textMuted }}>Live preview</p><p className="mt-1 text-[11px]" style={{ color: C.textFaint }}>Update the preview when you’re ready</p></div>{atsResult && <span className="rounded-full border px-2 py-1 text-[10px] font-bold" style={{ background: atsResult.pass ? C.greenLight : C.redBg, color: atsResult.pass ? C.green : C.red, borderColor: atsResult.pass ? C.greenBorder : "#ffcccc" }}>{atsResult.pass ? "ATS friendly" : "Check suggestions"}</span>}</div>
+              <div className="flex flex-1 items-start justify-center overflow-auto p-4 sm:p-6">
+                {isBusy && <div className="absolute mt-20 rounded-lg bg-white/80 px-4 py-3 text-xs shadow-sm" style={{ color: C.textMuted }}>Updating your preview…</div>}
+                {pdfUrl && <div style={{ filter: "drop-shadow(0 6px 20px rgba(0,0,0,0.18))" }}><Document file={pdfUrl} onLoadSuccess={onDocumentLoadSuccess} loading={<div className="p-10 text-xs" style={{ color: C.textMuted }}>Loading preview…</div>} error={<div className="p-10 text-xs" style={{ color: C.red }}>Preview unavailable</div>}><Page pageNumber={currentPage} renderTextLayer={true} renderAnnotationLayer={true} width={Math.min(660, window.innerWidth < 1024 ? window.innerWidth - 64 : window.innerWidth * 0.43)} /></Document></div>}
+              </div>
+            </section>
+          </div>
+        </div>
+      </AppLayout>
+    );
+  }
+
+  if (editorMode === "preview") {
+    return (
+      <AppLayout>
+        <div className="flex h-full flex-col" style={{ background: "#e9e5de", color: C.text }}>
+          <header className="flex items-center justify-between border-b px-7 py-4" style={{ background: "#fffdf9", borderColor: C.border }}>
+            <div><p className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: C.textFaint }}>Resume preview</p><h1 className="text-lg font-semibold" style={{ fontFamily: "Georgia, serif" }}>{jobLabel || "Tailored resume"}</h1></div>
+            <div className="flex items-center gap-3"><ViewToggle mode={editorMode} onChange={setEditorMode} /><button onClick={() => compileLatex()} disabled={isBusy} className="rounded-md px-4 py-2 text-xs font-bold text-white disabled:opacity-50" style={{ background: C.green }}>{isBusy ? "Updating…" : "Update preview"}</button><button onClick={handleDownload} disabled={!pdfUrl} className="rounded-md border px-3 py-2 text-xs font-semibold disabled:opacity-40" style={{ borderColor: C.border, color: C.textMid }}>Download PDF</button></div>
+          </header>
+          <div className="flex flex-1 items-start justify-center overflow-auto p-8">
+            {isBusy && <div className="absolute mt-10 rounded-lg bg-white/80 px-4 py-3 text-xs shadow-sm" style={{ color: C.textMuted }}>Updating your preview…</div>}
+            {pdfUrl && <div style={{ filter: "drop-shadow(0 8px 24px rgba(0,0,0,0.18))" }}><Document file={pdfUrl} onLoadSuccess={onDocumentLoadSuccess} loading={<div className="p-10 text-xs" style={{ color: C.textMuted }}>Loading preview…</div>} error={<div className="p-10 text-xs" style={{ color: C.red }}>Preview unavailable</div>}><Page pageNumber={currentPage} renderTextLayer={true} renderAnnotationLayer={true} width={Math.min(760, window.innerWidth - 120)} /></Document></div>}
+          </div>
+        </div>
+      </AppLayout>
+    );
+  }
+
   // ── Editor view ────────────────────────────────────────────────
   return (
     <AppLayout>
@@ -373,7 +832,7 @@ function GeneratePageContent() {
         style={{ background: C.bg, color: C.text, userSelect: isDragging ? "none" : "auto" }}>
 
         {/* Navbar */}
-        <div className="flex items-center justify-between px-4 h-11 shrink-0" style={{ background: C.bgCard, borderBottom: `1px solid ${C.border}` }}>
+        <div className="flex min-h-11 flex-wrap items-center justify-between gap-2 px-3 py-2 shrink-0 sm:px-4" style={{ background: C.bgCard, borderBottom: `1px solid ${C.border}` }}>
           <div className="flex items-center gap-3">
             <button onClick={() => jobId ? router.push("/tracker") : router.push("/dashboard")}
               className="text-[10px] tracking-[0.3em] uppercase hover:opacity-60 transition-opacity" style={{ color: C.green }}>
@@ -391,7 +850,8 @@ function GeneratePageContent() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2">
+            <ViewToggle mode={editorMode} onChange={setEditorMode} />
             <button onClick={() => compileLatex()} disabled={isBusy}
               className="flex items-center gap-2 px-4 py-1.5 text-[11px] font-bold tracking-[0.12em] uppercase rounded-sm transition-all disabled:cursor-not-allowed"
               style={{ background: isBusy ? C.border : C.green, color: isBusy ? C.textFaint : "#fff", border: `1px solid ${isBusy ? C.border : C.green}` }}>
@@ -471,7 +931,7 @@ function GeneratePageContent() {
         </div>
 
         {/* Icon Toolbar */}
-        <div className="flex items-center gap-0.5 px-3 py-1.5 shrink-0" style={{ background: C.bgCard, borderBottom: `1px solid ${C.border}` }}>
+        <div className="flex items-center gap-0.5 overflow-x-auto px-3 py-1.5 shrink-0" style={{ background: C.bgCard, borderBottom: `1px solid ${C.border}` }}>
           <Icon title="Bold" onClick={() => insertAround("\\textbf{", "}")}>
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><text x="2" y="11" fontSize="12" fontWeight="900" fontFamily="serif" fill="currentColor">B</text></svg>
           </Icon>
@@ -535,10 +995,10 @@ function GeneratePageContent() {
         )}
 
         {/* Resizable panels */}
-        <div ref={containerRef} className="flex flex-1 overflow-hidden" style={{ cursor: isDragging ? "col-resize" : "auto" }}>
+        <div ref={containerRef} className="generate-source-panels flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row" style={{ cursor: isDragging ? "col-resize" : "auto" }}>
 
           {/* Left: Editor + Sections */}
-          <div className="flex flex-col overflow-hidden" style={{ width: `${splitPct}%` }}>
+          <div className="generate-source-left flex flex-col overflow-hidden" style={{ width: `${splitPct}%` }}>
             <div className="flex flex-1 overflow-hidden" style={{ background: C.bgEditor }}>
               {/* Line numbers */}
               <div className="overflow-hidden shrink-0" style={{ width: "3.5rem", background: C.bgCard, borderRight: `1px solid ${C.border}` }}>
@@ -625,7 +1085,7 @@ function GeneratePageContent() {
 
           {/* Drag divider */}
           <div onMouseDown={onDividerMouseDown}
-            className="flex items-center justify-center shrink-0 transition-colors"
+            className="generate-source-divider flex items-center justify-center shrink-0 transition-colors"
             style={{ width: "5px", cursor: "col-resize", background: isDragging ? C.greenBorder : C.border, zIndex: 10 }}
             onMouseEnter={e => { if (!isDragging) e.currentTarget.style.background = C.borderStrong; }}
             onMouseLeave={e => { if (!isDragging) e.currentTarget.style.background = C.border; }}>
@@ -635,16 +1095,32 @@ function GeneratePageContent() {
           </div>
 
           {/* Right: PDF Preview */}
-          <div className="flex flex-col overflow-hidden" style={{ flex: 1 }}>
+          <div className="generate-source-preview flex min-h-0 flex-1 flex-col overflow-hidden">
             <div className="flex items-center justify-between px-4 py-2 shrink-0" style={{ background: C.bgCard, borderBottom: `1px solid ${C.border}` }}>
               <div className="flex items-center gap-2">
                 <span className="text-[10px] tracking-[0.2em] uppercase" style={{ color: C.textFaint }}>Preview</span>
                 <span className="text-[10px] px-2 py-0.5 rounded" style={{ background: C.greenLight, color: C.green, border: `1px solid ${C.greenBorder}` }}>
                   Double-click text to jump to editor
                 </span>
+                {atsResult && (
+                  <div className="relative group flex items-center ml-2">
+                    {atsResult.pass ? (
+                       <span className="text-[10px] px-2 py-0.5 rounded cursor-help font-bold tracking-wider" style={{ background: C.greenLight, color: C.green, border: `1px solid ${C.greenBorder}` }}>ATS: PASS</span>
+                    ) : (
+                       <span className="text-[10px] px-2 py-0.5 rounded cursor-help font-bold tracking-wider" style={{ background: C.redBg, color: C.red, border: "1px solid #ffcccc" }}>ATS: WARNINGS</span>
+                    )}
+                    {atsResult.warnings.length > 0 && (
+                      <div className="absolute top-full mt-2 left-0 w-64 p-3 bg-[#1a1814] text-[#f5f2ed] text-[10px] rounded shadow-lg hidden group-hover:block z-50">
+                        <ul className="list-disc pl-4 space-y-1">
+                          {atsResult.warnings.map((w, i) => <li key={i}>{w}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="flex items-center gap-3">
-                {clickedWord && <span className="text-[10px]" style={{ color: C.green }}>→ "{clickedWord}"</span>}
+                {clickedWord && <span className="text-[10px]" style={{ color: C.green }}>→ &quot;{clickedWord}&quot;</span>}
                 {numPages > 0 && <span className="text-[10px]" style={{ color: C.textFaint }}>{numPages}p</span>}
                 <div className="flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full" style={{ background: appState === "editing" ? C.green : appState === "error" ? C.red : C.borderStrong }} />
@@ -667,7 +1143,7 @@ function GeneratePageContent() {
                     loading={<div className="flex items-center justify-center h-40 text-[10px] uppercase" style={{ color: C.textMuted }}>Loading...</div>}
                     error={<div className="flex items-center justify-center h-40 text-[11px]" style={{ color: C.red }}>Failed to render</div>}>
                     <Page pageNumber={currentPage} renderTextLayer={true} renderAnnotationLayer={true}
-                      width={Math.min(700, (window.innerWidth * (1 - splitPct / 100)) - 60)} />
+                      width={Math.min(700, window.innerWidth < 1024 ? window.innerWidth - 64 : (window.innerWidth * (1 - splitPct / 100)) - 60)} />
                   </Document>
                 </div>
               )}

@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 from sqlalchemy.orm import Session, joinedload
@@ -36,6 +38,7 @@ def serialize_job(job: db_models.JobApplication) -> dict:
         "priority": job.priority,
         "notes": job.notes,
         "cover_letter": job.cover_letter,
+        "template_id": job.template_id or "classic",
     }
 
 @router.get("")
@@ -127,11 +130,11 @@ async def generate_pdf_for_job(job_id: int, request: Request, db: Session = Depe
         raise HTTPException(status_code=404, detail="Profile not found — fill in your profile first")
 
     # 1. Generate LaTeX
-    latex_code = generate_latex_resume(profile, job.job_description)
+    latex_code = generate_latex_resume(profile, job.job_description, template_id=job.template_id or "classic", db=db)
 
     # 2. Compile PDF with the Python-managed Tectonic binary
     try:
-        pdf_bytes = compile_latex_to_pdf(latex_code)
+        pdf_bytes = await asyncio.to_thread(compile_latex_to_pdf, latex_code)
     except PDFCompilationError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -231,7 +234,7 @@ async def save_latex(job_id: int, data: SaveLatexRequest, request: Request, db: 
     pdf_updated = False
     compilation_error = None
     try:
-        job.pdf_data = compile_latex_to_pdf(data.latex)
+        job.pdf_data = await asyncio.to_thread(compile_latex_to_pdf, data.latex)
         job.pdf_generated_at = datetime.utcnow()
         pdf_updated = True
     except PDFCompilationError as exc:

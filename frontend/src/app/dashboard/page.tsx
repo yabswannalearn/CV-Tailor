@@ -42,12 +42,14 @@ interface Profile {
   projects: Project[]
   skills: { skill_name: string }[]
   certifications: Certification[]
+  preset_slug: string
 }
 
 const emptyProfile: Profile = {
   first_name: "", last_name: "", mobile_no: "", email: "",
   linkedin: "", github: "", portfolio: "",
   education: [], experience: [], projects: [], skills: [], certifications: [],
+  preset_slug: "blank",
 }
 
 export default function DashboardPage() {
@@ -56,23 +58,17 @@ export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState<
     "personal" | "education" | "experience" | "projects" | "skills" | "certifications"
   >("personal")
+  const [mobileSectionsOpen, setMobileSectionsOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">("idle")
   const [userEmail, setUserEmail] = useState("")
+  const [credits, setCredits] = useState(0)
   const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [presets, setPresets] = useState<{slug: string, display_name: string}[]>([])
 
-  useEffect(() => {
-    fetch(`${API}/auth/me`, { credentials: "include" })
-      .then((res) => {
-        if (!res.ok) { router.push("/login"); return null }
-        return res.json()
-      })
-      .then((data) => {
-        if (!data) return
-        setUserEmail(data.email)
-        return fetch(`${API}/profile/load/${data.email}`, { credentials: "include" })
-      })
+  const fetchProfile = (email: string) => {
+    return fetch(`${API}/profile/load/${email}`, { credentials: "include" })
       .then((res) => {
         if (!res || !res.ok) return null
         return res.json()
@@ -87,6 +83,7 @@ export default function DashboardPage() {
           linkedin: data.linkedin || "",
           github: data.github || "",
           portfolio: data.portfolio || "",
+          preset_slug: data.preset_slug || "blank",
           education: (data.education || []).map((e: any) => ({
             school_name: e.school_name,
             course: e.course,
@@ -113,6 +110,25 @@ export default function DashboardPage() {
           })),
         })
       })
+  }
+
+  useEffect(() => {
+    fetch(`${API}/presets`)
+      .then(res => res.json())
+      .then(data => setPresets(data))
+      .catch(console.error)
+
+    fetch(`${API}/auth/me`, { credentials: "include" })
+      .then((res) => {
+        if (!res.ok) { router.push("/login"); return null }
+        return res.json()
+      })
+      .then((data) => {
+        if (!data) return
+        setUserEmail(data.email)
+        setCredits(data.credits)
+        return fetchProfile(data.email)
+      })
       .catch(() => router.push("/login"))
   }, [])
 
@@ -129,6 +145,9 @@ export default function DashboardPage() {
       if (!res.ok) throw new Error()
       setSaveStatus("success")
       setTimeout(() => setSaveStatus("idle"), 3000)
+      if (userEmail) {
+        await fetchProfile(userEmail)
+      }
     } catch {
       setSaveStatus("error")
     } finally {
@@ -156,6 +175,7 @@ export default function DashboardPage() {
         body: formData
       });
       if (!res.ok) {
+        if (res.status === 402) throw new Error("Out of credits! Please upgrade to continue.");
         const err = await res.json();
         throw new Error(err.detail || "Upload failed");
       }
@@ -177,6 +197,7 @@ export default function DashboardPage() {
           skills: parsed.skills?.length ? parsed.skills : prev.skills,
           certifications: parsed.certifications?.length ? parsed.certifications : prev.certifications,
         }));
+        setCredits((c) => Math.max(0, c - 1));
         alert("Profile successfully auto-filled! Please review and click 'Save Profile'.");
       }
     } catch (error: any) {
@@ -210,20 +231,26 @@ export default function DashboardPage() {
       <div className="pointer-events-none fixed inset-0 opacity-[0.07] z-0"
         style={{ backgroundImage: GRAIN, backgroundRepeat: "repeat", backgroundSize: "128px" }} />
 
-      <div className="relative z-10 max-w-3xl mx-auto px-6 py-12">
+      <div className="relative z-10 mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-12">
 
         {/* Top bar */}
-        <div className="flex items-center justify-between mb-12">
+        <div className="mb-8 flex flex-wrap items-start justify-between gap-5 sm:mb-12">
           <div>
             <div className="text-[10px] tracking-[0.3em] text-[#5a8a00] uppercase mb-1">cv_tailor</div>
             <h1 className="text-2xl font-bold text-[#1a1814]" style={{ fontFamily: "'Georgia', serif" }}>
               Profile Dashboard
             </h1>
-            <p className="text-[#b0aba4] text-xs mt-1">{userEmail}</p>
+            <div className="flex items-center gap-3 mt-2">
+              <p className="text-[#b0aba4] text-xs">{userEmail}</p>
+              <div className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-[#eeebe5] rounded-sm border border-[#d4cfc7]">
+                <span className="text-[#5a8a00] text-[10px]">⚡</span>
+                <span className="text-[#1a1814] text-[10px] font-bold tracking-[0.1em] uppercase">{credits} Credits</span>
+              </div>
+            </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:gap-3">
             <button onClick={() => router.push("/generate")}
-              className="px-4 py-2 bg-[#1a1814] text-[#f5f2ed] text-xs font-bold tracking-[0.15em] uppercase rounded-sm hover:bg-[#2a2520] transition-colors">
+              className="flex-1 px-3 py-2 text-center bg-[#1a1814] text-[#f5f2ed] text-xs font-bold tracking-[0.15em] uppercase rounded-sm hover:bg-[#2a2520] transition-colors sm:flex-none sm:px-4">
               Generate CV →
             </button>
             <input 
@@ -234,18 +261,51 @@ export default function DashboardPage() {
               className="hidden" 
             />
             <button onClick={() => fileInputRef.current?.click()} disabled={uploading}
-              className="px-4 py-2 bg-[#5a8a00] text-[#f5f2ed] text-xs font-bold tracking-[0.15em] uppercase rounded-sm hover:bg-[#4a7200] transition-colors disabled:opacity-50">
+              className="flex-1 px-3 py-2 text-center bg-[#5a8a00] text-[#f5f2ed] text-xs font-bold tracking-[0.15em] uppercase rounded-sm hover:bg-[#4a7200] transition-colors disabled:opacity-50 sm:flex-none sm:px-4">
               {uploading ? "Parsing..." : "Auto-Fill via PDF"}
             </button>
             <button onClick={handleLogout}
-              className="px-4 py-2 border border-[#d4cfc7] text-[#7a7570] text-xs font-bold tracking-[0.15em] uppercase rounded-sm hover:border-[#b0aba4] hover:text-[#1a1814] transition-colors">
+              className="flex-1 px-3 py-2 text-center border border-[#d4cfc7] text-[#7a7570] text-xs font-bold tracking-[0.15em] uppercase rounded-sm hover:border-[#b0aba4] hover:text-[#1a1814] transition-colors sm:flex-none sm:px-4">
               Logout
             </button>
           </div>
         </div>
 
+        {/* Mobile section picker */}
+        <div className="mb-4 rounded-xl border border-[#d4cfc7] bg-[#fffdf9] p-3 shadow-sm md:hidden">
+          <button
+            type="button"
+            onClick={() => setMobileSectionsOpen((open) => !open)}
+            className="flex w-full items-center justify-between gap-3 text-left"
+          >
+            <span>
+              <span className="block text-[10px] uppercase tracking-[0.2em] text-[#7a7570]">Editing section</span>
+              <span className="mt-1 block text-sm font-bold capitalize text-[#1a1814]">{activeTab}</span>
+            </span>
+            <span className="flex h-8 w-8 items-center justify-center rounded-full border border-[#d4cfc7] text-[#5a8a00]">
+              {mobileSectionsOpen ? "−" : "+"}
+            </span>
+          </button>
+          {mobileSectionsOpen && (
+            <div className="mt-3 grid grid-cols-2 gap-2 border-t border-[#eeeae4] pt-3">
+              {tabs.map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => { setActiveTab(tab); setMobileSectionsOpen(false) }}
+                  className={`rounded-lg px-3 py-2 text-left text-[10px] uppercase tracking-[0.12em] transition-colors ${
+                    activeTab === tab ? "bg-[#e4f6ad] font-bold text-[#365400]" : "bg-[#f5f2ed] text-[#7a7570]"
+                  }`}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* Tabs */}
-        <div className="flex gap-1 mb-8 border-b border-[#d4cfc7]">
+        <div className="mb-8 hidden gap-1 overflow-x-auto border-b border-[#d4cfc7] md:flex">
           {tabs.map((tab) => (
             <button key={tab} onClick={() => setActiveTab(tab)}
               className={`px-4 py-2 text-[10px] tracking-[0.2em] uppercase transition-colors duration-200 border-b-2 -mb-px ${
@@ -261,7 +321,25 @@ export default function DashboardPage() {
         {/* Personal Tab */}
         {activeTab === "personal" && (
           <div className="mb-10">
-            <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="mb-4">
+              <label className={labelClass}>Your Role / Niche</label>
+              <input 
+                list="role-presets"
+                className={inputClass} 
+                value={profile.preset_slug === 'blank' ? '' : profile.preset_slug}
+                onChange={(e) => updateField("preset_slug", e.target.value || "blank")}
+                placeholder="e.g. Full Stack Developer, Product Manager..."
+              />
+              <datalist id="role-presets">
+                {presets.map(p => (
+                  <option key={p.slug} value={p.display_name} />
+                ))}
+              </datalist>
+              <p className="mt-1 text-xs text-[#b0aba4]">
+                We'll tailor your resume toward {profile.preset_slug && profile.preset_slug !== 'blank' ? profile.preset_slug : 'your custom'} roles and suggest relevant skills.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 gap-4 mb-4 sm:grid-cols-2">
               <div>
                 <label className={labelClass}>First Name</label>
                 <input className={inputClass} value={profile.first_name}
@@ -273,7 +351,7 @@ export default function DashboardPage() {
                   onChange={(e) => updateField("last_name", e.target.value)} placeholder="Doe" />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="grid grid-cols-1 gap-4 mb-4 sm:grid-cols-2">
               <div>
                 <label className={labelClass}>Mobile No</label>
                 <input className={inputClass} value={profile.mobile_no}
@@ -316,7 +394,7 @@ export default function DashboardPage() {
                     onChange={(e) => updateListItem("education", i, { ...edu, school_name: e.target.value })}
                     placeholder="University Name" />
                 </div>
-                <div className="grid grid-cols-2 gap-4 mb-3">
+                <div className="grid grid-cols-1 gap-4 mb-3 sm:grid-cols-2">
                   <div>
                     <label className={labelClass}>Course / Degree</label>
                     <input className={inputClass} value={edu.course}
@@ -352,7 +430,7 @@ export default function DashboardPage() {
               <div key={i} className="mb-6 p-4 bg-[#eeebe5] border border-[#d4cfc7] rounded-sm relative">
                 <button onClick={() => removeListItem("experience", i)}
                   className="absolute top-3 right-3 text-[#b0aba4] hover:text-[#cc3333] text-xs transition-colors">✕</button>
-                <div className="grid grid-cols-2 gap-4 mb-3">
+                <div className="grid grid-cols-1 gap-4 mb-3 sm:grid-cols-2">
                   <div>
                     <label className={labelClass}>Job Title</label>
                     <input className={inputClass} value={exp.job_title}
@@ -366,7 +444,7 @@ export default function DashboardPage() {
                       placeholder="Company Name" />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4 mb-3">
+                <div className="grid grid-cols-1 gap-4 mb-3 sm:grid-cols-2">
                   <div>
                     <label className={labelClass}>Location</label>
                     <input className={inputClass} value={exp.location}
@@ -402,7 +480,7 @@ export default function DashboardPage() {
               <div key={i} className="mb-6 p-4 bg-[#eeebe5] border border-[#d4cfc7] rounded-sm relative">
                 <button onClick={() => removeListItem("projects", i)}
                   className="absolute top-3 right-3 text-[#b0aba4] hover:text-[#cc3333] text-xs transition-colors">✕</button>
-                <div className="grid grid-cols-2 gap-4 mb-3">
+                <div className="grid grid-cols-1 gap-4 mb-3 sm:grid-cols-2">
                   <div>
                     <label className={labelClass}>Project Name</label>
                     <input className={inputClass} value={proj.name}
@@ -460,7 +538,7 @@ export default function DashboardPage() {
                     onChange={(e) => updateListItem("certifications", i, { ...cert, name: e.target.value })}
                     placeholder="AWS Certified Solutions Architect" />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
                     <label className={labelClass}>Issuer</label>
                     <input className={inputClass} value={cert.issuer}
@@ -484,9 +562,9 @@ export default function DashboardPage() {
         )}
 
         {/* Save button */}
-        <div className="mt-8 flex items-center gap-4">
+        <div className="mt-8 flex flex-wrap items-center gap-4">
           <button onClick={handleSave} disabled={saving}
-            className="px-8 py-3 text-sm tracking-[0.15em] uppercase font-bold transition-all duration-200 rounded-sm disabled:cursor-not-allowed"
+            className="w-full px-8 py-3 text-sm tracking-[0.15em] uppercase font-bold transition-all duration-200 rounded-sm disabled:cursor-not-allowed sm:w-auto"
             style={{ background: saving ? "#d4cfc7" : "#1a1814", color: saving ? "#b0aba4" : "#f5f2ed" }}>
             {saving ? "Saving..." : "Save Profile"}
           </button>
@@ -507,7 +585,7 @@ function SkillInput({ onAdd }: { onAdd: (skill: string) => void }) {
     setValue("")
   }
   return (
-    <div className="flex gap-2">
+    <div className="flex flex-col gap-2 sm:flex-row">
       <input
         className="flex-1 bg-[#e8e4dd] text-[#1a1814] text-sm p-3 outline-none border border-[#d4cfc7] focus:border-[#c8f06088] rounded-sm placeholder-[#b0aba4] transition-colors duration-200"
         value={value}
@@ -516,7 +594,7 @@ function SkillInput({ onAdd }: { onAdd: (skill: string) => void }) {
         placeholder="Type a skill and press Enter..."
       />
       <button onClick={handleAdd}
-        className="px-4 py-2 bg-[#1a1814] text-[#f5f2ed] text-xs font-bold tracking-widest uppercase rounded-sm hover:bg-[#2a2520] transition-colors">
+        className="w-full px-4 py-2 bg-[#1a1814] text-[#f5f2ed] text-xs font-bold tracking-widest uppercase rounded-sm hover:bg-[#2a2520] transition-colors sm:w-auto">
         Add
       </button>
     </div>

@@ -5,7 +5,7 @@ import os
 from dotenv import load_dotenv
 from models.schemas import UserProfile, Education, Experience, Project, Certification, SkillItem
 from models import database_models as db_models
-from services.templates.jakes_resume import JAKES_RESUME
+from services.templates import TEMPLATES
 from google import genai
 
 load_dotenv()
@@ -54,16 +54,91 @@ def db_profile_to_schema(db_profile: db_models.Profile) -> UserProfile:
         ]
     )
 
-def truncate_jd(jd: str, max_chars: int = 1500) -> str:
+def truncate_jd(jd: str, max_chars: int = 6000) -> str:
     if len(jd) > max_chars:
         return jd[:max_chars] + "... [truncated]"
     return jd
 
-def build_prompt(profile: UserProfile, jd: str) -> str:
+def _tokens(text: str) -> set[str]:
+    return {
+        token for token in re.findall(r"[a-z0-9][a-z0-9+#.-]{2,}", text.lower())
+        if token not in {"the", "and", "with", "for", "from", "that", "this", "using", "into", "your"}
+    }
+
+
+def retrieve_successful_evidence(profile: db_models.Profile, jd: str, db, limit: int = 12) -> list[dict]:
+    """Retrieve plain-text evidence from Offer-linked historical resumes."""
+    if not db or not profile:
+        return []
+
+    jobs = db.query(db_models.JobApplication).filter(
+        db_models.JobApplication.user_id == profile.user_id,
+        db_models.JobApplication.status == "Offer",
+        db_models.JobApplication.latex_source.isnot(None),
+    ).order_by(db_models.JobApplication.updated_at.desc()).all()
+
+    jd_terms = _tokens(jd)
+    candidates: list[dict] = []
+    for job in jobs:
+        bullets = re.findall(r"\\resumeItem\{([^{}]*)\}", job.latex_source or "")
+        for bullet in bullets:
+            text = re.sub(r"\\[a-zA-Z]+\*?(?:\{[^{}]*\})?", "", bullet)
+            text = re.sub(r"[%{}]", "", text).strip()
+            if not text:
+                continue
+            evidence_terms = _tokens(" ".join([text, job.job_title or "", job.company_name or ""]))
+            score = len(jd_terms & evidence_terms)
+            candidates.append({
+                "source": f"{job.company_name} — {job.job_title}",
+                "job_id": job.id,
+                "text": text,
+                "score": score,
+            })
+
+    candidates.sort(key=lambda item: item["score"], reverse=True)
+    selected = [item for item in candidates if item["score"] > 0][:limit]
+    if not selected:
+        selected = candidates[: min(limit, len(candidates))]
+    return selected
+
+
+def build_prompt(
+    profile: UserProfile,
+    jd: str,
+    preset: dict | None = None,
+    custom_role: str = "",
+    historical_evidence: list[dict] | None = None,
+) -> str:
     jd = truncate_jd(jd)
+    
+    if preset:
+        persona_suffix = f" specializing in {preset['display_name']} roles"
+    elif custom_role and custom_role != "blank":
+        persona_suffix = f" specializing in {custom_role} roles"
+    else:
+        persona_suffix = " specializing in software developer roles"
+    
+    summary_rule = "- Summary: 3 sentences that directly speak to what THIS specific job needs. Mirror JD language."
+    if preset:
+        summary_rule += f" {preset['target_summary_prompt']}"
+        
+    action_verbs_rule = "- Lead bullets with strong action verbs appropriate to the role." if preset else "- Lead bullets with strong action verbs (Architected, Engineered, Designed, Implemented, etc.)."
+    
+    metric_prompts_rule = ""
+    if preset:
+        metric_prompts_rule = f"\n- Quantify achievements wherever possible. Use templates like these as the shape: {'; '.join(preset['metric_prompts'])}"
+        
+    page_filling_lever = preset['lever_guidance'] if preset else """- Projects are your main lever — write 3 detailed bullets per project, each 1.5-2 lines long.
+- Each project bullet should explain: WHAT you built + HOW you built it + the IMPACT or result.
+- Experience bullets should also be detailed — 1.5 lines each, not just one short sentence."""
+
+    evidence_block = "\n".join(
+        f"- Evidence {index + 1} [{item['source']}]: {item['text']}"
+        for index, item in enumerate(historical_evidence or [])
+    ) or "- No eligible historical evidence was found."
 
     return f"""
-You are an elite technical resume writer and career strategist.
+You are an elite resume writer and career strategist{persona_suffix}.
 
 Your job is TWO things:
 1. SELECTION — Pick only the BEST and MOST RELEVANT items from the profile that match the job description.
@@ -71,6 +146,9 @@ Your job is TWO things:
 
 JOB DESCRIPTION:
 {jd}
+
+SUCCESSFUL HISTORICAL EVIDENCE — OFFER-LINKED RESUMES ONLY:
+{evidence_block}
 
 USER PROFILE (full data — you SELECT from this):
 {profile.model_dump_json()}
@@ -80,19 +158,19 @@ SELECTION RULES:
 - Projects: Pick TOP 2-3 projects most relevant to the JD. IGNORE irrelevant ones.
 - Skills: Filter to only skills the JD cares about. Group into 2-3 meaningful categories.
 - Certifications: Only include certifications relevant to the JD role.
-- Summary: 3 sentences that directly speak to what THIS specific job needs. Mirror JD language.
+{summary_rule}
 
 TAILORING RULES:
 - Use EXACT keywords from the JD in bullets (if JD says "data pipelines", use that phrase).
 - Quantify achievements wherever possible (%, time saved, scale, users, etc.).
-- Lead bullets with strong action verbs (Architected, Engineered, Designed, Implemented, etc.).
-- Never invent experience. Only reframe what exists using JD language.
+{action_verbs_rule}
+- Never invent experience. Only reframe what exists using JD language.{metric_prompts_rule}
+- Historical evidence is supporting evidence, not a source for invented facts. Reuse it only when it is truthful for the current profile.
 
-PAGE FILLING RULES — CRITICAL:
-- The resume MUST fill close to one full page. No large empty space at the bottom.
-- Projects are your main lever — write 3 detailed bullets per project, each 1.5-2 lines long.
-- Each project bullet should explain: WHAT you built + HOW you built it + the IMPACT or result.
-- Experience bullets should also be detailed — 1.5 lines each, not just one short sentence.
+PAGE RULES — CRITICAL:
+- The resume MUST fit exactly one page. Never generate a second page.
+- Prefer fewer, stronger bullets over overflowing content.
+{page_filling_lever}
 - Summary should be 3 full sentences.
 - If there is still space, add a 3rd project from the profile if relevant.
 - Skills section should have 2-3 categories with 5-7 items each.
@@ -263,9 +341,40 @@ def build_certifications(cert_line: str) -> str:
     }}
  \end{itemize}"""
 
-def assemble_latex(profile: UserProfile, ai_content: dict) -> str:
-    doc = JAKES_RESUME
-    doc = doc.replace("<<HEADING>>", build_heading(profile))
+def assemble_latex(profile: UserProfile, ai_content: dict, template_id: str = "classic") -> str:
+    doc = TEMPLATES.get(template_id, TEMPLATES["classic"])
+    
+    # Modern template heading overrides
+    heading = build_heading(profile)
+    if template_id == "modern":
+        name = f"{profile.first_name} {profile.last_name}".upper()
+        contact_parts = []
+        if profile.mobile_no:
+            contact_parts.append(r"\faPhone\ " + profile.mobile_no)
+        if profile.email:
+            contact_parts.append(r"\href{mailto:" + profile.email + r"}{\faEnvelope\ \underline{" + profile.email + r"}}")
+        if profile.linkedin:
+            display = profile.linkedin.replace("https://", "").replace("http://", "")
+            contact_parts.append(r"\href{" + profile.linkedin + r"}{\faLinkedinSquare\ \underline{" + display + r"}}")
+        if profile.github:
+            display = profile.github.replace("https://", "").replace("http://", "")
+            contact_parts.append(r"\href{" + profile.github + r"}{\faGithub\ \underline{" + display + r"}}")
+        
+        contact_line = " $|$ ".join(contact_parts)
+        portfolio_line = ""
+        if profile.portfolio:
+            display = profile.portfolio.replace("https://", "").replace("http://", "")
+            portfolio_line = r"\\ \href{" + profile.portfolio + r"}{\faGlobe\ \underline{" + display + r"}}"
+            
+        heading = (
+            r"\begin{center}" + "\n"
+            r"    {\Huge \textbf{\textcolor{primaryColor}{" + name + r"}}} \\ \vspace{4pt}" + "\n"
+            r"    \small\color{textColor} " + contact_line + portfolio_line + "\n"
+            r"    \vspace{-10pt}" + "\n"
+            r"\end{center}"
+        )
+
+    doc = doc.replace("<<HEADING>>", heading)
     doc = doc.replace("<<SUMMARY>>", ai_content.get("summary", ""))
     doc = doc.replace("<<EDUCATION>>", build_education(profile))
     doc = doc.replace("<<EXPERIENCE>>", build_experience(ai_content.get("experience", [])))
@@ -276,9 +385,20 @@ def assemble_latex(profile: UserProfile, ai_content: dict) -> str:
 
 
 
-def generate_latex_resume(db_profile: db_models.Profile, jd: str) -> str:
+def generate_latex_resume(db_profile: db_models.Profile, jd: str, template_id: str = "classic", preset_slug: str = "blank", db = None) -> str:
     profile = db_profile_to_schema(db_profile)
-    prompt = build_prompt(profile, jd)
+    
+    preset_dict = None
+    if preset_slug and preset_slug != "blank" and db:
+        preset = db.query(db_models.ResumePreset).filter(
+            (db_models.ResumePreset.slug == preset_slug) |
+            (db_models.ResumePreset.display_name.ilike(preset_slug))
+        ).first()
+        if preset:
+            preset_dict = preset.__dict__
+            
+    historical_evidence = retrieve_successful_evidence(db_profile, jd, db)
+    prompt = build_prompt(profile, jd, preset_dict, custom_role=preset_slug, historical_evidence=historical_evidence)
 
     try:
         response = client.models.generate_content(
@@ -288,7 +408,7 @@ def generate_latex_resume(db_profile: db_models.Profile, jd: str) -> str:
 
         raw = clean_json_response(response.text)
         ai_content = json.loads(raw)
-        full_latex = assemble_latex(profile, ai_content)
+        full_latex = assemble_latex(profile, ai_content, template_id)
         return full_latex
 
     except json.JSONDecodeError as e:

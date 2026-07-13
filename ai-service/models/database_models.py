@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Date, LargeBinary
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Date, LargeBinary, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from database import Base
@@ -8,6 +8,7 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String(100), unique=True, index=True, nullable=False)
     hashed_password = Column(String(255), nullable=True) # nullable for backwards compatibility
+    credits = Column(Integer, default=5, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     job_applications = relationship("JobApplication", back_populates="owner", cascade="all, delete")
     profile = relationship("Profile", back_populates="owner", uselist=False, cascade="all, delete")
@@ -23,6 +24,8 @@ class Profile(Base):
     linkedin = Column(String(255))
     github = Column(String(255))
     portfolio = Column(String(255))
+    preferred_template = Column(String(50), default="classic")
+    preset_slug = Column(String(50), default="blank")
 
     owner = relationship("User", back_populates="profile")
     education = relationship("Education", back_populates="owner", cascade="all, delete")
@@ -101,5 +104,18 @@ class JobApplication(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     latex_source = Column(Text)
     cover_letter = Column(Text)
+    template_id = Column(String(50), default="classic", nullable=False)
 
     owner = relationship("User", back_populates="job_applications")
+
+class ResumePreset(Base):
+    __tablename__ = "resume_presets"
+    id = Column(Integer, primary_key=True, index=True)
+    slug = Column(String(50), unique=True, index=True, nullable=False)
+    display_name = Column(String(100), nullable=False)
+    target_summary_prompt = Column(Text, nullable=False)
+    core_skills_bank = Column(JSON, nullable=False)
+    metric_prompts = Column(JSON, nullable=False)
+    section_order = Column(JSON, nullable=False)
+    recommended_template = Column(String(50), nullable=False, default="classic")
+    lever_guidance = Column(Text, nullable=False)
