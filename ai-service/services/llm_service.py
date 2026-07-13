@@ -128,7 +128,17 @@ def build_prompt(
     if preset:
         metric_prompts_rule = f"\n- Quantify achievements wherever possible. Use templates like these as the shape: {'; '.join(preset['metric_prompts'])}"
         
-    page_filling_lever = preset['lever_guidance'] if preset else """- Projects are your main lever — write 3 detailed bullets per project, each 1.5-2 lines long.
+    num_exp = len(profile.experience) if profile.experience else 0
+    num_proj = len(profile.projects) if profile.projects else 0
+    is_short_profile = (num_exp + num_proj) <= 3
+
+    if is_short_profile:
+        page_filling_lever = """- PROFILE IS SHORT: The user has very few experiences and projects. To avoid large empty white spaces, you MUST write detailed, substantive descriptions.
+- Write exactly 3-4 bullets per experience and project.
+- Make each bullet detailed (1.5 to 2 lines long when rendered) explaining: WHAT was built, HOW it was built (technologies, architectural decisions), and the IMPACT (measurable results).
+- Experience and project bullets must be robust, not short single-sentence statements."""
+    else:
+        page_filling_lever = preset['lever_guidance'] if preset else """- Projects are your main lever — write 3 detailed bullets per project, each 1.5-2 lines long.
 - Each project bullet should explain: WHAT you built + HOW you built it + the IMPACT or result.
 - Experience bullets should also be detailed — 1.5 lines each, not just one short sentence."""
 
@@ -343,6 +353,17 @@ def build_certifications(cert_line: str) -> str:
 
 def assemble_latex(profile: UserProfile, ai_content: dict, template_id: str = "classic") -> str:
     doc = TEMPLATES.get(template_id, TEMPLATES["classic"])
+    
+    # Relax vertical spacing in LaTeX template if the profile is short to naturally fill the page
+    num_exp = len(ai_content.get("experience", []))
+    num_proj = len(ai_content.get("projects", []))
+    if (num_exp + num_proj) <= 3:
+        doc = doc.replace(r"\vspace{-4pt}", r"\vspace{2pt}")
+        doc = doc.replace(r"\vspace{-5pt}", r"\vspace{0pt}")
+        doc = doc.replace(r"\vspace{-7pt}", r"\vspace{-3pt}")
+        doc = doc.replace(r"\vspace{-2pt}", r"\vspace{1pt}")
+        doc = doc.replace(r"\vspace{-16pt}", r"\vspace{-4pt}")
+        doc = doc.replace(r"\vspace{-13pt}", r"\vspace{-2pt}")
     
     # Modern template heading overrides
     heading = build_heading(profile)
