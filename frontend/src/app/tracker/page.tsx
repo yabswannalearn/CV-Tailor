@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import dynamic from "next/dynamic";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
@@ -351,10 +352,10 @@ export default function TrackerPage() {
           }));
         }
       } else {
-        alert("Failed to auto-fill job details.");
+        toast.error("Failed to auto-fill job details.");
       }
     } catch {
-      alert("Error auto-filling job details.");
+      toast.error("Error auto-filling job details.");
     } finally {
       setAutoFilling(false);
     }

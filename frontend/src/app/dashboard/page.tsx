@@ -1,10 +1,14 @@
 "use client"
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import AppLayout from "@/components/AppLayout";
+import { toast } from "sonner";
 import { API_URL, getApiError } from "@/lib/api";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCurrentUser } from "@/lib/queries";
+import { motion, AnimatePresence } from "framer-motion";
+import { useDropzone } from "react-dropzone";
+import { UploadCloud } from "lucide-react";
 
 const GRAIN = `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`
 
@@ -117,6 +121,71 @@ export default function DashboardPage() {
   })
   const userEmail = user?.email || ""
 
+  const processFile = async (file: File) => {
+    setUploading(true);
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const res = await fetch(`${API}/profile/auto-fill-resume`, {
+        method: "POST",
+        credentials: "include",
+        body: formData
+      });
+      if (!res.ok) {
+        if (res.status === 402) throw new Error("Out of credits! Please upgrade to continue.");
+        const err = await res.json();
+        throw new Error(err.detail || "Upload failed");
+      }
+      const data = await res.json();
+      if (data.status === "success" && data.data) {
+        const parsed = data.data;
+        setProfile((prev) => ({
+          ...prev,
+          first_name: parsed.first_name || prev.first_name,
+          last_name: parsed.last_name || prev.last_name,
+          mobile_no: parsed.mobile_no || prev.mobile_no,
+          email: parsed.email || prev.email,
+          linkedin: parsed.linkedin || prev.linkedin,
+          github: parsed.github || prev.github,
+          portfolio: parsed.portfolio || prev.portfolio,
+          education: parsed.education?.length ? parsed.education : prev.education,
+          experience: parsed.experience?.length ? parsed.experience : prev.experience,
+          projects: parsed.projects?.length ? parsed.projects : prev.projects,
+          skills: parsed.skills?.length ? parsed.skills : prev.skills,
+          certifications: parsed.certifications?.length ? parsed.certifications : prev.certifications,
+        }));
+        setCredits((c) => Math.max(0, c - 1));
+        toast.success("Profile successfully auto-filled! Please review and click 'Save Profile'.");
+      }
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await processFile(file);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const onDrop = useCallback(async (acceptedFiles: File[]) => {
+    const file = acceptedFiles[0];
+    if (file) {
+      await processFile(file);
+    }
+  }, []);
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: { "application/pdf": [".pdf"] },
+    multiple: false,
+    noClick: true,
+  });
+
   useEffect(() => {
     if (user) setCredits(user.credits)
     if (userError) router.push("/login")
@@ -176,54 +245,6 @@ export default function DashboardPage() {
     router.push("/login")
   }
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    
-    setUploading(true);
-    const formData = new FormData();
-    formData.append("file", file);
-
-    try {
-      const res = await fetch(`${API}/profile/auto-fill-resume`, {
-        method: "POST",
-        credentials: "include",
-        body: formData
-      });
-      if (!res.ok) {
-        if (res.status === 402) throw new Error("Out of credits! Please upgrade to continue.");
-        const err = await res.json();
-        throw new Error(err.detail || "Upload failed");
-      }
-      const data = await res.json();
-      if (data.status === "success" && data.data) {
-        const parsed = data.data;
-        setProfile((prev) => ({
-          ...prev,
-          first_name: parsed.first_name || prev.first_name,
-          last_name: parsed.last_name || prev.last_name,
-          mobile_no: parsed.mobile_no || prev.mobile_no,
-          email: parsed.email || prev.email,
-          linkedin: parsed.linkedin || prev.linkedin,
-          github: parsed.github || prev.github,
-          portfolio: parsed.portfolio || prev.portfolio,
-          education: parsed.education?.length ? parsed.education : prev.education,
-          experience: parsed.experience?.length ? parsed.experience : prev.experience,
-          projects: parsed.projects?.length ? parsed.projects : prev.projects,
-          skills: parsed.skills?.length ? parsed.skills : prev.skills,
-          certifications: parsed.certifications?.length ? parsed.certifications : prev.certifications,
-        }));
-        setCredits((c) => Math.max(0, c - 1));
-        alert("Profile successfully auto-filled! Please review and click 'Save Profile'.");
-      }
-    } catch (error: unknown) {
-      alert(error instanceof Error ? error.message : "Upload failed");
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
-  };
-
   const updateField = (field: keyof Profile, value: unknown) =>
     setProfile((p) => ({ ...p, [field]: value }))
   const updateListItem = <T,>(field: keyof Profile, index: number, updated: T) =>
@@ -242,8 +263,28 @@ export default function DashboardPage() {
   const tabs = ["personal", "education", "experience", "projects", "skills", "certifications"] as const
 
   return (
-      <AppLayout>
-    <main className="min-h-screen bg-[#f5f2ed] text-[#1a1814] font-mono">
+    <AppLayout>
+      <div {...getRootProps()} className="relative min-h-screen">
+        <input {...getInputProps()} />
+        
+        <AnimatePresence>
+          {isDragActive && (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#f5f2ed]/90 backdrop-blur-sm m-4 rounded-xl border-4 border-dashed border-[#5a8a00] transition-all duration-300"
+            >
+              <div className="text-center p-8 bg-[#fffdf9] border border-[#d4cfc7] rounded-lg shadow-xl max-w-sm font-mono">
+                <UploadCloud className="mx-auto h-12 w-12 text-[#5a8a00] animate-pulse mb-4" />
+                <h3 className="mt-4 text-base font-bold text-[#1a1814] tracking-wider uppercase">Drop your PDF resume here</h3>
+                <p className="mt-2 text-xs text-[#7a7570] leading-relaxed">We will parse and autofill your profile details instantly.</p>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <main className="min-h-screen bg-[#f5f2ed] text-[#1a1814] font-mono">
       <div className="pointer-events-none fixed inset-0 opacity-[0.07] z-0"
         style={{ backgroundImage: GRAIN, backgroundRepeat: "repeat", backgroundSize: "128px" }} />
 
@@ -334,8 +375,16 @@ export default function DashboardPage() {
           ))}
         </div>
 
-        {/* Personal Tab */}
-        {activeTab === "personal" && (
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeTab}
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
+            transition={{ duration: 0.15 }}
+          >
+            {/* Personal Tab */}
+            {activeTab === "personal" && (
           <div className="mb-10">
             <div className="mb-4">
               <label className={labelClass}>Your Role / Niche</label>
@@ -576,6 +625,8 @@ export default function DashboardPage() {
             </button>
           </div>
         )}
+          </motion.div>
+        </AnimatePresence>
 
         {/* Save button */}
         <div className="mt-8 flex flex-wrap items-center gap-4">
@@ -589,7 +640,8 @@ export default function DashboardPage() {
         </div>
       </div>
     </main>
-      </AppLayout>
+      </div>
+    </AppLayout>
   )
 }
 
