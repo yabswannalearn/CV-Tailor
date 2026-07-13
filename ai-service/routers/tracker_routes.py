@@ -2,6 +2,7 @@ import asyncio
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 from typing import List
 from datetime import datetime
@@ -19,14 +20,13 @@ def get_current_user_id(request: Request) -> int:
         raise HTTPException(status_code=401, detail="Not authenticated")
     return user_id
 
-def serialize_job(job: db_models.JobApplication) -> dict:
-    return {
+def serialize_job(job: db_models.JobApplication, include_details: bool = True) -> dict:
+    data = {
         "id": job.id,
         "company_name": job.company_name,
         "job_title": job.job_title,
         "job_url": job.job_url,
         "short_description": job.short_description,
-        "job_description": job.job_description,
         "has_pdf": job.pdf_data is not None,
         "pdf_generated_at": job.pdf_generated_at.isoformat() if job.pdf_generated_at else None,
         "status": job.status,
@@ -36,18 +36,55 @@ def serialize_job(job: db_models.JobApplication) -> dict:
         "location": job.location,
         "salary_range": job.salary_range,
         "priority": job.priority,
-        "notes": job.notes,
-        "cover_letter": job.cover_letter,
         "template_id": job.template_id or "classic",
     }
+    if include_details:
+        data.update({
+            "job_description": job.job_description,
+            "notes": job.notes,
+            "cover_letter": job.cover_letter,
+        })
+    return data
 
 @router.get("")
 async def get_all_jobs(request: Request, db: Session = Depends(get_db)):
     user_id = get_current_user_id(request)
-    jobs = db.query(db_models.JobApplication).filter(
+    jobs = db.query(
+        db_models.JobApplication.id,
+        db_models.JobApplication.company_name,
+        db_models.JobApplication.job_title,
+        db_models.JobApplication.job_url,
+        db_models.JobApplication.short_description,
+        db_models.JobApplication.pdf_data.isnot(None).label("has_pdf"),
+        db_models.JobApplication.pdf_generated_at,
+        db_models.JobApplication.status,
+        db_models.JobApplication.date_applied,
+        db_models.JobApplication.follow_up_date,
+        db_models.JobApplication.job_type,
+        db_models.JobApplication.location,
+        db_models.JobApplication.salary_range,
+        db_models.JobApplication.priority,
+        db_models.JobApplication.template_id,
+    ).filter(
         db_models.JobApplication.user_id == user_id
     ).order_by(db_models.JobApplication.created_at.desc()).all()
-    return [serialize_job(j) for j in jobs]
+    return [{
+        "id": j.id,
+        "company_name": j.company_name,
+        "job_title": j.job_title,
+        "job_url": j.job_url,
+        "short_description": j.short_description,
+        "has_pdf": j.has_pdf,
+        "pdf_generated_at": j.pdf_generated_at.isoformat() if j.pdf_generated_at else None,
+        "status": j.status,
+        "date_applied": j.date_applied.isoformat() if j.date_applied else None,
+        "follow_up_date": j.follow_up_date.isoformat() if j.follow_up_date else None,
+        "job_type": j.job_type,
+        "location": j.location,
+        "salary_range": j.salary_range,
+        "priority": j.priority,
+        "template_id": j.template_id or "classic",
+    } for j in jobs]
 
 @router.post("")
 async def create_job(data: JobApplicationCreate, request: Request, db: Session = Depends(get_db)):
@@ -89,13 +126,26 @@ async def delete_job(job_id: int, request: Request, db: Session = Depends(get_db
 @router.get("/stats")
 async def get_stats(request: Request, db: Session = Depends(get_db)):
     user_id = get_current_user_id(request)
-    jobs = db.query(db_models.JobApplication).filter(
+    rows = db.query(
+        db_models.JobApplication.status,
+        func.count(db_models.JobApplication.id),
+    ).filter(
         db_models.JobApplication.user_id == user_id
-    ).all()
-    stats = {}
-    for job in jobs:
-        stats[job.status] = stats.get(job.status, 0) + 1
-    return {"total": len(jobs), "by_status": stats}
+    ).group_by(db_models.JobApplication.status).all()
+    stats = {status: count for status, count in rows}
+    return {"total": sum(stats.values()), "by_status": stats}
+
+
+@router.get("/{job_id}/details")
+async def get_job_details(job_id: int, request: Request, db: Session = Depends(get_db)):
+    user_id = get_current_user_id(request)
+    job = db.query(db_models.JobApplication).filter(
+        db_models.JobApplication.id == job_id,
+        db_models.JobApplication.user_id == user_id,
+    ).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return serialize_job(job, include_details=True)
 
 # ── PDF + LaTeX endpoints ─────────────────────────────────────────
 

@@ -6,6 +6,10 @@ import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 import AppLayout from "@/components/AppLayout";
 import { API_URL } from "@/lib/api";
+import { useCurrentUser, useTrackerDetails, useTrackerJobs, useTrackerStats } from "@/lib/queries";
+import { queryClient } from "@/lib/queryClient";
+import { setExpandedJob, setFilterStatus, setSearchQuery, setStatsOpen, type RootState } from "@/lib/store";
+import { useDispatch, useSelector } from "react-redux";
 
 const Document = dynamic(() => import("react-pdf").then(m => m.Document), { ssr: false });
 const Page = dynamic(() => import("react-pdf").then(m => m.Page), { ssr: false });
@@ -293,23 +297,38 @@ function CoverLetterModal({ job, onClose, onSave }: { job: Job; onClose: () => v
 // ── Main page ─────────────────────────────────────────────────────
 export default function TrackerPage() {
   const router = useRouter();
+  const dispatch = useDispatch();
+  const trackerUi = useSelector((state: RootState) => state.trackerUi);
+  const { isError: userError } = useCurrentUser();
+  const jobsQuery = useTrackerJobs(!userError);
+  const statsQuery = useTrackerStats(!userError);
+  const expandedJob = trackerUi.expandedJob;
+  const detailsQuery = useTrackerDetails(expandedJob);
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState<{ total: number; by_status: Record<string, number> }>({ total: 0, by_status: {} });
-  const [statsOpen, setStatsOpen] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingJob, setEditingJob] = useState<Job | null>(null);
   const [form, setForm] = useState<JobForm>(EMPTY);
   const [saving, setSaving] = useState(false);
-  const [filterStatus, setFilterStatus] = useState<Status | "All">("All");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [expandedJob, setExpandedJob] = useState<number | null>(null);
   const [generatingFor, setGeneratingFor] = useState<number | null>(null);
   const [generatingClFor, setGeneratingClFor] = useState<number | null>(null);
   const [viewingPdfFor, setViewingPdfFor] = useState<Job | null>(null);
   const [viewingClFor, setViewingClFor] = useState<Job | null>(null);
   const [generateError, setGenerateError] = useState<{ id: number; msg: string } | null>(null);
   const [autoFilling, setAutoFilling] = useState(false);
+  const [jobDescriptionOpen, setJobDescriptionOpen] = useState(false);
+
+  const loading = jobsQuery.isLoading;
+  const stats = statsQuery.data || { total: 0, by_status: {} };
+  const filterStatus = trackerUi.filterStatus as Status | "All";
+  const searchQuery = trackerUi.searchQuery;
+
+  useEffect(() => {
+    if (jobsQuery.data) setJobs(jobsQuery.data as Job[]);
+  }, [jobsQuery.data]);
+
+  useEffect(() => {
+    if (userError) router.push("/login");
+  }, [userError, router]);
 
   const handleAutoFill = async () => {
     if (!form.job_url.trim()) return;
@@ -334,43 +353,34 @@ export default function TrackerPage() {
       } else {
         alert("Failed to auto-fill job details.");
       }
-    } catch (e) {
+    } catch {
       alert("Error auto-filling job details.");
     } finally {
       setAutoFilling(false);
     }
   };
 
-  useEffect(() => {
-    fetch(`${API}/auth/me`, { credentials: "include" })
-      .then(res => { if (!res.ok) router.push("/login"); });
-    loadAll();
-  }, []);
-
   const loadAll = async () => {
-    setLoading(true);
-    try {
-      const [jobsRes, statsRes] = await Promise.all([
-        fetch(`${API}/tracker/`, { credentials: "include" }),
-        fetch(`${API}/tracker/stats`, { credentials: "include" }),
-      ]);
-      if (jobsRes.ok) setJobs(await jobsRes.json());
-      if (statsRes.ok) setStats(await statsRes.json());
-    } finally { setLoading(false); }
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["tracker", "jobs"] }),
+      queryClient.invalidateQueries({ queryKey: ["tracker", "stats"] }),
+    ]);
   };
 
-  const openCreate = () => { setEditingJob(null); setForm(EMPTY); setShowModal(true); };
+  const openCreate = () => { setEditingJob(null); setForm(EMPTY); setJobDescriptionOpen(false); setShowModal(true); };
   const openEdit = (job: Job) => {
-    setEditingJob(job);
+    const editableJob = detailsQuery.data?.id === job.id ? { ...job, ...detailsQuery.data } : job;
+    setEditingJob(editableJob);
     setForm({
-      company_name: job.company_name, job_title: job.job_title,
-      job_url: job.job_url || "", short_description: job.short_description || "",
-      job_description: job.job_description || "", status: job.status,
-      date_applied: job.date_applied || "", follow_up_date: job.follow_up_date || "",
-      job_type: job.job_type || "", location: job.location || "",
-      salary_range: job.salary_range || "", priority: job.priority, notes: job.notes || "",
-      template_id: job.template_id || "classic",
+      company_name: editableJob.company_name, job_title: editableJob.job_title,
+      job_url: editableJob.job_url || "", short_description: editableJob.short_description || "",
+      job_description: editableJob.job_description || "", status: editableJob.status,
+      date_applied: editableJob.date_applied || "", follow_up_date: editableJob.follow_up_date || "",
+      job_type: editableJob.job_type || "", location: editableJob.location || "",
+      salary_range: editableJob.salary_range || "", priority: editableJob.priority, notes: editableJob.notes || "",
+      template_id: editableJob.template_id || "classic",
     });
+    setJobDescriptionOpen(true);
     setShowModal(true);
   };
 
@@ -449,6 +459,7 @@ export default function TrackerPage() {
         const data = await res.json();
         const updatedJob = { ...job, cover_letter: data.cover_letter };
         setJobs(jobs.map(j => j.id === job.id ? updatedJob : j));
+        queryClient.setQueryData(["tracker", "details", job.id], updatedJob);
         setViewingClFor(updatedJob);
       }
     } catch {
@@ -468,9 +479,10 @@ export default function TrackerPage() {
       if (res.ok) {
         const data = await res.json();
         setJobs(jobs.map(j => j.id === id ? data : j));
+        queryClient.setQueryData(["tracker", "details", id], data);
       }
-    } catch (e) {
-      console.error("Failed to save cover letter", e);
+    } catch {
+      console.error("Failed to save cover letter");
     }
   };
 
@@ -514,9 +526,9 @@ export default function TrackerPage() {
           <section className="mb-8 overflow-hidden rounded-xl border border-[#d4cfc7] bg-[#fffdf9] shadow-sm">
             <button
               type="button"
-              onClick={() => setStatsOpen(open => !open)}
+              onClick={() => dispatch(setStatsOpen(!trackerUi.statsOpen))}
               className="flex w-full items-center justify-between gap-4 px-4 py-3 text-left sm:px-5"
-              aria-expanded={statsOpen}
+              aria-expanded={trackerUi.statsOpen}
             >
               <span>
                 <span className="block text-[10px] uppercase tracking-[0.2em] text-[#5a8a00]">Application overview</span>
@@ -525,17 +537,17 @@ export default function TrackerPage() {
                 </span>
               </span>
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#d4cfc7] text-[#5a8a00]">
-                {statsOpen ? "−" : "+"}
+                {trackerUi.statsOpen ? "−" : "+"}
               </span>
             </button>
-            {statsOpen && (
+            {trackerUi.statsOpen && (
               <div className="grid grid-cols-2 gap-2 border-t border-[#eeeae4] p-3 sm:grid-cols-4 sm:p-4 lg:grid-cols-7">
                 {STATUSES.map(s => {
                   const c = SC[s];
                   const count = stats.by_status[s] || 0;
                   const active = filterStatus === s;
                   return (
-                    <button key={s} onClick={() => setFilterStatus(active ? "All" : s)}
+                    <button key={s} onClick={() => dispatch(setFilterStatus(active ? "All" : s))}
                       className="rounded-lg p-3 text-center transition-all"
                       style={{ background: active ? c.bg : "#edeae4", border: `1px solid ${active ? c.border : "#d4cfc7"}` }}>
                       <div className="text-xl font-bold" style={{ color: active ? c.text : "#1a1814", fontFamily: "'Georgia', serif" }}>{count}</div>
@@ -554,13 +566,13 @@ export default function TrackerPage() {
                 <circle cx="4.5" cy="4.5" r="3.5" stroke="#a8a39c" strokeWidth="1.2"/>
                 <line x1="7.5" y1="7.5" x2="10" y2="10" stroke="#a8a39c" strokeWidth="1.2" strokeLinecap="round"/>
               </svg>
-              <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+              <input value={searchQuery} onChange={e => dispatch(setSearchQuery(e.target.value))}
                 placeholder="Search company, title, location..."
                 className="w-full pl-8 pr-3 py-2 text-xs outline-none rounded-sm font-mono"
                 style={{ background: "#edeae4", color: "#1a1814", border: "1px solid #d4cfc7" }} />
             </div>
             {filterStatus !== "All" && (
-              <button onClick={() => setFilterStatus("All")}
+              <button onClick={() => dispatch(setFilterStatus("All"))}
                 className="flex items-center gap-1.5 px-3 py-2 text-[10px] rounded-sm"
                 style={{ background: "#edeae4", border: "1px solid #d4cfc7", color: "#7a7570" }}>
                 ✕ Clear
@@ -596,6 +608,7 @@ export default function TrackerPage() {
             <div className="space-y-2">
               {filtered.map(job => {
                 const expanded = expandedJob === job.id;
+                const detailJob: Job = detailsQuery.data?.id === job.id ? { ...job, ...detailsQuery.data } : job;
                 const isGenerating = generatingFor === job.id;
                 const err = generateError?.id === job.id ? generateError.msg : null;
                 return (
@@ -642,7 +655,7 @@ export default function TrackerPage() {
 
                         {/* Generate CV */}
                         <button
-                          onClick={() => handleGeneratePdf(job)}
+                          onClick={() => handleGeneratePdf(detailJob)}
                           disabled={isGenerating}
                           title={job.job_description ? "Generate tailored CV for this job" : "Add job description first"}
                           className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold tracking-[0.08em] uppercase rounded-sm transition-all disabled:cursor-not-allowed"
@@ -691,7 +704,7 @@ export default function TrackerPage() {
 
                         {/* Generate Cover Letter */}
                         <button
-                          onClick={() => handleGenerateCoverLetter(job)}
+                          onClick={() => handleGenerateCoverLetter(detailJob)}
                           disabled={generatingClFor === job.id}
                           title={job.job_description ? "Generate cover letter for this job" : "Add job description first"}
                           className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold tracking-[0.08em] uppercase rounded-sm transition-all disabled:cursor-not-allowed"
@@ -722,7 +735,7 @@ export default function TrackerPage() {
                         {/* View Cover Letter */}
                         {job.cover_letter && (
                           <button
-                            onClick={() => setViewingClFor(job)}
+                            onClick={() => setViewingClFor(detailJob)}
                             title="View and Edit Cover Letter"
                             className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold tracking-[0.08em] uppercase rounded-sm transition-all"
                             style={{ background: "#f5f2ed", color: "#4a4540", border: "1px solid #d4cfc7" }}
@@ -739,7 +752,7 @@ export default function TrackerPage() {
                         <div className="hidden h-5 w-px shrink-0 sm:block" style={{ background: "#d4cfc7" }} />
 
                         {/* Edit */}
-                        <IconBtn onClick={() => openEdit(job)} title="Edit" green>
+                        <IconBtn onClick={() => openEdit(detailJob)} title="Edit" green>
                           <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
                             <path d="M7.5 1.5l2 2L3 10H1V8L7.5 1.5z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round"/>
                           </svg>
@@ -752,7 +765,7 @@ export default function TrackerPage() {
                           </svg>
                         </IconBtn>
                       </div>}
-                      <IconBtn onClick={() => setExpandedJob(expanded ? null : job.id)} title={expanded ? "Collapse details" : "Show details"}>
+                      <IconBtn onClick={() => dispatch(setExpandedJob(expanded ? null : job.id))} title={expanded ? "Collapse details" : "Show details"}>
                         <svg width="11" height="11" viewBox="0 0 11 11" fill="none"
                           style={{ transform: expanded ? "rotate(180deg)" : "rotate(0)", transition: "transform 0.2s" }}>
                           <path d="M2 4L5.5 7L9 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
@@ -780,10 +793,10 @@ export default function TrackerPage() {
                                 <p className="text-xs leading-relaxed" style={{ color: "#4a4540" }}>{job.short_description}</p>
                               </div>
                             )}
-                            {job.job_description && (
+                            {detailJob.job_description && (
                               <div>
                                 <div className="text-[9px] tracking-[0.2em] uppercase mb-1" style={{ color: "#a8a39c" }}>Job Description</div>
-                                <p className="text-xs leading-relaxed line-clamp-4" style={{ color: "#7a7570" }}>{job.job_description}</p>
+                                <p className="text-xs leading-relaxed line-clamp-4" style={{ color: "#7a7570" }}>{detailJob.job_description}</p>
                               </div>
                             )}
                             {job.job_url && (
@@ -803,10 +816,10 @@ export default function TrackerPage() {
                                 <p className="text-xs" style={{ color: "#4a4540" }}>📅 {job.follow_up_date}</p>
                               </div>
                             )}
-                            {job.notes && (
+                            {detailJob.notes && (
                               <div>
                                 <div className="text-[9px] tracking-[0.2em] uppercase mb-1" style={{ color: "#a8a39c" }}>Notes</div>
-                                <p className="text-xs leading-relaxed" style={{ color: "#4a4540" }}>{job.notes}</p>
+                                <p className="text-xs leading-relaxed" style={{ color: "#4a4540" }}>{detailJob.notes}</p>
                               </div>
                             )}
                             {job.has_pdf && (
@@ -876,18 +889,42 @@ export default function TrackerPage() {
               </div>
 
               {/* Job description — key field for AI */}
-              <div>
-                <label className="block text-[10px] tracking-[0.2em] uppercase mb-1.5" style={{ color: "#7a7570" }}>
-                  Job Description
-                  <span className="ml-2 normal-case tracking-normal" style={{ color: "#5a8a00" }}>— used by AI to generate your CV</span>
-                </label>
-                <textarea value={form.job_description} onChange={e => setField("job_description", e.target.value)}
-                  placeholder="Paste the full job description here. The AI will use this to tailor your resume..." rows={5}
-                  className="w-full text-sm p-2.5 rounded-sm outline-none resize-none font-mono"
-                  style={{ background: "#e8e4dd", color: "#1a1814", border: "1px solid #d4cfc7" }}
-                  onFocus={e => e.target.style.borderColor = "#8ab030"}
-                  onBlur={e => e.target.style.borderColor = "#d4cfc7"} />
-                <div className="text-[9px] mt-1" style={{ color: "#a8a39c" }}>{form.job_description.length} chars</div>
+              <div className="overflow-hidden rounded-sm" style={{ border: "1px solid #d4cfc7", background: "#edeae4" }}>
+                <button
+                  type="button"
+                  onClick={() => setJobDescriptionOpen(open => !open)}
+                  className="flex w-full items-center justify-between gap-4 px-3 py-3 text-left transition-colors"
+                  style={{ background: jobDescriptionOpen ? "#e8f5c0" : "transparent" }}
+                  aria-expanded={jobDescriptionOpen}
+                >
+                  <span className="min-w-0">
+                    <span className="block text-[10px] tracking-[0.2em] uppercase" style={{ color: "#7a7570" }}>Job Description</span>
+                    <span className="mt-1 block truncate text-xs" style={{ color: form.job_description ? "#4a4540" : "#a8a39c" }}>
+                      {form.job_description ? form.job_description.replace(/\s+/g, " ").slice(0, 110) : "Add the full job description for better AI tailoring"}
+                    </span>
+                  </span>
+                  <span className="flex shrink-0 items-center gap-2 text-[10px] uppercase tracking-[0.12em]" style={{ color: "#3d6600" }}>
+                    {jobDescriptionOpen ? "Close" : "Read / edit"}
+                    <span style={{ transform: jobDescriptionOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>⌄</span>
+                  </span>
+                </button>
+                {jobDescriptionOpen && (
+                  <div className="border-t p-3" style={{ borderColor: "#d4cfc7", background: "#f5f2ed" }}>
+                    <p className="mb-2 text-[10px] leading-4" style={{ color: "#7a7570" }}>
+                      Paste the complete posting here. CV Tailor uses it to match your resume to the role.
+                    </p>
+                    <textarea value={form.job_description} onChange={e => setField("job_description", e.target.value)}
+                      placeholder="Paste the full job description here..." rows={12}
+                      className="w-full min-h-[240px] text-sm leading-6 p-3 rounded-sm outline-none resize-y font-mono"
+                      style={{ background: "#e8e4dd", color: "#1a1814", border: "1px solid #d4cfc7" }}
+                      onFocus={e => e.target.style.borderColor = "#8ab030"}
+                      onBlur={e => e.target.style.borderColor = "#d4cfc7"} />
+                    <div className="mt-1 flex justify-between text-[9px]" style={{ color: "#a8a39c" }}>
+                      <span>Drag the corner to resize</span>
+                      <span>{form.job_description.length} chars</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">

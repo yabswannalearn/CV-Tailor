@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Date, LargeBinary, JSON
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Date, LargeBinary, JSON, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from database import Base
@@ -9,6 +9,11 @@ class User(Base):
     email = Column(String(100), unique=True, index=True, nullable=False)
     hashed_password = Column(String(255), nullable=True) # nullable for backwards compatibility
     credits = Column(Integer, default=5, nullable=False)
+    is_verified = Column(Boolean, default=False, nullable=False)
+    verification_token_hash = Column(String(64), nullable=True)
+    verification_token_expires_at = Column(DateTime(timezone=True), nullable=True)
+    password_reset_token_hash = Column(String(64), nullable=True)
+    password_reset_token_expires_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     job_applications = relationship("JobApplication", back_populates="owner", cascade="all, delete")
     profile = relationship("Profile", back_populates="owner", uselist=False, cascade="all, delete")

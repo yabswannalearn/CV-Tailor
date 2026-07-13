@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { API_URL } from "@/lib/api";
+import { API_URL, getApiError } from "@/lib/api";
 
 const GRAIN = `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`;
 
@@ -13,6 +13,7 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [registered, setRegistered] = useState(false);
 
   const handleRegister = async () => {
     if (!email.trim()) return;
@@ -28,21 +29,10 @@ export default function RegisterPage() {
       });
 
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || "Registration failed");
+        throw new Error(await getApiError(res, "We couldn’t create your account. Please try again."));
       }
 
-      // Auto login after register
-      const loginRes = await fetch(`${API_URL}/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ email, password }),
-      });
-
-      if (!loginRes.ok) throw new Error("Login after register failed");
-
-      router.push("/dashboard");
+      setRegistered(true);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -69,6 +59,11 @@ export default function RegisterPage() {
           <p className="text-[#7a7570] text-sm mt-2">Enter your email and a secure password.</p>
         </div>
 
+        {registered ? (
+          <div className="rounded-sm border border-[#8ab030] bg-[#e8f5c0] px-4 py-4 text-sm leading-relaxed text-[#3d6600]">
+            Your account was created. Check your email to verify your account before signing in.
+          </div>
+        ) : <>
         <div className="relative mb-6">
           <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-[#c8f060] via-[#c8f06044] to-transparent" />
           <label className="block text-[10px] tracking-[0.25em] text-[#7a7570] uppercase mb-3 mt-4">
@@ -113,9 +108,10 @@ export default function RegisterPage() {
         >
           {loading ? "Creating account..." : "Create Account →"}
         </button>
+        </>}
 
         <p className="mt-6 text-center text-[#b0aba4] text-xs">
-          Already have an account?{" "}
+          {registered ? "Already verified?" : "Already have an account?"}{" "}
           <button onClick={() => router.push("/login")}
             className="text-[#5a8a00] hover:opacity-70 transition-opacity">
             Sign in
