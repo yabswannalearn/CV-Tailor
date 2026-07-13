@@ -39,9 +39,13 @@ def init_db():
     # compatibility migration here so deployments with AUTO_CREATE_TABLES
     # can safely pick up newly-added required columns.
     with engine.begin() as conn:
-        conn.execute(text(
-            "ALTER TABLE users ADD COLUMN IF NOT EXISTS credits INTEGER NOT NULL DEFAULT 5"
-        ))
+        for statement in (
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS credits INTEGER NOT NULL DEFAULT 5",
+            "ALTER TABLE profiles ADD COLUMN IF NOT EXISTS preferred_template VARCHAR(50) DEFAULT 'classic'",
+            "ALTER TABLE profiles ADD COLUMN IF NOT EXISTS preset_slug VARCHAR(50) DEFAULT 'blank'",
+            "ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS template_id VARCHAR(50) NOT NULL DEFAULT 'classic'",
+        ):
+            conn.execute(text(statement))
 
 def get_db():
     db = SessionLocal()
