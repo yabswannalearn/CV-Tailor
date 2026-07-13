@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, declarative_base
 import os
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -35,6 +35,13 @@ def init_db():
     from models import database_models
 
     Base.metadata.create_all(bind=engine)
+    # create_all() does not alter tables that already exist. Keep this
+    # compatibility migration here so deployments with AUTO_CREATE_TABLES
+    # can safely pick up newly-added required columns.
+    with engine.begin() as conn:
+        conn.execute(text(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS credits INTEGER NOT NULL DEFAULT 5"
+        ))
 
 def get_db():
     db = SessionLocal()
