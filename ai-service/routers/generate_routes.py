@@ -48,8 +48,8 @@ class CompileLatexRequest(BaseModel):
 @router.post("/cv")
 @limiter.limit("3/minute")
 async def generate_cv(data: GenerateRequest, request: Request, db: Session = Depends(get_db)):
-    profile = db.query(db_models.Profile).filter(
-        db_models.Profile.email == data.email
+    profile = db.query(db_models.Profile).join(db_models.User).filter(
+        db_models.User.email == data.email
     ).first()
 
     if not profile:
@@ -70,8 +70,8 @@ async def generate_cv(data: GenerateRequest, request: Request, db: Session = Dep
 @router.post("/pdf")
 @limiter.limit("3/minute")
 async def generate_pdf(data: GenerateRequest, request: Request, db: Session = Depends(get_db)):
-    profile = db.query(db_models.Profile).filter(
-        db_models.Profile.email == data.email
+    profile = db.query(db_models.Profile).join(db_models.User).filter(
+        db_models.User.email == data.email
     ).first()
 
     if not profile:
@@ -136,7 +136,7 @@ async def compile_latex_with_check(data: CompileLatexRequest, request: Request):
 @router.post("/ats-check")
 @limiter.limit("5/minute")
 async def generate_ats_check(data: GenerateRequest, request: Request, db: Session = Depends(get_db)):
-    profile = db.query(db_models.Profile).filter(db_models.Profile.email == data.email).first()
+    profile = db.query(db_models.Profile).join(db_models.User).filter(db_models.User.email == data.email).first()
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
         
@@ -179,8 +179,8 @@ async def generate_ats_check(data: GenerateRequest, request: Request, db: Sessio
 @router.post("/cover-letter")
 @limiter.limit("3/minute")
 async def generate_cl(data: GenerateCoverLetterRequest, request: Request, db: Session = Depends(get_db)):
-    profile = db.query(db_models.Profile).filter(
-        db_models.Profile.email == data.email
+    profile = db.query(db_models.Profile).join(db_models.User).filter(
+        db_models.User.email == data.email
     ).first()
 
     if not profile:

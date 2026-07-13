@@ -54,6 +54,34 @@ const emptyProfile: Profile = {
   preset_slug: "blank",
 }
 
+function DashboardSkeleton() {
+  return (
+    <main className="min-h-screen bg-[#f5f2ed] px-4 py-6 font-mono text-[#1a1814] sm:px-8 sm:py-10">
+      <div className="mx-auto max-w-5xl animate-pulse space-y-6">
+        <div className="space-y-3">
+          <div className="h-3 w-24 rounded bg-[#d4cfc7]" />
+          <div className="h-9 w-64 rounded bg-[#d4cfc7]" />
+          <div className="h-3 w-80 max-w-full rounded bg-[#e1ddd6]" />
+        </div>
+        <div className="h-14 rounded-xl border border-[#d4cfc7] bg-[#edeae4]" />
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[220px_1fr]">
+          <div className="h-72 rounded-xl border border-[#d4cfc7] bg-[#edeae4]" />
+          <div className="space-y-4 rounded-xl border border-[#d4cfc7] bg-[#fffdf9] p-5">
+            <div className="h-4 w-40 rounded bg-[#d4cfc7]" />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="h-11 rounded bg-[#e8e4dd]" />
+              <div className="h-11 rounded bg-[#e8e4dd]" />
+              <div className="h-11 rounded bg-[#e8e4dd]" />
+              <div className="h-11 rounded bg-[#e8e4dd]" />
+            </div>
+            <div className="h-28 rounded bg-[#e8e4dd]" />
+          </div>
+        </div>
+      </div>
+    </main>
+  )
+}
+
 export default function DashboardPage() {
   const router = useRouter()
   const [profile, setProfile] = useState<Profile>(emptyProfile)
@@ -64,11 +92,12 @@ export default function DashboardPage() {
   const [saving, setSaving] = useState(false)
   const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">("idle")
   const [credits, setCredits] = useState(0)
+  const [profileHydrated, setProfileHydrated] = useState(false)
   const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const queryClient = useQueryClient()
-  const { data: user, isError: userError } = useCurrentUser()
-  const { data: profileData } = useQuery<Profile>({
+  const { data: user, isError: userError, isPending: userLoading } = useCurrentUser()
+  const { data: profileData, isError: profileError, isPending: profileLoading } = useQuery<Profile>({
     queryKey: ["profile", user?.email],
     enabled: Boolean(user?.email),
     queryFn: async () => {
@@ -77,7 +106,7 @@ export default function DashboardPage() {
       return res.json()
     },
   })
-  const { data: presets = [] } = useQuery<{slug: string, display_name: string}[]>({
+  const { data: presets = [], isPending: presetsLoading } = useQuery<{slug: string, display_name: string}[]>({
     queryKey: ["presets"],
     queryFn: async () => {
       const res = await fetch(`${API}/presets`)
@@ -111,7 +140,14 @@ export default function DashboardPage() {
       skills: (data.skills || []).map((s) => ({ skill_name: s.skill_name })),
       certifications: (data.certifications || []).map((c) => ({ name: c.name || "", issuer: c.issuer || "", date_issued: c.date_issued || "" })),
     })
+    setProfileHydrated(true)
   }, [profileData])
+
+  const dashboardLoading = userLoading || presetsLoading || (Boolean(user?.email) && profileLoading) || (Boolean(profileData) && !profileHydrated)
+
+  if (dashboardLoading || userError || (Boolean(user?.email) && profileLoading && !profileError)) {
+    return <AppLayout><DashboardSkeleton /></AppLayout>
+  }
 
   const handleSave = async () => {
     setSaving(true)

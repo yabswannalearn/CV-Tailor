@@ -174,7 +174,7 @@ async def generate_pdf_for_job(job_id: int, request: Request, db: Session = Depe
         joinedload(db_models.Profile.projects),
         joinedload(db_models.Profile.skills),
         joinedload(db_models.Profile.certifications),
-    ).filter(db_models.Profile.email == user.email).first()
+    ).filter(db_models.Profile.user_id == user.id).first()
 
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found — fill in your profile first")
@@ -221,7 +221,7 @@ async def generate_cover_letter_for_job(job_id: int, request: Request, db: Sessi
         joinedload(db_models.Profile.projects),
         joinedload(db_models.Profile.skills),
         joinedload(db_models.Profile.certifications),
-    ).filter(db_models.Profile.email == user.email).first()
+    ).filter(db_models.Profile.user_id == user.id).first()
 
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found — fill in your profile first")
