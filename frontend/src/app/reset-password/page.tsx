@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { API_URL } from "@/lib/api";
+import { API_URL, getApiError } from "@/lib/api";
 
 export default function ResetPasswordPage() {
   const router = useRouter();
@@ -16,8 +16,8 @@ export default function ResetPasswordPage() {
     setLoading(true); setError("");
     try {
       const res = await fetch(`${API_URL}/auth/password-reset/confirm`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token, password }) });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.detail || "Unable to reset your password.");
+      if (!res.ok) throw new Error(await getApiError(res, "We couldn’t reset your password. Please request a new link."));
+      const data = await res.json();
       setMessage(data.message); setTimeout(() => router.push("/login"), 1500);
     } catch (err: any) { setError(err.message); }
     finally { setLoading(false); }
