@@ -1,9 +1,11 @@
 import json
 from sqlalchemy import create_engine, text
+from database import DATABASE_URL
 
-engine = create_engine('postgresql://postgres:reinael123@localhost:5432/cv_tailor')
+engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 
 with engine.connect() as conn:
+    conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS credits INTEGER NOT NULL DEFAULT 5;"))
     conn.execute(text("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS preferred_template VARCHAR(50) DEFAULT 'classic';"))
     conn.execute(text("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS preset_slug VARCHAR(50) DEFAULT 'blank';"))
     conn.execute(text("ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS template_id VARCHAR(50) NOT NULL DEFAULT 'classic';"))
