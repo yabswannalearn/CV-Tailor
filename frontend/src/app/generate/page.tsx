@@ -49,6 +49,177 @@ function parseSections(code: string) {
   }, []);
 }
 
+type ResumeDraft = {
+  name: string;
+  summary: string;
+  bullets: string[];
+  sections: {
+    name: string;
+    bullets: { index: number; text: string }[];
+    detailType: "skills" | "certifications" | null;
+    details: { label: string; value: string; index: number }[];
+    entries: {
+      command: "resumeSubheading" | "resumeProjectHeading";
+      occurrence: number;
+      title: string;
+      subtitle: string;
+      meta: string;
+      items: { index: number; text: string }[];
+    }[];
+  }[];
+};
+
+function latexText(value: string) {
+  let clean = value.replace(/%.*$/gm, "")
+    .replace(/\\href\{[^{}]*\}\{([^{}]*)\}/g, "$1")
+    .replace(/\$\|\$/g, "|")
+    .replace(/\\vspace\*?\s*\{[^{}]*\}/g, "")
+    .replace(/\\(?:small|Huge|Large|large|color)\s*\{([^{}]*)\}/g, "$1")
+    .replace(/\\(?:small|smallskip|medskip|bigskip|Huge|Large|large|color)\b/g, "");
+  for (let pass = 0; pass < 3; pass += 1) {
+    clean = clean
+      .replace(/\\(?:textbf|textit|emph)\s*\{([^{}]*)\}/g, "$1")
+      .replace(/\\[a-zA-Z]+\*?(?:\[[^]]*\])?\s*(?:\{[^{}]*\})?/g, "");
+  }
+  return clean.replace(/\\\\/g, " ")
+    .replace(/[{}]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function commandArguments(code: string, command: string) {
+  const result: { occurrence: number; args: string[]; start: number; end: number }[] = [];
+  const pattern = new RegExp("\\\\?" + command + "\\s*", "g");
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(code))) {
+    const beforeMatch = code.slice(Math.max(0, match.index - 20), match.index);
+    if (/newcommand\s*\{\s*$/.test(beforeMatch)) continue;
+    let cursor = match.index + match[0].length;
+    const args: string[] = [];
+    const commandStart = match.index;
+    while (code[cursor] === "{") {
+      let depth = 0;
+      const start = cursor + 1;
+      for (; cursor < code.length; cursor += 1) {
+        if (code[cursor] === "{") depth += 1;
+        if (code[cursor] === "}") depth -= 1;
+        if (depth === 0) break;
+      }
+      args.push(code.slice(start, cursor));
+      cursor += 1;
+    }
+    result.push({ occurrence: result.length, args, start: commandStart, end: cursor });
+  }
+  return result;
+}
+
+function replaceCommandArgument(code: string, command: string, occurrence: number, argIndex: number, value: string) {
+  const target = commandArguments(code, command)[occurrence];
+  if (!target) return code;
+  const prefix = new RegExp("^\\\\?" + command + "\\s*").exec(code.slice(target.start))?.[0] || "";
+  let cursor = target.start + prefix.length;
+  let start = -1;
+  let end = -1;
+  for (let index = 0; index <= argIndex; index += 1) {
+    while (code[cursor] !== "{" && cursor < code.length) cursor += 1;
+    start = cursor + 1;
+    let depth = 1;
+    cursor += 1;
+    while (depth > 0 && cursor < code.length) {
+      if (code[cursor] === "{") depth += 1;
+      if (code[cursor] === "}") depth -= 1;
+      cursor += 1;
+    }
+    end = cursor - 1;
+  }
+  return start >= 0 ? code.slice(0, start) + value.replace(/[{}]/g, "") + code.slice(end) : code;
+}
+
+function parseResumeDraft(code: string): ResumeDraft {
+  const nameMatch = code.match(/\\textcolor\{[^}]+\}\{([^{}]+)\}/);
+  const summaryMatch = code.match(/\\section\{Summary\}([\s\S]*?)(?=\\section\{|\\end\{document\})/i);
+  const bulletMatches = Array.from(code.matchAll(/\\resumeItem\{([^{}]*)\}/g));
+  const bullets = bulletMatches.map(m => latexText(m[1]));
+  const sections = Array.from(code.matchAll(/\\section\{([^{}]+)\}([\s\S]*?)(?=\\section\{|\\end\{document\})/gi))
+    .map(match => {
+      const start = match.index ?? 0;
+      const end = start + match[0].length;
+      const subheadings = commandArguments(code, "resumeSubheading").filter(entry => entry.start >= start && entry.start <= end);
+      const projectHeadings = commandArguments(code, "resumeProjectHeading").filter(entry => entry.start >= start && entry.start <= end);
+      const rawEntries = [
+        ...subheadings.map(entry => ({
+          command: "resumeSubheading" as const,
+          occurrence: entry.occurrence,
+          title: latexText(entry.args[0] || ""),
+          subtitle: latexText(entry.args[2] || ""),
+          meta: [latexText(entry.args[1] || ""), latexText(entry.args[3] || "")].filter(Boolean).join(" · "),
+          start: entry.start,
+        })),
+        ...projectHeadings.map(entry => ({
+          command: "resumeProjectHeading" as const,
+          occurrence: entry.occurrence,
+          title: latexText((entry.args[0] || "").split("$|$")[0]),
+          subtitle: latexText((entry.args[0] || "").split("$|$")[1] || ""),
+          meta: latexText(entry.args[1] || ""),
+          start: entry.start,
+        })),
+      ].sort((a, b) => a.start - b.start);
+      const normalizedName = match[1].trim().toLowerCase();
+      const detailType = normalizedName === "technical skills" ? "skills" as const : normalizedName === "certifications" ? "certifications" as const : null;
+      const sectionBody = match[2];
+      const details = detailType === "skills"
+        ? Array.from(sectionBody.matchAll(/\\textbf\{([^{}]*)\}\{\s*:\s*([^{}]*)\}/g)).map((skill, index) => ({ label: latexText(skill[1]), value: latexText(skill[2]), index }))
+        : detailType === "certifications"
+          ? Array.from(sectionBody.matchAll(/\\item\{([^{}]*)\}/g)).map((cert, index) => ({ label: "Certifications", value: latexText(cert[1]), index }))
+          : [];
+      return {
+        name: match[1].trim(),
+        detailType,
+        details,
+        bullets: bulletMatches
+          .map((bullet, index) => ({ index, text: latexText(bullet[1]), position: bullet.index ?? 0 }))
+          .filter(bullet => bullet.position >= start && bullet.position <= end)
+          .map(({ index, text }) => ({ index, text })),
+        entries: rawEntries.map((entry, index) => {
+          const nextStart = rawEntries[index + 1]?.start ?? end;
+          return {
+            ...entry,
+            items: bulletMatches
+              .map((bullet, bulletIndex) => ({ index: bulletIndex, text: latexText(bullet[1]), position: bullet.index ?? 0 }))
+              .filter(bullet => bullet.position > entry.start && bullet.position < nextStart)
+              .map(({ index: bulletIndex, text }) => ({ index: bulletIndex, text })),
+          };
+        }),
+      };
+    });
+  return {
+    name: nameMatch?.[1] || "Your name",
+    summary: summaryMatch ? latexText(summaryMatch[1]) : "",
+    bullets,
+    sections,
+  };
+}
+
+function replaceFirst(code: string, pattern: RegExp, replacement: string) {
+  return code.replace(pattern, replacement);
+}
+
+function replaceResumeItem(code: string, index: number, value: string) {
+  let seen = -1;
+  return code.replace(/\\resumeItem\{([^{}]*)\}/g, (full) => {
+    seen += 1;
+    return seen === index ? `\\resumeItem{${value.replace(/[{}]/g, "")}}` : full;
+  });
+}
+
+function replaceNthMatch(code: string, pattern: RegExp, index: number, replacement: string | ((full: string) => string)) {
+  let seen = -1;
+  return code.replace(pattern, (full) => {
+    seen += 1;
+    return seen === index ? (typeof replacement === "function" ? replacement(full) : replacement) : full;
+  });
+}
+
 function scrollToLine(ta: HTMLTextAreaElement, lineNum: number) {
   const lines = ta.value.split("\n");
   let charPos = 0;
@@ -106,6 +277,9 @@ function GeneratePageContent() {
   const [presetSlug, setPresetSlug] = useState("blank");
   const [presets, setPresets] = useState<{slug: string, display_name: string, recommended_template: string}[]>([]);
   const [atsResult, setAtsResult] = useState<{pass: boolean, warnings: string[]} | null>(null);
+  const [sourceMode, setSourceMode] = useState(false);
+  const [draft, setDraft] = useState<ResumeDraft>({ name: "", summary: "", bullets: [], sections: [] });
+  const [draftReady, setDraftReady] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -139,7 +313,7 @@ function GeneratePageContent() {
       setPdfUrl(window.URL.createObjectURL(blob));
       setAtsResult(ats);
       setAppState("editing"); setNumPages(0); setCurrentPage(1);
-    } catch (err: any) { setErrorMsg(err.message); setAppState("error"); }
+    } catch (err: unknown) { setErrorMsg(err instanceof Error ? err.message : "Compile failed"); setAppState("error"); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [latex]);
 
@@ -185,9 +359,9 @@ function GeneratePageContent() {
       // Also fetch job info for label
       fetch(`${API_URL}/tracker/`, { credentials: "include" })
         .then(res => res.ok ? res.json() : null)
-        .then(jobs => {
+        .then((jobs: { id: number; company_name: string; job_title: string }[] | null) => {
           if (jobs) {
-            const job = jobs.find((j: any) => j.id === parseInt(jobId));
+            const job = jobs.find(j => j.id === parseInt(jobId));
             if (job) setJobLabel(`${job.company_name} — ${job.job_title}`);
           }
         });
@@ -195,7 +369,13 @@ function GeneratePageContent() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobId]);
 
-  useEffect(() => { setSections(parseSections(latex)); }, [latex]);
+  useEffect(() => { 
+    setSections(parseSections(latex));
+    if (hasGenerated && !draftReady && latex) {
+      setDraft(parseResumeDraft(latex));
+      setDraftReady(true);
+    }
+  }, [latex, hasGenerated, draftReady]);
 
   useEffect(() => {
     if (highlightedLine !== null) {
@@ -312,6 +492,7 @@ function GeneratePageContent() {
       }
       const { latex: gen, pdf_b64, ats } = await res.json();
       setLatex(gen);
+      setDraftReady(false);
       setCredits(c => Math.max(0, c - 1));
       
       const byteCharacters = atob(pdf_b64);
@@ -324,7 +505,7 @@ function GeneratePageContent() {
       
       setAppState("editing"); setNumPages(0); setCurrentPage(1);
       setHasGenerated(true);
-    } catch (err: any) { setErrorMsg(err.message || "Generation failed"); setAppState("error"); }
+    } catch (err: unknown) { setErrorMsg(err instanceof Error ? err.message : "Generation failed"); setAppState("error"); }
   };
 
   const handleDownload = () => {
@@ -356,6 +537,60 @@ function GeneratePageContent() {
   const onDocumentLoadSuccess = useCallback(({ numPages }: { numPages: number }) => setNumPages(numPages), []);
   const isBusy = appState === "generating" || appState === "compiling";
   const lineCount = latex.split("\n").length;
+
+  const updateDraft = (key: "name" | "summary", value: string) => {
+    setDraft(d => ({ ...d, [key]: value }));
+    if (key === "name") {
+      setLatex(current => replaceFirst(current, /\\textcolor\{[^}]+\}\{([^{}]+)\}/, `\\textcolor{NavyBlue}{${value}}`));
+    } else {
+      setLatex(current => replaceFirst(current, /(\\section\{Summary\}[\s\S]*?)(?=\\section\{|\\end\{document\})/i,
+        `\\section{Summary}\n{\\small ${value}\\par}\n`));
+    }
+  };
+
+  const updateBullet = (index: number, value: string) => {
+    setDraft(d => ({ ...d, bullets: d.bullets.map((b, i) => i === index ? value : b) }));
+    setLatex(current => replaceResumeItem(current, index, value));
+  };
+
+  const updateEntry = (entry: ResumeDraft["sections"][number]["entries"][number], field: "title" | "subtitle" | "meta", value: string) => {
+    setDraft(d => ({
+      ...d,
+      sections: d.sections.map(section => ({
+        ...section,
+        entries: section.entries.map(item => item === entry ? { ...item, [field]: value } : item),
+      })),
+    }));
+    if (entry.command === "resumeSubheading") {
+      const fieldIndex = field === "title" ? 0 : field === "subtitle" ? 2 : 1;
+      setLatex(current => replaceCommandArgument(current, entry.command, entry.occurrence, fieldIndex, value));
+    } else {
+      const fieldIndex = field === "meta" ? 1 : 0;
+      setLatex(current => replaceCommandArgument(current, entry.command, entry.occurrence, fieldIndex, value));
+    }
+  };
+
+  const updateSectionDetail = (sectionName: string, detail: ResumeDraft["sections"][number]["details"][number], value: string) => {
+    setDraft(d => ({
+      ...d,
+      sections: d.sections.map(section => section.name === sectionName
+        ? { ...section, details: section.details.map(item => item.index === detail.index ? { ...item, value } : item) }
+        : section),
+    }));
+    setLatex(current => {
+      const section = draft.sections.find(item => item.name === sectionName);
+      if (section?.detailType === "skills") {
+        return replaceNthMatch(current, /\\textbf\{([^{}]*)\}\{\s*:\s*([^{}]*)\}/g, detail.index, (full: string) => {
+          const label = full.match(/\\textbf\{([^{}]*)\}/)?.[1] || detail.label;
+          return "\\textbf{" + label + "}{: " + value.replace(/[{}]/g, "") + "}";
+        });
+      }
+      if (section?.detailType === "certifications") {
+        return replaceNthMatch(current, /\\item\{([^{}]*)\}/g, detail.index, "\\item{" + value.replace(/[{}]/g, "") + "}");
+      }
+      return current;
+    });
+  };
 
   // ── Pre-generation ─────────────────────────────────────────────
   if (!hasGenerated) {
@@ -463,6 +698,96 @@ function GeneratePageContent() {
             </div>
           </div>
         </main>
+      </AppLayout>
+    );
+  }
+
+  if (!sourceMode) {
+    return (
+      <AppLayout>
+        <div className="flex h-full min-h-0 flex-col" style={{ background: "#f7f5f0", color: C.text }}>
+          <header className="flex items-center justify-between border-b px-7 py-4" style={{ background: "#fffdf9", borderColor: C.border }}>
+            <div className="flex items-center gap-4">
+              <button onClick={() => jobId ? router.push("/tracker") : router.push("/dashboard")} className="text-xs font-semibold" style={{ color: C.green }}>← Back</button>
+              <div className="h-5 w-px" style={{ background: C.border }} />
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: C.textFaint }}>Resume editor</p>
+                <h1 className="text-lg font-semibold" style={{ fontFamily: "Georgia, serif" }}>{jobLabel || "Tailored resume"}</h1>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="hidden text-xs sm:inline" style={{ color: C.textMuted }}>Your changes are ready to preview</span>
+              <button onClick={() => compileLatex()} disabled={isBusy} className="rounded-md px-4 py-2 text-xs font-bold text-white shadow-sm disabled:opacity-50" style={{ background: C.green }}>
+                {appState === "compiling" ? "Updating preview…" : "Update preview"}
+              </button>
+              <button onClick={handleDownload} disabled={!pdfUrl} className="rounded-md border px-3 py-2 text-xs font-semibold disabled:opacity-40" style={{ borderColor: C.border, color: C.textMid }}>Download PDF</button>
+              <button onClick={() => setSourceMode(true)} className="rounded-md border px-3 py-2 text-xs" style={{ borderColor: C.border, color: C.textMuted }}>Source code</button>
+            </div>
+          </header>
+
+          <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+            <section className="w-full overflow-y-auto px-5 py-7 lg:w-[53%] lg:px-10">
+              <div className="mx-auto max-w-2xl">
+                <div className="mb-7">
+                  <div className="mb-2 flex items-center gap-2"><span className="h-2 w-2 rounded-full" style={{ background: C.green }} /><span className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: C.green }}>Step 1 of 1</span></div>
+                  <h2 className="text-3xl font-semibold" style={{ fontFamily: "Georgia, serif" }}>Make it yours.</h2>
+                  <p className="mt-2 max-w-lg text-sm leading-6" style={{ color: C.textMuted }}>Edit the words you want to change. The layout and formatting are handled for you.</p>
+                </div>
+
+                <div className="space-y-5">
+                  <div className="rounded-xl border p-5 shadow-[0_8px_30px_rgba(40,32,20,0.04)]" style={{ background: "#fffdf9", borderColor: C.border }}>
+                    <div className="mb-4 flex items-start justify-between"><div><h3 className="font-semibold">Header</h3><p className="mt-1 text-xs" style={{ color: C.textMuted }}>Your name appears at the top of the page.</p></div><span className="rounded-full px-2 py-1 text-[10px] font-bold" style={{ color: C.green, background: C.greenLight }}>Looks good</span></div>
+                    <label className="mb-2 block text-xs font-semibold" htmlFor="resume-name">Full name</label>
+                    <input id="resume-name" value={draft.name} onChange={e => updateDraft("name", e.target.value)} className="w-full rounded-lg border px-3 py-2.5 text-sm outline-none focus:ring-2" style={{ borderColor: C.border, background: "#faf8f4", color: C.text, outlineColor: C.greenBorder }} />
+                  </div>
+
+                  <div className="rounded-xl border p-5 shadow-[0_8px_30px_rgba(40,32,20,0.04)]" style={{ background: "#fffdf9", borderColor: C.border }}>
+                    <div className="mb-4"><h3 className="font-semibold">Professional summary</h3><p className="mt-1 text-xs" style={{ color: C.textMuted }}>A short introduction tailored to this role.</p></div>
+                    <textarea value={draft.summary} onChange={e => updateDraft("summary", e.target.value)} rows={Math.max(3, Math.ceil(draft.summary.length / 78) + 1)} className="w-full resize-y rounded-lg border px-3 py-2.5 text-sm leading-6 outline-none focus:ring-2" style={{ borderColor: C.border, background: "#faf8f4", color: C.text, outlineColor: C.greenBorder }} />
+                    <p className="mt-2 text-[11px]" style={{ color: C.textFaint }}>Tip: Keep this to 2–4 sentences.</p>
+                  </div>
+
+                  <div className="rounded-xl border p-5 shadow-[0_8px_30px_rgba(40,32,20,0.04)]" style={{ background: "#fffdf9", borderColor: C.border }}>
+                    <div className="mb-4"><h3 className="font-semibold">Resume sections</h3><p className="mt-1 text-xs" style={{ color: C.textMuted }}>Summary, education, experience, projects, and other sections from your resume.</p></div>
+                    <div className="space-y-3">
+                      {draft.sections.filter(section => section.name.toLowerCase() !== "summary").map(section => (
+                        <div key={section.name} className="border-t pt-5 first:border-t-0 first:pt-0" style={{ borderColor: C.border }}>
+                          <div className="mb-3 flex items-center justify-between"><h4 className="font-semibold">{section.name}</h4><span className="text-[11px]" style={{ color: C.textFaint }}>{section.entries.length || section.bullets.length || section.details.length} {section.entries.length === 1 ? "entry" : section.entries.length > 1 ? "entries" : section.details.length === 1 ? "row" : section.details.length > 1 ? "rows" : section.bullets.length === 1 ? "item" : "items"}</span></div>
+                          <div className="space-y-3">
+                            {section.detailType === "skills" && section.details.map(detail => <div key={detail.index} className="grid gap-2 sm:grid-cols-[minmax(150px,0.35fr)_1fr]"><label className="text-xs font-semibold">Category<input value={detail.label} readOnly className="mt-1 w-full rounded-md border px-2.5 py-2 text-sm font-normal" style={{ borderColor: C.border, background: "#f2eee8", color: C.textMuted }} /></label><label className="text-xs font-semibold">Skills / tools<textarea value={detail.value} onChange={e => updateSectionDetail(section.name, detail, e.target.value)} rows={Math.max(2, Math.ceil(detail.value.length / 78) + 1)} className="mt-1 w-full resize-y overflow-hidden rounded-md border px-2.5 py-2 text-sm font-normal leading-5 outline-none focus:ring-2" style={{ borderColor: C.border, background: "#faf8f4", color: C.text, outlineColor: C.greenBorder }} /></label></div>)}
+                            {section.detailType === "certifications" && section.details.map(detail => <label key={detail.index} className="text-xs font-semibold">Certification list<textarea value={detail.value} onChange={e => updateSectionDetail(section.name, detail, e.target.value)} rows={Math.max(3, Math.ceil(detail.value.length / 78) + 1)} className="mt-1 w-full resize-y overflow-hidden rounded-md border px-2.5 py-2 text-sm font-normal leading-5 outline-none focus:ring-2" style={{ borderColor: C.border, background: "#faf8f4", color: C.text, outlineColor: C.greenBorder }} /></label>)}
+                            {section.entries.map(entry => <div key={entry.command + entry.occurrence} className="rounded-lg border p-4" style={{ background: "#faf8f4", borderColor: C.border }}>
+                              <div className="grid gap-3 sm:grid-cols-2">
+                                <label className="text-xs font-semibold">Title<input value={entry.title} onChange={e => updateEntry(entry, "title", e.target.value)} className="mt-1 w-full rounded-md border px-2.5 py-2 text-sm font-normal outline-none focus:ring-2" style={{ borderColor: C.border, background: "#fffdf9", color: C.text, outlineColor: C.greenBorder }} /></label>
+                                <label className="text-xs font-semibold">{entry.command === "resumeProjectHeading" ? "Tools / stack" : "Role"}<input value={entry.subtitle} onChange={e => updateEntry(entry, "subtitle", e.target.value)} className="mt-1 w-full rounded-md border px-2.5 py-2 text-sm font-normal outline-none focus:ring-2" style={{ borderColor: C.border, background: "#fffdf9", color: C.text, outlineColor: C.greenBorder }} /></label>
+                                <label className="text-xs font-semibold sm:col-span-2">{entry.command === "resumeProjectHeading" ? "Dates" : "Location · dates"}<input value={entry.meta} onChange={e => updateEntry(entry, "meta", e.target.value)} className="mt-1 w-full rounded-md border px-2.5 py-2 text-sm font-normal outline-none focus:ring-2" style={{ borderColor: C.border, background: "#fffdf9", color: C.text, outlineColor: C.greenBorder }} /></label>
+                              </div>
+                              <div className="mt-4 space-y-3">
+                                {entry.items.map((bullet, itemIndex) => <div key={bullet.index} className="flex gap-2"><span className="mt-3 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: C.greenBorder }} /><textarea aria-label={section.name + " description " + (itemIndex + 1)} value={bullet.text} onChange={e => updateBullet(bullet.index, e.target.value)} rows={Math.max(2, Math.ceil(bullet.text.length / 78) + 1)} className="w-full resize-y overflow-hidden rounded-lg border px-3 py-2 text-sm leading-5 outline-none focus:ring-2" style={{ borderColor: C.border, background: "#fffdf9", color: C.text, outlineColor: C.greenBorder }} /></div>)}
+                              </div>
+                            </div>)}
+                            {section.entries.length === 0 && section.bullets.map((bullet, itemIndex) => <div key={bullet.index} className="flex gap-2"><span className="mt-3 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: C.greenBorder }} /><textarea aria-label={section.name + " description " + (itemIndex + 1)} value={bullet.text} onChange={e => updateBullet(bullet.index, e.target.value)} rows={Math.max(2, Math.ceil(bullet.text.length / 78) + 1)} className="w-full resize-y overflow-hidden rounded-lg border px-3 py-2 text-sm leading-5 outline-none focus:ring-2" style={{ borderColor: C.border, background: "#faf8f4", color: C.text, outlineColor: C.greenBorder }} /></div>)}
+                            {section.entries.length === 0 && section.bullets.length === 0 && section.details.length === 0 && <p className="rounded-lg px-3 py-4 text-sm" style={{ background: "#f5f2ed", color: C.textMuted }}>This section has no editable descriptions yet. Its existing layout stays preserved.</p>}
+                          </div>
+                        </div>
+                      ))}
+                      {draft.sections.length === 0 && <p className="rounded-lg px-3 py-4 text-sm" style={{ background: "#f5f2ed", color: C.textMuted }}>No sections were detected in this resume.</p>}
+                    </div>
+                  </div>
+                </div>
+                {appState === "error" && <div className="mt-5 rounded-lg border px-4 py-3 text-sm" style={{ color: C.red, background: C.redBg, borderColor: "#ffcccc" }}>The preview could not be updated. {errorMsg}</div>}
+              </div>
+            </section>
+
+            <section className="flex min-h-[520px] flex-1 flex-col border-l" style={{ background: "#e9e5de", borderColor: C.border }}>
+              <div className="flex items-center justify-between border-b px-6 py-3" style={{ background: "#f3f0ea", borderColor: C.border }}><div><p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: C.textMuted }}>Live preview</p><p className="mt-1 text-[11px]" style={{ color: C.textFaint }}>Update the preview when you’re ready</p></div>{atsResult && <span className="rounded-full border px-2 py-1 text-[10px] font-bold" style={{ background: atsResult.pass ? C.greenLight : C.redBg, color: atsResult.pass ? C.green : C.red, borderColor: atsResult.pass ? C.greenBorder : "#ffcccc" }}>{atsResult.pass ? "ATS friendly" : "Check suggestions"}</span>}</div>
+              <div className="flex flex-1 items-start justify-center overflow-auto p-6">
+                {isBusy && <div className="absolute mt-20 rounded-lg bg-white/80 px-4 py-3 text-xs shadow-sm" style={{ color: C.textMuted }}>Updating your preview…</div>}
+                {pdfUrl && <div style={{ filter: "drop-shadow(0 6px 20px rgba(0,0,0,0.18))" }}><Document file={pdfUrl} onLoadSuccess={onDocumentLoadSuccess} loading={<div className="p-10 text-xs" style={{ color: C.textMuted }}>Loading preview…</div>} error={<div className="p-10 text-xs" style={{ color: C.red }}>Preview unavailable</div>}><Page pageNumber={currentPage} renderTextLayer={true} renderAnnotationLayer={true} width={Math.min(660, window.innerWidth * 0.43)} /></Document></div>}
+              </div>
+            </section>
+          </div>
+        </div>
       </AppLayout>
     );
   }
@@ -761,7 +1086,7 @@ function GeneratePageContent() {
                 )}
               </div>
               <div className="flex items-center gap-3">
-                {clickedWord && <span className="text-[10px]" style={{ color: C.green }}>→ "{clickedWord}"</span>}
+                {clickedWord && <span className="text-[10px]" style={{ color: C.green }}>→ &quot;{clickedWord}&quot;</span>}
                 {numPages > 0 && <span className="text-[10px]" style={{ color: C.textFaint }}>{numPages}p</span>}
                 <div className="flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full" style={{ background: appState === "editing" ? C.green : appState === "error" ? C.red : C.borderStrong }} />
