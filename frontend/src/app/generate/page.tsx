@@ -722,7 +722,7 @@ function GeneratePageContent() {
     return (
       <AppLayout>
         <div className="flex h-full min-h-0 flex-col" style={{ background: "#f7f5f0", color: C.text }}>
-          <header className="flex items-center justify-between border-b px-7 py-4" style={{ background: "#fffdf9", borderColor: C.border }}>
+          <header className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3 sm:px-7 sm:py-4" style={{ background: "#fffdf9", borderColor: C.border }}>
             <div className="flex items-center gap-4">
               <button onClick={() => jobId ? router.push("/tracker") : router.push("/dashboard")} className="text-xs font-semibold" style={{ color: C.green }}>← Back</button>
               <div className="h-5 w-px" style={{ background: C.border }} />
@@ -731,8 +731,8 @@ function GeneratePageContent() {
                 <h1 className="text-lg font-semibold" style={{ fontFamily: "Georgia, serif" }}>{jobLabel || "Tailored resume"}</h1>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="hidden text-xs sm:inline" style={{ color: C.textMuted }}>Your changes are ready to preview</span>
+            <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
+              <span className="hidden text-xs lg:inline" style={{ color: C.textMuted }}>Your changes are ready to preview</span>
               <button onClick={() => compileLatex()} disabled={isBusy} className="rounded-md px-4 py-2 text-xs font-bold text-white shadow-sm disabled:opacity-50" style={{ background: C.green }}>
                 {appState === "compiling" ? "Updating preview…" : "Update preview"}
               </button>
@@ -741,8 +741,8 @@ function GeneratePageContent() {
             </div>
           </header>
 
-          <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-            <section className="w-full overflow-y-auto px-5 py-7 lg:w-[53%] lg:px-10">
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto lg:flex-row lg:overflow-hidden">
+            <section className="w-full shrink-0 px-4 py-6 sm:px-5 lg:w-[53%] lg:flex-1 lg:overflow-y-auto lg:px-10 lg:py-7">
               <div className="mx-auto max-w-2xl">
                 <div className="mb-7">
                   <div className="mb-2 flex items-center gap-2"><span className="h-2 w-2 rounded-full" style={{ background: C.green }} /><span className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: C.green }}>Step 1 of 1</span></div>
@@ -795,11 +795,11 @@ function GeneratePageContent() {
               </div>
             </section>
 
-            <section className="flex min-h-[520px] flex-1 flex-col border-l" style={{ background: "#e9e5de", borderColor: C.border }}>
+            <section className="flex min-h-[560px] w-full shrink-0 flex-col border-t lg:min-h-0 lg:w-auto lg:flex-1 lg:border-l lg:border-t-0" style={{ background: "#e9e5de", borderColor: C.border }}>
               <div className="flex items-center justify-between border-b px-6 py-3" style={{ background: "#f3f0ea", borderColor: C.border }}><div><p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: C.textMuted }}>Live preview</p><p className="mt-1 text-[11px]" style={{ color: C.textFaint }}>Update the preview when you’re ready</p></div>{atsResult && <span className="rounded-full border px-2 py-1 text-[10px] font-bold" style={{ background: atsResult.pass ? C.greenLight : C.redBg, color: atsResult.pass ? C.green : C.red, borderColor: atsResult.pass ? C.greenBorder : "#ffcccc" }}>{atsResult.pass ? "ATS friendly" : "Check suggestions"}</span>}</div>
-              <div className="flex flex-1 items-start justify-center overflow-auto p-6">
+              <div className="flex flex-1 items-start justify-center overflow-auto p-4 sm:p-6">
                 {isBusy && <div className="absolute mt-20 rounded-lg bg-white/80 px-4 py-3 text-xs shadow-sm" style={{ color: C.textMuted }}>Updating your preview…</div>}
-                {pdfUrl && <div style={{ filter: "drop-shadow(0 6px 20px rgba(0,0,0,0.18))" }}><Document file={pdfUrl} onLoadSuccess={onDocumentLoadSuccess} loading={<div className="p-10 text-xs" style={{ color: C.textMuted }}>Loading preview…</div>} error={<div className="p-10 text-xs" style={{ color: C.red }}>Preview unavailable</div>}><Page pageNumber={currentPage} renderTextLayer={true} renderAnnotationLayer={true} width={Math.min(660, window.innerWidth * 0.43)} /></Document></div>}
+                {pdfUrl && <div style={{ filter: "drop-shadow(0 6px 20px rgba(0,0,0,0.18))" }}><Document file={pdfUrl} onLoadSuccess={onDocumentLoadSuccess} loading={<div className="p-10 text-xs" style={{ color: C.textMuted }}>Loading preview…</div>} error={<div className="p-10 text-xs" style={{ color: C.red }}>Preview unavailable</div>}><Page pageNumber={currentPage} renderTextLayer={true} renderAnnotationLayer={true} width={Math.min(660, window.innerWidth < 1024 ? window.innerWidth - 64 : window.innerWidth * 0.43)} /></Document></div>}
               </div>
             </section>
           </div>
@@ -832,7 +832,7 @@ function GeneratePageContent() {
         style={{ background: C.bg, color: C.text, userSelect: isDragging ? "none" : "auto" }}>
 
         {/* Navbar */}
-        <div className="flex items-center justify-between px-4 h-11 shrink-0" style={{ background: C.bgCard, borderBottom: `1px solid ${C.border}` }}>
+        <div className="flex min-h-11 flex-wrap items-center justify-between gap-2 px-3 py-2 shrink-0 sm:px-4" style={{ background: C.bgCard, borderBottom: `1px solid ${C.border}` }}>
           <div className="flex items-center gap-3">
             <button onClick={() => jobId ? router.push("/tracker") : router.push("/dashboard")}
               className="text-[10px] tracking-[0.3em] uppercase hover:opacity-60 transition-opacity" style={{ color: C.green }}>
@@ -850,7 +850,7 @@ function GeneratePageContent() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2">
             <ViewToggle mode={editorMode} onChange={setEditorMode} />
             <button onClick={() => compileLatex()} disabled={isBusy}
               className="flex items-center gap-2 px-4 py-1.5 text-[11px] font-bold tracking-[0.12em] uppercase rounded-sm transition-all disabled:cursor-not-allowed"
@@ -931,7 +931,7 @@ function GeneratePageContent() {
         </div>
 
         {/* Icon Toolbar */}
-        <div className="flex items-center gap-0.5 px-3 py-1.5 shrink-0" style={{ background: C.bgCard, borderBottom: `1px solid ${C.border}` }}>
+        <div className="flex items-center gap-0.5 overflow-x-auto px-3 py-1.5 shrink-0" style={{ background: C.bgCard, borderBottom: `1px solid ${C.border}` }}>
           <Icon title="Bold" onClick={() => insertAround("\\textbf{", "}")}>
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><text x="2" y="11" fontSize="12" fontWeight="900" fontFamily="serif" fill="currentColor">B</text></svg>
           </Icon>
@@ -995,10 +995,10 @@ function GeneratePageContent() {
         )}
 
         {/* Resizable panels */}
-        <div ref={containerRef} className="flex flex-1 overflow-hidden" style={{ cursor: isDragging ? "col-resize" : "auto" }}>
+        <div ref={containerRef} className="generate-source-panels flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row" style={{ cursor: isDragging ? "col-resize" : "auto" }}>
 
           {/* Left: Editor + Sections */}
-          <div className="flex flex-col overflow-hidden" style={{ width: `${splitPct}%` }}>
+          <div className="generate-source-left flex flex-col overflow-hidden" style={{ width: `${splitPct}%` }}>
             <div className="flex flex-1 overflow-hidden" style={{ background: C.bgEditor }}>
               {/* Line numbers */}
               <div className="overflow-hidden shrink-0" style={{ width: "3.5rem", background: C.bgCard, borderRight: `1px solid ${C.border}` }}>
@@ -1085,7 +1085,7 @@ function GeneratePageContent() {
 
           {/* Drag divider */}
           <div onMouseDown={onDividerMouseDown}
-            className="flex items-center justify-center shrink-0 transition-colors"
+            className="generate-source-divider flex items-center justify-center shrink-0 transition-colors"
             style={{ width: "5px", cursor: "col-resize", background: isDragging ? C.greenBorder : C.border, zIndex: 10 }}
             onMouseEnter={e => { if (!isDragging) e.currentTarget.style.background = C.borderStrong; }}
             onMouseLeave={e => { if (!isDragging) e.currentTarget.style.background = C.border; }}>
@@ -1095,7 +1095,7 @@ function GeneratePageContent() {
           </div>
 
           {/* Right: PDF Preview */}
-          <div className="flex flex-col overflow-hidden" style={{ flex: 1 }}>
+          <div className="generate-source-preview flex min-h-0 flex-1 flex-col overflow-hidden">
             <div className="flex items-center justify-between px-4 py-2 shrink-0" style={{ background: C.bgCard, borderBottom: `1px solid ${C.border}` }}>
               <div className="flex items-center gap-2">
                 <span className="text-[10px] tracking-[0.2em] uppercase" style={{ color: C.textFaint }}>Preview</span>
@@ -1143,7 +1143,7 @@ function GeneratePageContent() {
                     loading={<div className="flex items-center justify-center h-40 text-[10px] uppercase" style={{ color: C.textMuted }}>Loading...</div>}
                     error={<div className="flex items-center justify-center h-40 text-[11px]" style={{ color: C.red }}>Failed to render</div>}>
                     <Page pageNumber={currentPage} renderTextLayer={true} renderAnnotationLayer={true}
-                      width={Math.min(700, (window.innerWidth * (1 - splitPct / 100)) - 60)} />
+                      width={Math.min(700, window.innerWidth < 1024 ? window.innerWidth - 64 : (window.innerWidth * (1 - splitPct / 100)) - 60)} />
                   </Document>
                 </div>
               )}

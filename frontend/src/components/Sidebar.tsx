@@ -52,31 +52,11 @@ const IconChevron = ({ collapsed }: { collapsed: boolean }) => (
   </svg>
 );
 
-const IconInterview = () => (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-    <circle cx="8" cy="6" r="3" stroke="currentColor" strokeWidth="1.3"/>
-    <path d="M3 14c0-2.8 2.2-5 5-5s5 2.2 5 5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
-    <circle cx="12" cy="10" r="2.5" fill="currentColor" fillOpacity="0.15" stroke="currentColor" strokeWidth="1.1"/>
-    <line x1="12" y1="9.2" x2="12" y2="10.5" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
-    <circle cx="12" cy="11.2" r="0.4" fill="currentColor"/>
-  </svg>
-);
-
-const IconCode = () => (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-    <path d="M5 4L1 8L5 12" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
-    <path d="M11 4L15 8L11 12" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
-    <line x1="9.5" y1="2" x2="6.5" y2="14" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
-  </svg>
-);
-
 // ── Nav items ─────────────────────────────────────────────────────
 const NAV_ITEMS = [
   { label: "Dashboard",   href: "/dashboard",   icon: <IconDashboard /> },
   { label: "Generate CV", href: "/generate",    icon: <IconGenerate /> },
   { label: "Job Tracker", href: "/tracker",     icon: <IconTracker /> },
-  { label: "Interview", href: "/interview", icon: <IconInterview /> },
-  { label: "Code Practice", href: "/code", icon: <IconCode /> }
 ];
 
 // ── Sidebar ───────────────────────────────────────────────────────
@@ -103,7 +83,7 @@ export default function Sidebar() {
 
   return (
     <aside
-      className="flex flex-col h-screen shrink-0 transition-all duration-300 ease-in-out"
+      className="mobile-sidebar flex flex-col h-screen shrink-0 transition-all duration-300 ease-in-out"
       style={{
         width: collapsed ? "56px" : "200px",
         background: "#edeae4",
@@ -252,5 +232,6 @@ export default function Sidebar() {
         </button>
       </div>
     </aside>
+
   );
 }

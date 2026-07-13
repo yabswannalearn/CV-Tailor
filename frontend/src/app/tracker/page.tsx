@@ -82,8 +82,8 @@ const EMPTY: JobForm = {
 // ── UI helpers ───────────────────────────────────────────────────
 function StatusBadge({ status }: { status: Status }) {
   const c = SC[status];
-  return (
-    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm text-[10px] font-bold tracking-[0.08em] uppercase whitespace-nowrap"
+    return (
+    <span className="tracker-job-badge inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm text-[10px] font-bold tracking-[0.08em] uppercase whitespace-nowrap"
       style={{ background: c.bg, color: c.text, border: `1px solid ${c.border}` }}>
       <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: c.dot }} />{status}
     </span>
@@ -94,7 +94,7 @@ function PriorityBadge({ priority }: { priority: Priority }) {
   const c = PC[priority];
   const arrow = priority === "High" ? "↑" : priority === "Low" ? "↓" : "–";
   return (
-    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-sm text-[9px] font-bold tracking-[0.08em] uppercase"
+    <span className="tracker-job-badge inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-sm text-[9px] font-bold tracking-[0.08em] uppercase"
       style={{ background: c.bg, color: c.text }}>
       {arrow} {priority}
     </span>
@@ -180,7 +180,7 @@ function PdfModal({ jobId, companyName, onClose }: { jobId: number; companyName:
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 font-mono"
       style={{ background: "rgba(26,24,20,0.6)" }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="flex flex-col rounded-sm shadow-2xl overflow-hidden" style={{ width: "680px", maxHeight: "90vh", background: "#f5f2ed", border: "1px solid #d4cfc7" }}>
+      <div className="flex w-[calc(100vw-2rem)] max-w-[680px] flex-col rounded-sm shadow-2xl overflow-hidden" style={{ maxHeight: "90vh", background: "#f5f2ed", border: "1px solid #d4cfc7" }}>
 
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 shrink-0" style={{ background: "#edeae4", borderBottom: "1px solid #d4cfc7" }}>
@@ -221,7 +221,7 @@ function PdfModal({ jobId, companyName, onClose }: { jobId: number; companyName:
             <div style={{ filter: "drop-shadow(0 4px 20px rgba(0,0,0,0.15))" }}>
               <Document file={pdfUrl} onLoadSuccess={onLoad}
                 loading={<div className="flex items-center justify-center h-40 text-xs" style={{ color: "#a8a39c" }}>Loading...</div>}>
-                <Page pageNumber={page} renderTextLayer={true} renderAnnotationLayer={true} width={620} />
+                <Page pageNumber={page} renderTextLayer={true} renderAnnotationLayer={true} width={Math.min(620, window.innerWidth - 56)} />
               </Document>
             </div>
           )}
@@ -247,7 +247,7 @@ function CoverLetterModal({ job, onClose, onSave }: { job: Job; onClose: () => v
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 font-mono"
       style={{ background: "rgba(26,24,20,0.6)" }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="flex flex-col rounded-sm shadow-2xl overflow-hidden" style={{ width: "680px", maxHeight: "90vh", background: "#f5f2ed", border: "1px solid #d4cfc7" }}>
+      <div className="flex w-[calc(100vw-2rem)] max-w-[680px] flex-col rounded-sm shadow-2xl overflow-hidden" style={{ maxHeight: "90vh", background: "#f5f2ed", border: "1px solid #d4cfc7" }}>
         
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 shrink-0" style={{ background: "#edeae4", borderBottom: "1px solid #d4cfc7" }}>
@@ -296,6 +296,7 @@ export default function TrackerPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<{ total: number; by_status: Record<string, number> }>({ total: 0, by_status: {} });
+  const [statsOpen, setStatsOpen] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingJob, setEditingJob] = useState<Job | null>(null);
   const [form, setForm] = useState<JobForm>(EMPTY);
@@ -485,10 +486,10 @@ export default function TrackerPage() {
   return (
     <AppLayout>
       <div className="h-full overflow-auto font-mono" style={{ background: "#f5f2ed", color: "#1a1814" }}>
-        <div className="max-w-6xl mx-auto px-6 py-10">
+        <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
 
           {/* Header */}
-          <div className="flex items-start justify-between mb-8">
+          <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
             <div>
               <div className="text-[10px] tracking-[0.3em] uppercase mb-1" style={{ color: "#5a8a00" }}>cv_tailor</div>
               <h1 className="text-2xl font-bold" style={{ fontFamily: "'Georgia', serif" }}>Job Tracker</h1>
@@ -510,24 +511,44 @@ export default function TrackerPage() {
           </div>
 
           {/* Stats */}
-          <div className="grid grid-cols-7 gap-2 mb-8">
-            {STATUSES.map(s => {
-              const c = SC[s];
-              const count = stats.by_status[s] || 0;
-              const active = filterStatus === s;
-              return (
-                <button key={s} onClick={() => setFilterStatus(active ? "All" : s)}
-                  className="p-3 rounded-sm text-center transition-all"
-                  style={{ background: active ? c.bg : "#edeae4", border: `1px solid ${active ? c.border : "#d4cfc7"}` }}>
-                  <div className="text-xl font-bold" style={{ color: active ? c.text : "#1a1814", fontFamily: "'Georgia', serif" }}>{count}</div>
-                  <div className="text-[9px] tracking-[0.08em] uppercase mt-0.5" style={{ color: active ? c.text : "#a8a39c" }}>{s}</div>
-                </button>
-              );
-            })}
-          </div>
+          <section className="mb-8 overflow-hidden rounded-xl border border-[#d4cfc7] bg-[#fffdf9] shadow-sm">
+            <button
+              type="button"
+              onClick={() => setStatsOpen(open => !open)}
+              className="flex w-full items-center justify-between gap-4 px-4 py-3 text-left sm:px-5"
+              aria-expanded={statsOpen}
+            >
+              <span>
+                <span className="block text-[10px] uppercase tracking-[0.2em] text-[#5a8a00]">Application overview</span>
+                <span className="mt-1 block text-xs text-[#7a7570]">
+                  {stats.total} total · {filterStatus === "All" ? "All statuses" : `${filterStatus} selected`}
+                </span>
+              </span>
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#d4cfc7] text-[#5a8a00]">
+                {statsOpen ? "−" : "+"}
+              </span>
+            </button>
+            {statsOpen && (
+              <div className="grid grid-cols-2 gap-2 border-t border-[#eeeae4] p-3 sm:grid-cols-4 sm:p-4 lg:grid-cols-7">
+                {STATUSES.map(s => {
+                  const c = SC[s];
+                  const count = stats.by_status[s] || 0;
+                  const active = filterStatus === s;
+                  return (
+                    <button key={s} onClick={() => setFilterStatus(active ? "All" : s)}
+                      className="rounded-lg p-3 text-center transition-all"
+                      style={{ background: active ? c.bg : "#edeae4", border: `1px solid ${active ? c.border : "#d4cfc7"}` }}>
+                      <div className="text-xl font-bold" style={{ color: active ? c.text : "#1a1814", fontFamily: "'Georgia', serif" }}>{count}</div>
+                      <div className="mt-0.5 text-[9px] uppercase tracking-[0.08em]" style={{ color: active ? c.text : "#a8a39c" }}>{s}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </section>
 
           {/* Search */}
-          <div className="flex items-center gap-3 mb-5">
+          <div className="mb-5 flex flex-wrap items-center gap-3">
             <div className="relative flex-1 max-w-sm">
               <svg className="absolute left-3 top-1/2 -translate-y-1/2" width="11" height="11" viewBox="0 0 11 11" fill="none">
                 <circle cx="4.5" cy="4.5" r="3.5" stroke="#a8a39c" strokeWidth="1.2"/>
@@ -578,20 +599,20 @@ export default function TrackerPage() {
                 const isGenerating = generatingFor === job.id;
                 const err = generateError?.id === job.id ? generateError.msg : null;
                 return (
-                  <div key={job.id} className="rounded-sm" style={{ background: "#edeae4", border: "1px solid #d4cfc7" }}>
+                  <div key={job.id} className="tracker-job-card rounded-xl sm:rounded-sm" style={{ background: "#edeae4", border: "1px solid #d4cfc7" }}>
 
                     {/* Main row */}
-                    <div className="flex items-center gap-3 px-4 py-3">
-                      <div className="w-2 h-2 rounded-full shrink-0" style={{ background: SC[job.status].dot }} />
+                    <div className="tracker-job-main flex flex-col gap-3 rounded-xl px-3 py-3 sm:flex-row sm:items-center sm:px-4">
+                      <div className="tracker-job-dot w-2 h-2 rounded-full shrink-0" style={{ background: SC[job.status].dot }} />
 
                       {/* Info */}
-                      <div className="flex-1 min-w-0">
+                      <div className="tracker-job-info flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-sm font-bold" style={{ color: "#1a1814" }}>{job.company_name}</span>
                           <span className="text-[10px]" style={{ color: "#d4cfc7" }}>·</span>
                           <span className="text-sm" style={{ color: "#4a4540" }}>{job.job_title}</span>
                         </div>
-                        <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                        {expanded && <div className="flex items-center gap-3 mt-0.5 flex-wrap">
                           {job.location && <span className="text-[10px]" style={{ color: "#a8a39c" }}>📍 {job.location}</span>}
                           {job.job_type && <span className="text-[10px]" style={{ color: "#a8a39c" }}>{job.job_type}</span>}
                           {job.salary_range && <span className="text-[10px]" style={{ color: "#a8a39c" }}>💰 {job.salary_range}</span>}
@@ -601,11 +622,11 @@ export default function TrackerPage() {
                               ✓ CV generated {new Date(job.pdf_generated_at).toLocaleDateString()}
                             </span>
                           )}
-                        </div>
+                        </div>}
                       </div>
 
                       {/* Right controls */}
-                      <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                      {expanded && <div className="tracker-job-actions flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
                         <PriorityBadge priority={job.priority} />
                         <StatusBadge status={job.status} />
 
@@ -617,7 +638,7 @@ export default function TrackerPage() {
                           {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
                         </select>
 
-                        <div className="w-px h-5 shrink-0" style={{ background: "#d4cfc7" }} />
+                        <div className="hidden h-5 w-px shrink-0 sm:block" style={{ background: "#d4cfc7" }} />
 
                         {/* Generate CV */}
                         <button
@@ -666,7 +687,7 @@ export default function TrackerPage() {
                         </button>
                         )}
 
-                        <div className="w-px h-5 shrink-0" style={{ background: "#d4cfc7" }} />
+                        <div className="hidden h-5 w-px shrink-0 sm:block" style={{ background: "#d4cfc7" }} />
 
                         {/* Generate Cover Letter */}
                         <button
@@ -696,7 +717,7 @@ export default function TrackerPage() {
                           )}
                         </button>
 
-                        <div className="w-px h-5 shrink-0" style={{ background: "#d4cfc7" }} />
+                        <div className="hidden h-5 w-px shrink-0 sm:block" style={{ background: "#d4cfc7" }} />
 
                         {/* View Cover Letter */}
                         {job.cover_letter && (
@@ -715,15 +736,7 @@ export default function TrackerPage() {
                           </button>
                         )}
 
-                        <div className="w-px h-5 shrink-0" style={{ background: "#d4cfc7" }} />
-
-                        {/* Expand */}
-                        <IconBtn onClick={() => setExpandedJob(expanded ? null : job.id)} title="Details">
-                          <svg width="11" height="11" viewBox="0 0 11 11" fill="none"
-                            style={{ transform: expanded ? "rotate(180deg)" : "rotate(0)", transition: "transform 0.2s" }}>
-                            <path d="M2 4L5.5 7L9 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
-                        </IconBtn>
+                        <div className="hidden h-5 w-px shrink-0 sm:block" style={{ background: "#d4cfc7" }} />
 
                         {/* Edit */}
                         <IconBtn onClick={() => openEdit(job)} title="Edit" green>
@@ -738,7 +751,13 @@ export default function TrackerPage() {
                             <path d="M1.5 3h8M4 3V2h3v1M3.5 3v6h4V3h-4z" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"/>
                           </svg>
                         </IconBtn>
-                      </div>
+                      </div>}
+                      <IconBtn onClick={() => setExpandedJob(expanded ? null : job.id)} title={expanded ? "Collapse details" : "Show details"}>
+                        <svg width="11" height="11" viewBox="0 0 11 11" fill="none"
+                          style={{ transform: expanded ? "rotate(180deg)" : "rotate(0)", transition: "transform 0.2s" }}>
+                          <path d="M2 4L5.5 7L9 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </IconBtn>
                     </div>
 
                     {/* Error toast */}
@@ -753,7 +772,7 @@ export default function TrackerPage() {
                     {/* Expanded */}
                     {expanded && (
                       <div className="px-4 pb-4 pt-2" style={{ borderTop: "1px solid #d4cfc7" }}>
-                        <div className="grid grid-cols-2 gap-6">
+                        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                           <div className="space-y-3">
                             {job.short_description && (
                               <div>
@@ -818,7 +837,7 @@ export default function TrackerPage() {
           <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-sm shadow-2xl font-mono"
             style={{ background: "#f5f2ed", border: "1px solid #d4cfc7" }}>
 
-            <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: "1px solid #d4cfc7" }}>
+            <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 sm:py-4" style={{ borderBottom: "1px solid #d4cfc7" }}>
               <h2 className="text-sm font-bold tracking-[0.1em] uppercase" style={{ color: "#1a1814" }}>
                 {editingJob ? "Edit Application" : "New Application"}
               </h2>
@@ -828,19 +847,19 @@ export default function TrackerPage() {
             </div>
 
             <div className="px-6 py-5 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <InputField label="Company Name" value={form.company_name} onChange={v => setField("company_name", v)} placeholder="Google, Meta..." required />
                 <InputField label="Job Title" value={form.job_title} onChange={v => setField("job_title", v)} placeholder="Software Engineer..." required />
               </div>
               
-              <div className="flex gap-3 items-end">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
                 <div className="flex-1">
                   <InputField label="Job URL" value={form.job_url} onChange={v => setField("job_url", v)} placeholder="https://linkedin.com/jobs/..." />
                 </div>
                 <button 
                   onClick={handleAutoFill} 
                   disabled={autoFilling || !form.job_url.trim()}
-                  className="px-4 text-xs font-bold tracking-[0.1em] uppercase rounded-sm transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed" 
+                  className="h-[42px] w-full px-4 text-xs font-bold tracking-[0.1em] uppercase rounded-sm transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed sm:w-auto"
                   style={{ background: "#e8f5c0", color: "#3d6600", border: "1px solid #8ab030", height: "42px" }}>
                   {autoFilling ? "Loading..." : "Auto-Fill"}
                 </button>
@@ -871,22 +890,22 @@ export default function TrackerPage() {
                 <div className="text-[9px] mt-1" style={{ color: "#a8a39c" }}>{form.job_description.length} chars</div>
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <SelectField label="Status" value={form.status} onChange={v => setField("status", v)} options={STATUSES} />
                 <SelectField label="Priority" value={form.priority} onChange={v => setField("priority", v)} options={["High", "Medium", "Low"]} />
                 <SelectField label="Job Type" value={form.job_type} onChange={v => setField("job_type", v)} options={["", "Remote", "Hybrid", "On-site"]} />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <SelectField label="Resume Template" value={form.template_id} onChange={v => setField("template_id", v as TemplateId)} options={["classic", "modern"]} />
                 <div className="flex items-end pb-2 text-[10px] leading-4" style={{ color: "#7a7570" }}>
                   This template will be used when you generate a CV for this job.
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <InputField label="Location" value={form.location} onChange={v => setField("location", v)} placeholder="Manila / Remote..." />
                 <InputField label="Salary Range" value={form.salary_range} onChange={v => setField("salary_range", v)} placeholder="₱50k–80k / $30–50/hr..." />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <InputField label="Date Applied" value={form.date_applied} onChange={v => setField("date_applied", v)} type="date" />
                 <InputField label="Follow-up Date" value={form.follow_up_date} onChange={v => setField("follow_up_date", v)} type="date" />
               </div>
@@ -901,7 +920,7 @@ export default function TrackerPage() {
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-3 px-6 py-4" style={{ borderTop: "1px solid #d4cfc7" }}>
+            <div className="flex flex-wrap items-center justify-end gap-3 px-4 py-3 sm:px-6 sm:py-4" style={{ borderTop: "1px solid #d4cfc7" }}>
               <button onClick={() => setShowModal(false)}
                 className="px-4 py-2 text-xs font-bold tracking-[0.1em] uppercase rounded-sm transition-colors"
                 style={{ border: "1px solid #d4cfc7", color: "#7a7570" }}

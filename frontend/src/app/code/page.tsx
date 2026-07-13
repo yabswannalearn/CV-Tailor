@@ -258,10 +258,10 @@ function CodePageContent() {
 
   return (
     <AppLayout>
-      <div className="h-full flex overflow-hidden font-mono" style={{ background: "#f5f2ed", color: "#1a1814" }}>
+      <div className="code-workspace h-full flex overflow-hidden font-mono" style={{ background: "#f5f2ed", color: "#1a1814" }}>
 
         {/* ── LEFT: Problem list ── */}
-        <div className="flex flex-col shrink-0 overflow-hidden" style={{ width: 260, borderRight: "1px solid #d4cfc7", background: "#edeae4" }}>
+        <div className="code-sidebar flex flex-col shrink-0 overflow-hidden" style={{ width: 260, borderRight: "1px solid #d4cfc7", background: "#edeae4" }}>
 
           {/* Header */}
           <div className="px-4 py-4 shrink-0" style={{ borderBottom: "1px solid #d4cfc7" }}>
@@ -499,7 +499,7 @@ function CodePageContent() {
         </div>
 
         {/* ── RIGHT: Output / AI panels ── */}
-        <div className="flex flex-col overflow-hidden" style={{ width: 340 }}>
+        <div className="code-output flex flex-col overflow-hidden" style={{ width: 340 }}>
 
           {/* Panel tabs */}
           <div className="flex shrink-0" style={{ borderBottom: "1px solid #d4cfc7", background: "#edeae4" }}>
