@@ -1,4 +1,5 @@
 import os
+import io
 import subprocess
 import sys
 import tempfile
@@ -10,6 +11,11 @@ logger = logging.getLogger(__name__)
 
 class PDFCompilationError(RuntimeError):
     pass
+
+
+def pdf_page_count(pdf_bytes: bytes) -> int:
+    from pypdf import PdfReader
+    return len(PdfReader(io.BytesIO(pdf_bytes)).pages)
 
 
 def get_tectonic_command() -> str | None:

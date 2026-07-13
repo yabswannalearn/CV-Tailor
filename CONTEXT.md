@@ -32,6 +32,9 @@ _Avoid_: section emphasis, main lever (use Lever Guidance when referring to the 
 Post-compile validation (`ai-service/services/ats_check.py`) that extracts text from the generated PDF and verifies (a) section headings appear in the preset's stated order, (b) text is selectable (not image-based), (c) ATS-conventional headings are present. Returns `{pass, warnings}`. Surfaced as a badge in the generate page.
 _Avoid_: ATS score, resume grader (use ATS Check).
 
+**One-page rule**:
+Every generated resume must fit on exactly one page. A resume that spills onto a second page is not a valid generated result.
+
 ## Architectural constraints
 
 - **PDF compilation is Python + Tectonic** (`ai-service/services/pdf_service.py`), invoked directly from FastAPI. The `pdf-service/` Go/Gin app is dead code (nothing calls port 8081) and is not used. ATS validation is Python (`ai-service/services/ats_check.py`), not Go.

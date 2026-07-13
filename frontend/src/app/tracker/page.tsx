@@ -22,6 +22,7 @@ const API = API_URL;
 // ── Types ────────────────────────────────────────────────────────
 type Status = "Saved" | "Applied" | "Interview" | "Tech Test" | "Offer" | "Rejected" | "Ghosted";
 type Priority = "High" | "Medium" | "Low";
+type TemplateId = "classic" | "modern";
 
 interface Job {
   id: number;
@@ -41,6 +42,7 @@ interface Job {
   priority: Priority;
   notes?: string;
   cover_letter?: string;
+  template_id?: TemplateId;
 }
 
 type JobForm = {
@@ -48,6 +50,7 @@ type JobForm = {
   short_description: string; job_description: string; status: Status;
   date_applied: string; follow_up_date: string; job_type: string;
   location: string; salary_range: string; priority: Priority; notes: string;
+  template_id: TemplateId;
 };
 
 // ── Constants ────────────────────────────────────────────────────
@@ -73,6 +76,7 @@ const EMPTY: JobForm = {
   company_name: "", job_title: "", job_url: "", short_description: "",
   job_description: "", status: "Saved", date_applied: "", follow_up_date: "",
   job_type: "", location: "", salary_range: "", priority: "Medium", notes: "",
+  template_id: "classic",
 };
 
 // ── UI helpers ───────────────────────────────────────────────────
@@ -364,6 +368,7 @@ export default function TrackerPage() {
       date_applied: job.date_applied || "", follow_up_date: job.follow_up_date || "",
       job_type: job.job_type || "", location: job.location || "",
       salary_range: job.salary_range || "", priority: job.priority, notes: job.notes || "",
+      template_id: job.template_id || "classic",
     });
     setShowModal(true);
   };
@@ -870,6 +875,12 @@ export default function TrackerPage() {
                 <SelectField label="Status" value={form.status} onChange={v => setField("status", v)} options={STATUSES} />
                 <SelectField label="Priority" value={form.priority} onChange={v => setField("priority", v)} options={["High", "Medium", "Low"]} />
                 <SelectField label="Job Type" value={form.job_type} onChange={v => setField("job_type", v)} options={["", "Remote", "Hybrid", "On-site"]} />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <SelectField label="Resume Template" value={form.template_id} onChange={v => setField("template_id", v as TemplateId)} options={["classic", "modern"]} />
+                <div className="flex items-end pb-2 text-[10px] leading-4" style={{ color: "#7a7570" }}>
+                  This template will be used when you generate a CV for this job.
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <InputField label="Location" value={form.location} onChange={v => setField("location", v)} placeholder="Manila / Remote..." />

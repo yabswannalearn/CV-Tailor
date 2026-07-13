@@ -104,6 +104,7 @@ class JobApplication(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     latex_source = Column(Text)
     cover_letter = Column(Text)
+    template_id = Column(String(50), default="classic", nullable=False)
 
     owner = relationship("User", back_populates="job_applications")
 

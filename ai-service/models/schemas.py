@@ -1,5 +1,5 @@
 from pydantic import BaseModel, field_validator
-from typing import List, Optional
+from typing import List, Optional, Literal
 from datetime import date as DateType, datetime
 from typing import Optional
 
@@ -126,6 +126,7 @@ class JobApplicationCreate(BaseModel):
     priority: Optional[str] = "Medium"
     notes: Optional[str] = None
     cover_letter: Optional[str] = None
+    template_id: Literal["classic", "modern"] = "classic"
 
 class JobApplicationUpdate(BaseModel):
     company_name: Optional[str] = None
@@ -142,6 +143,7 @@ class JobApplicationUpdate(BaseModel):
     priority: Optional[str] = None
     notes: Optional[str] = None
     cover_letter: Optional[str] = None
+    template_id: Optional[Literal["classic", "modern"]] = None
 
 class JobApplicationResponse(BaseModel):
     id: int
@@ -161,6 +163,7 @@ class JobApplicationResponse(BaseModel):
     priority: str
     notes: Optional[str] = None
     cover_letter: Optional[str] = None
+    template_id: Literal["classic", "modern"] = "classic"
 
     class Config:
         from_attributes = True

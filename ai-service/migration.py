@@ -6,6 +6,7 @@ engine = create_engine('postgresql://postgres:reinael123@localhost:5432/cv_tailo
 with engine.connect() as conn:
     conn.execute(text("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS preferred_template VARCHAR(50) DEFAULT 'classic';"))
     conn.execute(text("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS preset_slug VARCHAR(50) DEFAULT 'blank';"))
+    conn.execute(text("ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS template_id VARCHAR(50) NOT NULL DEFAULT 'classic';"))
     
     conn.execute(text("""
     CREATE TABLE IF NOT EXISTS resume_presets (

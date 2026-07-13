@@ -54,12 +54,61 @@ def db_profile_to_schema(db_profile: db_models.Profile) -> UserProfile:
         ]
     )
 
-def truncate_jd(jd: str, max_chars: int = 1500) -> str:
+def truncate_jd(jd: str, max_chars: int = 6000) -> str:
     if len(jd) > max_chars:
         return jd[:max_chars] + "... [truncated]"
     return jd
 
-def build_prompt(profile: UserProfile, jd: str, preset: dict | None = None, custom_role: str = "") -> str:
+def _tokens(text: str) -> set[str]:
+    return {
+        token for token in re.findall(r"[a-z0-9][a-z0-9+#.-]{2,}", text.lower())
+        if token not in {"the", "and", "with", "for", "from", "that", "this", "using", "into", "your"}
+    }
+
+
+def retrieve_successful_evidence(profile: db_models.Profile, jd: str, db, limit: int = 12) -> list[dict]:
+    """Retrieve plain-text evidence from Offer-linked historical resumes."""
+    if not db or not profile:
+        return []
+
+    jobs = db.query(db_models.JobApplication).filter(
+        db_models.JobApplication.user_id == profile.user_id,
+        db_models.JobApplication.status == "Offer",
+        db_models.JobApplication.latex_source.isnot(None),
+    ).order_by(db_models.JobApplication.updated_at.desc()).all()
+
+    jd_terms = _tokens(jd)
+    candidates: list[dict] = []
+    for job in jobs:
+        bullets = re.findall(r"\\resumeItem\{([^{}]*)\}", job.latex_source or "")
+        for bullet in bullets:
+            text = re.sub(r"\\[a-zA-Z]+\*?(?:\{[^{}]*\})?", "", bullet)
+            text = re.sub(r"[%{}]", "", text).strip()
+            if not text:
+                continue
+            evidence_terms = _tokens(" ".join([text, job.job_title or "", job.company_name or ""]))
+            score = len(jd_terms & evidence_terms)
+            candidates.append({
+                "source": f"{job.company_name} — {job.job_title}",
+                "job_id": job.id,
+                "text": text,
+                "score": score,
+            })
+
+    candidates.sort(key=lambda item: item["score"], reverse=True)
+    selected = [item for item in candidates if item["score"] > 0][:limit]
+    if not selected:
+        selected = candidates[: min(limit, len(candidates))]
+    return selected
+
+
+def build_prompt(
+    profile: UserProfile,
+    jd: str,
+    preset: dict | None = None,
+    custom_role: str = "",
+    historical_evidence: list[dict] | None = None,
+) -> str:
     jd = truncate_jd(jd)
     
     if preset:
@@ -83,6 +132,11 @@ def build_prompt(profile: UserProfile, jd: str, preset: dict | None = None, cust
 - Each project bullet should explain: WHAT you built + HOW you built it + the IMPACT or result.
 - Experience bullets should also be detailed — 1.5 lines each, not just one short sentence."""
 
+    evidence_block = "\n".join(
+        f"- Evidence {index + 1} [{item['source']}]: {item['text']}"
+        for index, item in enumerate(historical_evidence or [])
+    ) or "- No eligible historical evidence was found."
+
     return f"""
 You are an elite resume writer and career strategist{persona_suffix}.
 
@@ -92,6 +146,9 @@ Your job is TWO things:
 
 JOB DESCRIPTION:
 {jd}
+
+SUCCESSFUL HISTORICAL EVIDENCE — OFFER-LINKED RESUMES ONLY:
+{evidence_block}
 
 USER PROFILE (full data — you SELECT from this):
 {profile.model_dump_json()}
@@ -108,9 +165,11 @@ TAILORING RULES:
 - Quantify achievements wherever possible (%, time saved, scale, users, etc.).
 {action_verbs_rule}
 - Never invent experience. Only reframe what exists using JD language.{metric_prompts_rule}
+- Historical evidence is supporting evidence, not a source for invented facts. Reuse it only when it is truthful for the current profile.
 
-PAGE FILLING RULES — CRITICAL:
-- The resume MUST fill close to one full page. No large empty space at the bottom.
+PAGE RULES — CRITICAL:
+- The resume MUST fit exactly one page. Never generate a second page.
+- Prefer fewer, stronger bullets over overflowing content.
 {page_filling_lever}
 - Summary should be 3 full sentences.
 - If there is still space, add a 3rd project from the profile if relevant.
@@ -338,7 +397,8 @@ def generate_latex_resume(db_profile: db_models.Profile, jd: str, template_id: s
         if preset:
             preset_dict = preset.__dict__
             
-    prompt = build_prompt(profile, jd, preset_dict, custom_role=preset_slug)
+    historical_evidence = retrieve_successful_evidence(db_profile, jd, db)
+    prompt = build_prompt(profile, jd, preset_dict, custom_role=preset_slug, historical_evidence=historical_evidence)
 
     try:
         response = client.models.generate_content(
