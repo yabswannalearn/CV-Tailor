@@ -2,6 +2,9 @@ from datetime import datetime, timedelta, timezone
 import hashlib
 import os
 import secrets
+import logging
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
@@ -154,8 +157,8 @@ async def resend_verification(data: EmailRequest, request: Request, db: Session 
         subject, html_body, text_body = verification_email(email, f"{frontend_url()}/verify?token={raw_token}")
         try:
             send_email(to=email, subject=subject, html_body=html_body, text_body=text_body, tag="verify-email")
-        except RuntimeError:
-            pass
+        except RuntimeError as exc:
+            logger.error(f"Failed to send verification email to {email}: {exc}")
     return {"status": "success", "message": "If the account needs verification, a new email has been sent."}
 
 
@@ -173,8 +176,8 @@ async def request_password_reset(data: PasswordResetRequest, request: Request, d
         )
         try:
             send_email(to=user.email, subject=subject, html_body=html_body, text_body=text_body, tag="password-reset")
-        except RuntimeError:
-            pass
+        except RuntimeError as exc:
+            logger.error(f"Failed to send password reset email to {user.email}: {exc}")
     return {"status": "success", "message": "If an account exists, a password reset email has been sent."}
 
 
