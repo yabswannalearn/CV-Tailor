@@ -40,6 +40,7 @@ const C = {
 };
 
 type AppState = "idle" | "generating" | "editing" | "compiling" | "error";
+type EditorMode = "friendly" | "preview" | "source";
 
 function parseSections(code: string) {
   return code.split("\n").reduce<{ name: string; line: number }[]>((acc, l, i) => {
@@ -242,6 +243,21 @@ const Icon = ({ children, title, onClick, active }: { children: React.ReactNode;
 
 const Divider = () => <div className="w-px h-4 mx-1 shrink-0" style={{ background: C.border }} />;
 
+const ViewToggle = ({ mode, onChange }: { mode: EditorMode; onChange: (mode: EditorMode) => void }) => (
+  <div className="flex items-center rounded-lg border p-0.5" style={{ borderColor: C.border, background: "#f2eee8" }}>
+    {([
+      ["friendly", "Edit"],
+      ["preview", "Preview"],
+      ["source", "LaTeX"],
+    ] as [EditorMode, string][]).map(([value, label]) => (
+      <button key={value} onClick={() => onChange(value)} className="rounded-md px-2.5 py-1.5 text-[11px] font-semibold transition-colors"
+        style={{ background: mode === value ? "#fffdf9" : "transparent", color: mode === value ? C.green : C.textMuted, boxShadow: mode === value ? "0 1px 3px rgba(40,32,20,0.12)" : "none" }}>
+        {label}
+      </button>
+    ))}
+  </div>
+);
+
 function GeneratePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -277,7 +293,7 @@ function GeneratePageContent() {
   const [presetSlug, setPresetSlug] = useState("blank");
   const [presets, setPresets] = useState<{slug: string, display_name: string, recommended_template: string}[]>([]);
   const [atsResult, setAtsResult] = useState<{pass: boolean, warnings: string[]} | null>(null);
-  const [sourceMode, setSourceMode] = useState(false);
+  const [editorMode, setEditorMode] = useState<EditorMode>("friendly");
   const [draft, setDraft] = useState<ResumeDraft>({ name: "", summary: "", bullets: [], sections: [] });
   const [draftReady, setDraftReady] = useState(false);
 
@@ -702,7 +718,7 @@ function GeneratePageContent() {
     );
   }
 
-  if (!sourceMode) {
+  if (editorMode === "friendly") {
     return (
       <AppLayout>
         <div className="flex h-full min-h-0 flex-col" style={{ background: "#f7f5f0", color: C.text }}>
@@ -721,7 +737,7 @@ function GeneratePageContent() {
                 {appState === "compiling" ? "Updating preview…" : "Update preview"}
               </button>
               <button onClick={handleDownload} disabled={!pdfUrl} className="rounded-md border px-3 py-2 text-xs font-semibold disabled:opacity-40" style={{ borderColor: C.border, color: C.textMid }}>Download PDF</button>
-              <button onClick={() => setSourceMode(true)} className="rounded-md border px-3 py-2 text-xs" style={{ borderColor: C.border, color: C.textMuted }}>Source code</button>
+              <ViewToggle mode={editorMode} onChange={setEditorMode} />
             </div>
           </header>
 
@@ -792,6 +808,23 @@ function GeneratePageContent() {
     );
   }
 
+  if (editorMode === "preview") {
+    return (
+      <AppLayout>
+        <div className="flex h-full flex-col" style={{ background: "#e9e5de", color: C.text }}>
+          <header className="flex items-center justify-between border-b px-7 py-4" style={{ background: "#fffdf9", borderColor: C.border }}>
+            <div><p className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: C.textFaint }}>Resume preview</p><h1 className="text-lg font-semibold" style={{ fontFamily: "Georgia, serif" }}>{jobLabel || "Tailored resume"}</h1></div>
+            <div className="flex items-center gap-3"><ViewToggle mode={editorMode} onChange={setEditorMode} /><button onClick={() => compileLatex()} disabled={isBusy} className="rounded-md px-4 py-2 text-xs font-bold text-white disabled:opacity-50" style={{ background: C.green }}>{isBusy ? "Updating…" : "Update preview"}</button><button onClick={handleDownload} disabled={!pdfUrl} className="rounded-md border px-3 py-2 text-xs font-semibold disabled:opacity-40" style={{ borderColor: C.border, color: C.textMid }}>Download PDF</button></div>
+          </header>
+          <div className="flex flex-1 items-start justify-center overflow-auto p-8">
+            {isBusy && <div className="absolute mt-10 rounded-lg bg-white/80 px-4 py-3 text-xs shadow-sm" style={{ color: C.textMuted }}>Updating your preview…</div>}
+            {pdfUrl && <div style={{ filter: "drop-shadow(0 8px 24px rgba(0,0,0,0.18))" }}><Document file={pdfUrl} onLoadSuccess={onDocumentLoadSuccess} loading={<div className="p-10 text-xs" style={{ color: C.textMuted }}>Loading preview…</div>} error={<div className="p-10 text-xs" style={{ color: C.red }}>Preview unavailable</div>}><Page pageNumber={currentPage} renderTextLayer={true} renderAnnotationLayer={true} width={Math.min(760, window.innerWidth - 120)} /></Document></div>}
+          </div>
+        </div>
+      </AppLayout>
+    );
+  }
+
   // ── Editor view ────────────────────────────────────────────────
   return (
     <AppLayout>
@@ -818,6 +851,7 @@ function GeneratePageContent() {
           </div>
 
           <div className="flex items-center gap-2">
+            <ViewToggle mode={editorMode} onChange={setEditorMode} />
             <button onClick={() => compileLatex()} disabled={isBusy}
               className="flex items-center gap-2 px-4 py-1.5 text-[11px] font-bold tracking-[0.12em] uppercase rounded-sm transition-all disabled:cursor-not-allowed"
               style={{ background: isBusy ? C.border : C.green, color: isBusy ? C.textFaint : "#fff", border: `1px solid ${isBusy ? C.border : C.green}` }}>
