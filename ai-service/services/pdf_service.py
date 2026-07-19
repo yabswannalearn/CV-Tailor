@@ -1,5 +1,6 @@
 import os
 import io
+import re
 import subprocess
 import sys
 import tempfile
@@ -16,6 +17,46 @@ class PDFCompilationError(RuntimeError):
 def pdf_page_count(pdf_bytes: bytes) -> int:
     from pypdf import PdfReader
     return len(PdfReader(io.BytesIO(pdf_bytes)).pages)
+
+
+def apply_single_page_autofit(latex_code: str) -> str:
+    """
+    Applies deterministic LaTeX layout compression rules to ensure the output fits on 1 page.
+    """
+    # 1. Compress Margins (Geometry)
+    if r"\usepackage" in latex_code and "geometry" in latex_code:
+        latex_code = re.sub(
+            r"\\usepackage\[.*?\]\{geometry\}",
+            r"\\usepackage[margin=0.4in,top=0.35in,bottom=0.35in]{geometry}",
+            latex_code
+        )
+    else:
+        latex_code = latex_code.replace(
+            r"\begin{document}",
+            r"\usepackage[margin=0.4in,top=0.35in,bottom=0.35in]{geometry}" + "\n" + r"\begin{document}"
+        )
+
+    # 2. Inject Line Spacing Compression
+    if r"\linespread" not in latex_code:
+        latex_code = latex_code.replace(
+            r"\begin{document}",
+            r"\linespread{0.93}" + "\n" + r"\begin{document}"
+        )
+
+    # 3. Compress Enumitem List Spacing
+    enumitem_config = (
+        r"\usepackage{enumitem}" + "\n"
+        r"\setlist{nosep, topsep=1pt, partopsep=0pt, parsep=0pt, itemsep=1pt, leftmargin=*}" + "\n"
+    )
+    if r"\usepackage{enumitem}" not in latex_code:
+        latex_code = latex_code.replace(r"\begin{document}", enumitem_config + r"\begin{document}")
+
+    # 4. Compress Section Title Spacing if titlesec package is used
+    if r"\usepackage{titlesec}" in latex_code and r"\titlespacing" not in latex_code:
+        title_spacing = r"\titlespacing*{\section}{0pt}{4pt}{2pt}" + "\n"
+        latex_code = latex_code.replace(r"\begin{document}", title_spacing + r"\begin{document}")
+
+    return latex_code
 
 
 def get_tectonic_command() -> str | None:

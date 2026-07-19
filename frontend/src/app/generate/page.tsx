@@ -10,11 +10,12 @@ import { useResumeUiStore } from "@/lib/uiStore";
 
 const Document = dynamic(() => import("react-pdf").then(m => m.Document), { ssr: false });
 const Page = dynamic(() => import("react-pdf").then(m => m.Page), { ssr: false });
+const MonacoEditor = dynamic(() => import("@monaco-editor/react"), { ssr: false });
 
 if (typeof window !== "undefined") {
   import("react-pdf").then(({ pdfjs }) => {
     pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
-  });
+  }).catch(() => {});
 }
 
 const GRAIN = `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`;
@@ -71,7 +72,8 @@ type ResumeDraft = {
   }[];
 };
 
-function latexText(value: string) {
+function latexText(value: string | undefined | null): string {
+  if (!value) return "";
   let clean = value.replace(/%.*$/gm, "")
     .replace(/\\href\{[^{}]*\}\{([^{}]*)\}/g, "$1")
     .replace(/\$\|\$/g, "|")
@@ -138,8 +140,8 @@ function replaceCommandArgument(code: string, command: string, occurrence: numbe
 }
 
 function parseResumeDraft(code: string): ResumeDraft {
-  const nameMatch = code.match(/\\textcolor\{[^}]+\}\{([^{}]+)\}/);
-  const summaryMatch = code.match(/\\section\{Summary\}([\s\S]*?)(?=\\section\{|\\end\{document\})/i);
+  const nameMatch = code.match(/\\textcolor\{[^}]+\}\{([^{}]+)\}/) || code.match(/\\Huge\s*\{?([^{}\\]+)\}?/i);
+  const summaryMatch = code.match(/\\section\*?\{[^{}]*(?:Summary|Profile|Objective)[^{}]*\}([\s\S]*?)(?=\\section|\\end\{document\})/i);
   const bulletMatches = Array.from(code.matchAll(/\\resumeItem\{([^{}]*)\}/g));
   const bullets = bulletMatches.map(m => latexText(m[1]));
   const sections = Array.from(code.matchAll(/\\section\{([^{}]+)\}([\s\S]*?)(?=\\section\{|\\end\{document\})/gi))
@@ -296,16 +298,20 @@ function GeneratePageContent() {
   const [atsResult, setAtsResult] = useState<{pass: boolean, warnings: string[]} | null>(null);
   const [draft, setDraft] = useState<ResumeDraft>({ name: "", summary: "", bullets: [], sections: [] });
   const [draftReady, setDraftReady] = useState(false);
+  const [autoCompile, setAutoCompile] = useState(true);
+  const [useMonaco, setUseMonaco] = useState(true);
+  const [editorTheme, setEditorTheme] = useState<"vs-dark" | "vs">("vs-dark");
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef(false);
+  const lastCompiledLatexRef = useRef<string>("");
+  const compileLatexRef = useRef<(src?: string) => Promise<void>>(async () => {});
 
   // ── compile helper (defined before useEffect so it can be called from it) ──
   const compileLatex = useCallback(async (src?: string) => {
     const source = src ?? latex;
     if (!source.trim()) return;
-    if (pdfUrl) { window.URL.revokeObjectURL(pdfUrl); setPdfUrl(null); }
     setAppState("compiling"); setErrorMsg("");
     try {
       const res = await fetch(`${API_URL}/generate/compile-with-check`, {
@@ -320,18 +326,41 @@ function GeneratePageContent() {
         } catch {}
         throw new Error(message);
       }
-      const { pdf_b64, ats } = await res.json();
+      const { pdf_b64, ats, num_pages } = await res.json();
       const byteCharacters = atob(pdf_b64);
       const byteNumbers = new Array(byteCharacters.length);
       for (let i = 0; i < byteCharacters.length; i++) { byteNumbers[i] = byteCharacters.charCodeAt(i); }
       const byteArray = new Uint8Array(byteNumbers);
       const blob = new Blob([byteArray], { type: "application/pdf" });
-      setPdfUrl(window.URL.createObjectURL(blob));
+      const newBlobUrl = window.URL.createObjectURL(blob);
+      lastCompiledLatexRef.current = source;
+      setPdfUrl(prevUrl => {
+        if (prevUrl) window.URL.revokeObjectURL(prevUrl);
+        return newBlobUrl;
+      });
       setAtsResult(ats);
-      setAppState("editing"); setNumPages(0); setCurrentPage(1);
+      setAppState("editing");
+      if (num_pages) setNumPages(num_pages);
+      setCurrentPage(1);
     } catch (err: unknown) { setErrorMsg(err instanceof Error ? err.message : "Compile failed"); setAppState("error"); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [latex]);
+
+  useEffect(() => {
+    compileLatexRef.current = compileLatex;
+  }, [compileLatex]);
+
+  // ── Debounced Auto-compilation Effect (800ms) ──
+  useEffect(() => {
+    if (!autoCompile || !latex.trim()) return;
+    if (latex === lastCompiledLatexRef.current) return;
+
+    const timer = setTimeout(() => {
+      compileLatexRef.current(latex);
+    }, 800);
+
+    return () => clearTimeout(timer);
+  }, [latex, autoCompile]);
 
   useEffect(() => {
     fetch(`${API_URL}/presets`)
@@ -557,10 +586,24 @@ function GeneratePageContent() {
   const updateDraft = (key: "name" | "summary", value: string) => {
     setDraft(d => ({ ...d, [key]: value }));
     if (key === "name") {
-      setLatex(current => replaceFirst(current, /\\textcolor\{[^}]+\}\{([^{}]+)\}/, `\\textcolor{NavyBlue}{${value}}`));
+      setLatex(current => {
+        if (/\\textcolor\{[^}]+\}\{([^{}]+)\}/.test(current)) {
+          return replaceFirst(current, /\\textcolor\{[^}]+\}\{([^{}]+)\}/, `\\textcolor{NavyBlue}{${value}}`);
+        }
+        return replaceFirst(current, /(\\Huge\s*\{?)[^{}\\]+(\}?)/, `$1${value}$2`);
+      });
     } else {
-      setLatex(current => replaceFirst(current, /(\\section\{Summary\}[\s\S]*?)(?=\\section\{|\\end\{document\})/i,
-        `\\section{Summary}\n{\\small ${value}\\par}\n`));
+      setLatex(current => {
+        const pattern = /(\\section\*?\{[^{}]*(?:Summary|Profile|Objective)[^{}]*\}[\s\S]*?)(?=\\section|\\end\{document\})/i;
+        if (pattern.test(current)) {
+          return current.replace(pattern, (match) => {
+            const headerMatch = match.match(/\\section\*?\{[^{}]*\}/i);
+            const header = headerMatch ? headerMatch[0] : "\\section{Summary}";
+            return `${header}\n{\\small ${value}\\par}\n`;
+          });
+        }
+        return current;
+      });
     }
   };
 
@@ -854,6 +897,38 @@ function GeneratePageContent() {
 
             <div className="flex flex-wrap items-center justify-end gap-2">
             <ViewToggle mode={editorMode} onChange={setEditorMode} />
+            <button
+              onClick={() => setAutoCompile(a => !a)}
+              title="Toggle auto-compilation as you type (800ms debounce)"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold tracking-[0.12em] uppercase rounded-sm transition-all"
+              style={{
+                background: autoCompile ? C.greenLight : C.bgCard,
+                color: autoCompile ? C.green : C.textMuted,
+                border: `1px solid ${autoCompile ? C.greenBorder : C.border}`,
+              }}>
+              <span className={`w-2 h-2 rounded-full ${autoCompile ? 'bg-[#5a8a00] animate-pulse' : 'bg-gray-400'}`} />
+              Auto-Compile {autoCompile ? "ON" : "OFF"}
+            </button>
+            <button
+              onClick={() => setUseMonaco(m => !m)}
+              title="Switch between Monaco IDE editor and plain text area"
+              className="px-2.5 py-1.5 text-[11px] font-bold uppercase rounded-sm transition-all"
+              style={{
+                background: useMonaco ? C.bgCard : C.bgSnippet,
+                color: C.textMid,
+                border: `1px solid ${C.border}`,
+              }}>
+              {useMonaco ? "Monaco IDE" : "Plain Text"}
+            </button>
+            {useMonaco && (
+              <button
+                onClick={() => setEditorTheme(t => t === "vs-dark" ? "vs" : "vs-dark")}
+                title="Toggle Monaco Dark/Light theme"
+                className="px-2 py-1.5 text-[11px] rounded-sm border transition-all"
+                style={{ borderColor: C.border, color: C.textMid, background: C.bgCard }}>
+                {editorTheme === "vs-dark" ? "🌙 Dark" : "☀️ Light"}
+              </button>
+            )}
             <button onClick={() => compileLatex()} disabled={isBusy}
               className="flex items-center gap-2 px-4 py-1.5 text-[11px] font-bold tracking-[0.12em] uppercase rounded-sm transition-all disabled:cursor-not-allowed"
               style={{ background: isBusy ? C.border : C.green, color: isBusy ? C.textFaint : "#fff", border: `1px solid ${isBusy ? C.border : C.green}` }}>
@@ -1001,39 +1076,78 @@ function GeneratePageContent() {
 
           {/* Left: Editor + Sections */}
           <div className="generate-source-left flex flex-col overflow-hidden" style={{ width: `${splitPct}%` }}>
-            <div className="flex flex-1 overflow-hidden" style={{ background: C.bgEditor }}>
-              {/* Line numbers */}
-              <div className="overflow-hidden shrink-0" style={{ width: "3.5rem", background: C.bgCard, borderRight: `1px solid ${C.border}` }}>
-                <div style={{ paddingTop: "1rem", transform: `translateY(-${scrollTop}px)`, transition: "none" }}>
-                  {Array.from({ length: lineCount }, (_, i) => (
-                    <div key={i} className="text-right pr-3 text-[11px] cursor-pointer"
-                      style={{ lineHeight: "1.6", color: highlightedLine === i + 1 ? "#fff" : cursorPos.line === i + 1 ? C.lineNumActive : C.lineNum, background: highlightedLine === i + 1 ? C.green : "transparent", fontFamily: "ui-monospace, monospace" }}
-                      onClick={() => { if (textareaRef.current) scrollToLine(textareaRef.current, i + 1); }}>
-                      {i + 1}
+            <div className="flex flex-1 overflow-hidden relative" style={{ background: useMonaco ? (editorTheme === "vs-dark" ? "#1e1e1e" : "#fff") : C.bgEditor }}>
+              {useMonaco ? (
+                <div className="w-full h-full relative">
+                  <MonacoEditor
+                    height="100%"
+                    language="latex"
+                    value={latex}
+                    onChange={v => setLatex(v || "")}
+                    theme={editorTheme}
+                    options={{
+                      fontSize: Math.round((zoom / 100) * 13),
+                      fontFamily: "ui-monospace, 'Cascadia Code', 'Fira Code', monospace",
+                      minimap: { enabled: false },
+                      scrollBeyondLastLine: false,
+                      lineNumbers: "on",
+                      renderLineHighlight: "all",
+                      padding: { top: 12, bottom: 12 },
+                      tabSize: 2,
+                      automaticLayout: true,
+                      wordWrap: wordWrap ? "on" : "off",
+                      quickSuggestions: true,
+                    }}
+                  />
+                  {appState === "error" && errorMsg && (
+                    <div className="absolute bottom-3 left-3 right-3 z-30 flex items-center justify-between px-3.5 py-2.5 text-xs rounded-md shadow-xl border backdrop-blur-md"
+                         style={{ background: "rgba(255, 234, 234, 0.95)", borderColor: "#ffcccc", color: C.red }}>
+                      <div className="flex items-center gap-2 truncate">
+                        <span className="font-bold">✗ Compilation Error:</span>
+                        <span className="truncate">{errorMsg}</span>
+                      </div>
+                      <button onClick={() => compileLatex()} className="ml-3 shrink-0 px-2.5 py-1 text-[10px] font-bold rounded uppercase bg-white border border-red-300 hover:bg-red-50 text-red-700 shadow-sm">
+                        Retry
+                      </button>
                     </div>
-                  ))}
+                  )}
                 </div>
-              </div>
+              ) : (
+                <>
+                  {/* Line numbers */}
+                  <div className="overflow-hidden shrink-0" style={{ width: "3.5rem", background: C.bgCard, borderRight: `1px solid ${C.border}` }}>
+                    <div style={{ paddingTop: "1rem", transform: `translateY(-${scrollTop}px)`, transition: "none" }}>
+                      {Array.from({ length: lineCount }, (_, i) => (
+                        <div key={i} className="text-right pr-3 text-[11px] cursor-pointer"
+                          style={{ lineHeight: "1.6", color: highlightedLine === i + 1 ? "#fff" : cursorPos.line === i + 1 ? C.lineNumActive : C.lineNum, background: highlightedLine === i + 1 ? C.green : "transparent", fontFamily: "ui-monospace, monospace" }}
+                          onClick={() => { if (textareaRef.current) scrollToLine(textareaRef.current, i + 1); }}>
+                          {i + 1}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
 
-              {/* Textarea */}
-              <textarea ref={textareaRef} value={latex} onChange={e => setLatex(e.target.value)}
-                onScroll={e => setScrollTop((e.target as HTMLTextAreaElement).scrollTop)}
-                onClick={updateCursorPos} onKeyUp={updateCursorPos}
-                onKeyDown={e => {
-                  updateCursorPos();
-                  if (e.ctrlKey && e.key === "Enter") { e.preventDefault(); compileLatex(); }
-                  if (e.ctrlKey && e.key === "f") { e.preventDefault(); setShowFind(f => !f); }
-                  if (e.key === "Tab") {
-                    e.preventDefault();
-                    const ta = e.currentTarget, start = ta.selectionStart;
-                    const newVal = latex.substring(0, start) + "  " + latex.substring(ta.selectionEnd);
-                    setLatex(newVal);
-                    setTimeout(() => { ta.selectionStart = ta.selectionEnd = start + 2; }, 0);
-                  }
-                }}
-                className="flex-1 resize-none outline-none p-4"
-                style={{ background: "transparent", color: C.editorFg, fontFamily: "ui-monospace, 'Courier New', monospace", fontSize: `${zoom / 100 * 12}px`, lineHeight: "1.6", whiteSpace: wordWrap ? "pre-wrap" : "pre", overflowX: wordWrap ? "hidden" : "auto", caretColor: C.green }}
-                spellCheck={false} />
+                  {/* Textarea */}
+                  <textarea ref={textareaRef} value={latex} onChange={e => setLatex(e.target.value)}
+                    onScroll={e => setScrollTop((e.target as HTMLTextAreaElement).scrollTop)}
+                    onClick={updateCursorPos} onKeyUp={updateCursorPos}
+                    onKeyDown={e => {
+                      updateCursorPos();
+                      if (e.ctrlKey && e.key === "Enter") { e.preventDefault(); compileLatex(); }
+                      if (e.ctrlKey && e.key === "f") { e.preventDefault(); setShowFind(f => !f); }
+                      if (e.key === "Tab") {
+                        e.preventDefault();
+                        const ta = e.currentTarget, start = ta.selectionStart;
+                        const newVal = latex.substring(0, start) + "  " + latex.substring(ta.selectionEnd);
+                        setLatex(newVal);
+                        setTimeout(() => { ta.selectionStart = ta.selectionEnd = start + 2; }, 0);
+                      }
+                    }}
+                    className="flex-1 resize-none outline-none p-4"
+                    style={{ background: "transparent", color: C.editorFg, fontFamily: "ui-monospace, 'Courier New', monospace", fontSize: `${zoom / 100 * 12}px`, lineHeight: "1.6", whiteSpace: wordWrap ? "pre-wrap" : "pre", overflowX: wordWrap ? "hidden" : "auto", caretColor: C.green }}
+                    spellCheck={false} />
+                </>
+              )}
             </div>
 
             {/* Status bar */}

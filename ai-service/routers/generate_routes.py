@@ -118,11 +118,19 @@ async def compile_latex(data: CompileLatexRequest, request: Request):
 @router.post("/compile-with-check")
 @limiter.limit("10/minute")
 async def compile_latex_with_check(data: CompileLatexRequest, request: Request):
+    latex_code = data.latex
+    auto_fitted = False
+
+    if data.auto_fit:
+        latex_code = apply_single_page_autofit(latex_code)
+        auto_fitted = True
+
     try:
-        pdf_bytes = await asyncio.to_thread(compile_latex_to_pdf, data.latex)
+        pdf_bytes = await asyncio.to_thread(compile_latex_to_pdf, latex_code)
     except PDFCompilationError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
-    require_one_page(pdf_bytes)
+
+    pages = pdf_page_count(pdf_bytes)
 
     from services.ats_check import ats_check
     import base64
@@ -130,7 +138,10 @@ async def compile_latex_with_check(data: CompileLatexRequest, request: Request):
     
     return {
         "pdf_b64": base64.b64encode(pdf_bytes).decode("utf-8"),
-        "ats": ats_result
+        "ats": ats_result,
+        "num_pages": pages,
+        "auto_fitted": auto_fitted,
+        "latex": latex_code if auto_fitted else None
     }
 
 @router.post("/ats-check")
