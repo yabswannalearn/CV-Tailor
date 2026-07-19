@@ -301,6 +301,42 @@ function GeneratePageContent() {
   const [autoCompile, setAutoCompile] = useState(true);
   const [useMonaco, setUseMonaco] = useState(true);
   const [editorTheme, setEditorTheme] = useState<"vs-dark" | "vs">("vs-dark");
+  const [downloadingDocx, setDownloadingDocx] = useState(false);
+
+  const handleDownloadTex = () => {
+    if (!latex) return;
+    const blob = new Blob([latex], { type: "text/x-tex;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = jobLabel ? `${jobLabel.replace(/[^a-z0-9_-]/gi, "_")}_resume.tex` : "tailored_resume.tex";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadDocx = async () => {
+    if (!latex) return;
+    setDownloadingDocx(true);
+    try {
+      const res = await fetch(`${API_URL}/generate/export/docx`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ latex }),
+      });
+      if (!res.ok) throw new Error("Failed to generate DOCX");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = jobLabel ? `${jobLabel.replace(/[^a-z0-9_-]/gi, "_")}_resume.docx` : "tailored_resume.docx";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Failed to download docx", err);
+    } finally {
+      setDownloadingDocx(false);
+    }
+  };
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -777,11 +813,70 @@ function GeneratePageContent() {
               </div>
             </div>
             <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
-              <span className="hidden text-xs lg:inline" style={{ color: C.textMuted }}>Your changes are ready to preview</span>
+              <button
+                onClick={handleCopy}
+                className="rounded-md border px-3 py-2 text-xs font-semibold transition-all"
+                style={{
+                  borderColor: C.border,
+                  color: copied ? C.green : C.textMid,
+                  background: copied ? C.greenLight : "#fffdf9"
+                }}>
+                {copied ? "Copied!" : "Copy LaTeX"}
+              </button>
+              {jobId && (
+                <button
+                  onClick={handleSaveToJob}
+                  disabled={savingToJob}
+                  className="rounded-md border px-3 py-2 text-xs font-semibold transition-all disabled:opacity-40"
+                  style={{
+                    background: savedToJob ? C.greenLight : "#fffdf9",
+                    color: savedToJob ? C.green : C.textMid,
+                    borderColor: savedToJob ? C.greenBorder : C.border,
+                  }}>
+                  {savedToJob ? "Saved!" : savingToJob ? "Saving..." : "Save to Job"}
+                </button>
+              )}
               <button onClick={() => compileLatex()} disabled={isBusy} className="rounded-md px-4 py-2 text-xs font-bold text-white shadow-sm disabled:opacity-50" style={{ background: C.green }}>
                 {appState === "compiling" ? "Updating preview…" : "Update preview"}
               </button>
-              <button onClick={handleDownload} disabled={!pdfUrl} className="rounded-md border px-3 py-2 text-xs font-semibold disabled:opacity-40" style={{ borderColor: C.border, color: C.textMid }}>Download PDF</button>
+              <div className="relative group inline-block text-left">
+                <button
+                  disabled={!pdfUrl && !latex}
+                  className="rounded-md border px-3 py-2 text-xs font-semibold flex items-center gap-1.5 transition-all disabled:opacity-40"
+                  style={{ borderColor: C.border, color: C.textMid, background: "#fffdf9" }}>
+                  <span>Download</span>
+                  <svg width="10" height="6" viewBox="0 0 10 6" fill="none">
+                    <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </button>
+                <div className="absolute right-0 top-full mt-1 w-44 rounded-md shadow-lg hidden group-hover:block z-50 border py-1"
+                     style={{ background: "#fffdf9", borderColor: C.border }}>
+                  <button
+                    onClick={handleDownload}
+                    disabled={!pdfUrl}
+                    className="w-full text-left px-3 py-2 text-xs font-semibold hover:bg-[#f0ebe3] flex items-center justify-between transition-colors disabled:opacity-30"
+                    style={{ color: C.textMid }}>
+                    <span>PDF Document</span>
+                    <span className="text-[10px]" style={{ color: C.textFaint }}>.pdf</span>
+                  </button>
+                  <button
+                    onClick={handleDownloadDocx}
+                    disabled={downloadingDocx || !latex}
+                    className="w-full text-left px-3 py-2 text-xs font-semibold hover:bg-[#f0ebe3] flex items-center justify-between transition-colors disabled:opacity-30"
+                    style={{ color: C.textMid }}>
+                    <span>{downloadingDocx ? "Generating..." : "Word Document"}</span>
+                    <span className="text-[10px]" style={{ color: C.textFaint }}>.docx</span>
+                  </button>
+                  <button
+                    onClick={handleDownloadTex}
+                    disabled={!latex}
+                    className="w-full text-left px-3 py-2 text-xs font-semibold hover:bg-[#f0ebe3] flex items-center justify-between transition-colors disabled:opacity-30"
+                    style={{ color: C.textMid }}>
+                    <span>LaTeX Source</span>
+                    <span className="text-[10px]" style={{ color: C.textFaint }}>.tex</span>
+                  </button>
+                </div>
+              </div>
               <ViewToggle mode={editorMode} onChange={setEditorMode} />
             </div>
           </header>
@@ -841,7 +936,27 @@ function GeneratePageContent() {
             </section>
 
             <section className="flex min-h-[560px] w-full shrink-0 flex-col border-t lg:min-h-0 lg:w-auto lg:flex-1 lg:border-l lg:border-t-0" style={{ background: "#e9e5de", borderColor: C.border }}>
-              <div className="flex items-center justify-between border-b px-6 py-3" style={{ background: "#f3f0ea", borderColor: C.border }}><div><p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: C.textMuted }}>Live preview</p><p className="mt-1 text-[11px]" style={{ color: C.textFaint }}>Update the preview when you’re ready</p></div>{atsResult && <span className="rounded-full border px-2 py-1 text-[10px] font-bold" style={{ background: atsResult.pass ? C.greenLight : C.redBg, color: atsResult.pass ? C.green : C.red, borderColor: atsResult.pass ? C.greenBorder : "#ffcccc" }}>{atsResult.pass ? "ATS friendly" : "Check suggestions"}</span>}</div>
+              <div className="flex items-center justify-between border-b px-6 py-3" style={{ background: "#f3f0ea", borderColor: C.border }}>
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: C.textMuted }}>Live preview</p>
+                  <p className="mt-1 text-[11px]" style={{ color: C.textFaint }}>Update the preview when you’re ready</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {numPages > 0 && (
+                    <span
+                      className="rounded-full border px-2.5 py-1 text-[10px] font-bold tracking-wider"
+                      style={{
+                        background: numPages === 1 ? C.greenLight : "#fffbeb",
+                        color: numPages === 1 ? C.green : "#b45309",
+                        borderColor: numPages === 1 ? C.greenBorder : "#fcd34d"
+                      }}>
+                      {numPages === 1 ? "1 Page" : `${numPages} Pages`}
+                    </span>
+                  )}
+                  {atsResult && <span className="rounded-full border px-2 py-1 text-[10px] font-bold" style={{ background: atsResult.pass ? C.greenLight : C.redBg, color: atsResult.pass ? C.green : C.red, borderColor: atsResult.pass ? C.greenBorder : "#ffcccc" }}>{atsResult.pass ? "ATS friendly" : "Check suggestions"}</span>}
+                </div>
+              </div>
+
               <div className="flex flex-1 items-start justify-center overflow-auto p-4 sm:p-6">
                 {isBusy && <div className="absolute mt-20 rounded-lg bg-white/80 px-4 py-3 text-xs shadow-sm" style={{ color: C.textMuted }}>Updating your preview…</div>}
                 {pdfUrl && <div style={{ filter: "drop-shadow(0 6px 20px rgba(0,0,0,0.18))" }}><Document file={pdfUrl} onLoadSuccess={onDocumentLoadSuccess} loading={<div className="p-10 text-xs" style={{ color: C.textMuted }}>Loading preview…</div>} error={<div className="p-10 text-xs" style={{ color: C.red }}>Preview unavailable</div>}><Page pageNumber={currentPage} renderTextLayer={true} renderAnnotationLayer={true} width={Math.min(660, window.innerWidth < 1024 ? window.innerWidth - 64 : window.innerWidth * 0.43)} /></Document></div>}
@@ -859,7 +974,71 @@ function GeneratePageContent() {
         <div className="flex h-full flex-col" style={{ background: "#e9e5de", color: C.text }}>
           <header className="flex items-center justify-between border-b px-7 py-4" style={{ background: "#fffdf9", borderColor: C.border }}>
             <div><p className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: C.textFaint }}>Resume preview</p><h1 className="text-lg font-semibold" style={{ fontFamily: "Georgia, serif" }}>{jobLabel || "Tailored resume"}</h1></div>
-            <div className="flex items-center gap-3"><ViewToggle mode={editorMode} onChange={setEditorMode} /><button onClick={() => compileLatex()} disabled={isBusy} className="rounded-md px-4 py-2 text-xs font-bold text-white disabled:opacity-50" style={{ background: C.green }}>{isBusy ? "Updating…" : "Update preview"}</button><button onClick={handleDownload} disabled={!pdfUrl} className="rounded-md border px-3 py-2 text-xs font-semibold disabled:opacity-40" style={{ borderColor: C.border, color: C.textMid }}>Download PDF</button></div>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleCopy}
+                className="rounded-md border px-3 py-2 text-xs font-semibold transition-all"
+                style={{
+                  borderColor: C.border,
+                  color: copied ? C.green : C.textMid,
+                  background: copied ? C.greenLight : "#fffdf9"
+                }}>
+                {copied ? "Copied!" : "Copy LaTeX"}
+              </button>
+              {jobId && (
+                <button
+                  onClick={handleSaveToJob}
+                  disabled={savingToJob}
+                  className="rounded-md border px-3 py-2 text-xs font-semibold transition-all disabled:opacity-40"
+                  style={{
+                    background: savedToJob ? C.greenLight : "#fffdf9",
+                    color: savedToJob ? C.green : C.textMid,
+                    borderColor: savedToJob ? C.greenBorder : C.border,
+                  }}>
+                  {savedToJob ? "Saved!" : savingToJob ? "Saving..." : "Save to Job"}
+                </button>
+              )}
+              <button onClick={() => compileLatex()} disabled={isBusy} className="rounded-md px-4 py-2 text-xs font-bold text-white disabled:opacity-50" style={{ background: C.green }}>{isBusy ? "Updating…" : "Update preview"}</button>
+              <div className="relative group inline-block text-left">
+                <button
+                  disabled={!pdfUrl && !latex}
+                  className="rounded-md border px-3 py-2 text-xs font-semibold flex items-center gap-1.5 transition-all disabled:opacity-40"
+                  style={{ borderColor: C.border, color: C.textMid, background: "#fffdf9" }}>
+                  <span>Download</span>
+                  <svg width="10" height="6" viewBox="0 0 10 6" fill="none">
+                    <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </button>
+                <div className="absolute right-0 top-full mt-1 w-44 rounded-md shadow-lg hidden group-hover:block z-50 border py-1"
+                     style={{ background: "#fffdf9", borderColor: C.border }}>
+                  <button
+                    onClick={handleDownload}
+                    disabled={!pdfUrl}
+                    className="w-full text-left px-3 py-2 text-xs font-semibold hover:bg-[#f0ebe3] flex items-center justify-between transition-colors disabled:opacity-30"
+                    style={{ color: C.textMid }}>
+                    <span>PDF Document</span>
+                    <span className="text-[10px]" style={{ color: C.textFaint }}>.pdf</span>
+                  </button>
+                  <button
+                    onClick={handleDownloadDocx}
+                    disabled={downloadingDocx || !latex}
+                    className="w-full text-left px-3 py-2 text-xs font-semibold hover:bg-[#f0ebe3] flex items-center justify-between transition-colors disabled:opacity-30"
+                    style={{ color: C.textMid }}>
+                    <span>{downloadingDocx ? "Generating..." : "Word Document"}</span>
+                    <span className="text-[10px]" style={{ color: C.textFaint }}>.docx</span>
+                  </button>
+                  <button
+                    onClick={handleDownloadTex}
+                    disabled={!latex}
+                    className="w-full text-left px-3 py-2 text-xs font-semibold hover:bg-[#f0ebe3] flex items-center justify-between transition-colors disabled:opacity-30"
+                    style={{ color: C.textMid }}>
+                    <span>LaTeX Source</span>
+                    <span className="text-[10px]" style={{ color: C.textFaint }}>.tex</span>
+                  </button>
+                </div>
+              </div>
+              <ViewToggle mode={editorMode} onChange={setEditorMode} />
+            </div>
           </header>
           <div className="flex flex-1 items-start justify-center overflow-auto p-8">
             {isBusy && <div className="absolute mt-10 rounded-lg bg-white/80 px-4 py-3 text-xs shadow-sm" style={{ color: C.textMuted }}>Updating your preview…</div>}
@@ -895,8 +1074,7 @@ function GeneratePageContent() {
             </div>
           </div>
 
-            <div className="flex flex-wrap items-center justify-end gap-2">
-            <ViewToggle mode={editorMode} onChange={setEditorMode} />
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <button
               onClick={() => setAutoCompile(a => !a)}
               title="Toggle auto-compilation as you type (800ms debounce)"
@@ -926,9 +1104,19 @@ function GeneratePageContent() {
                 title="Toggle Monaco Dark/Light theme"
                 className="px-2 py-1.5 text-[11px] rounded-sm border transition-all"
                 style={{ borderColor: C.border, color: C.textMid, background: C.bgCard }}>
-                {editorTheme === "vs-dark" ? "🌙 Dark" : "☀️ Light"}
+                {editorTheme === "vs-dark" ? "Dark" : "Light"}
               </button>
             )}
+            <button
+              onClick={handleCopy}
+              className="px-3 py-1.5 text-[11px] font-bold tracking-[0.12em] uppercase rounded-sm transition-all border"
+              style={{
+                borderColor: C.border,
+                color: copied ? C.green : C.textMid,
+                background: copied ? C.greenLight : C.bgCard
+              }}>
+              {copied ? "Copied!" : "Copy LaTeX"}
+            </button>
             <button onClick={() => compileLatex()} disabled={isBusy}
               className="flex items-center gap-2 px-4 py-1.5 text-[11px] font-bold tracking-[0.12em] uppercase rounded-sm transition-all disabled:cursor-not-allowed"
               style={{ background: isBusy ? C.border : C.green, color: isBusy ? C.textFaint : "#fff", border: `1px solid ${isBusy ? C.border : C.green}` }}>
@@ -944,11 +1132,44 @@ function GeneratePageContent() {
                 </span>
               )}
             </button>
-            <button onClick={handleDownload} disabled={!pdfUrl}
-              className="px-3 py-1.5 text-[11px] font-bold tracking-[0.12em] uppercase rounded-sm transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-              style={{ border: `1px solid ${C.border}`, color: C.textMid }}>
-              ↓ Download
-            </button>
+            <div className="relative group inline-block text-left">
+              <button
+                disabled={!pdfUrl && !latex}
+                className="px-3 py-1.5 text-[11px] font-bold tracking-[0.12em] uppercase rounded-sm transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5"
+                style={{ border: `1px solid ${C.border}`, color: C.textMid, background: C.bgCard }}>
+                <span>Download</span>
+                <svg width="8" height="5" viewBox="0 0 10 6" fill="none">
+                  <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
+              <div className="absolute right-0 top-full mt-1 w-44 rounded-md shadow-lg hidden group-hover:block z-50 border py-1"
+                   style={{ background: "#fffdf9", borderColor: C.border }}>
+                <button
+                  onClick={handleDownload}
+                  disabled={!pdfUrl}
+                  className="w-full text-left px-3 py-2 text-xs font-semibold hover:bg-[#f0ebe3] flex items-center justify-between transition-colors disabled:opacity-30"
+                  style={{ color: C.textMid }}>
+                  <span>PDF Document</span>
+                  <span className="text-[10px]" style={{ color: C.textFaint }}>.pdf</span>
+                </button>
+                <button
+                  onClick={handleDownloadDocx}
+                  disabled={downloadingDocx || !latex}
+                  className="w-full text-left px-3 py-2 text-xs font-semibold hover:bg-[#f0ebe3] flex items-center justify-between transition-colors disabled:opacity-30"
+                  style={{ color: C.textMid }}>
+                  <span>{downloadingDocx ? "Generating..." : "Word Document"}</span>
+                  <span className="text-[10px]" style={{ color: C.textFaint }}>.docx</span>
+                </button>
+                <button
+                  onClick={handleDownloadTex}
+                  disabled={!latex}
+                  className="w-full text-left px-3 py-2 text-xs font-semibold hover:bg-[#f0ebe3] flex items-center justify-between transition-colors disabled:opacity-30"
+                  style={{ color: C.textMid }}>
+                  <span>LaTeX Source</span>
+                  <span className="text-[10px]" style={{ color: C.textFaint }}>.tex</span>
+                </button>
+              </div>
+            </div>
             {jobId && (
               <button
                 onClick={handleSaveToJob}
@@ -988,6 +1209,7 @@ function GeneratePageContent() {
                 )}
               </button>
             )}
+            <ViewToggle mode={editorMode} onChange={setEditorMode} />
           </div>
 
           <div className="flex items-center gap-4">

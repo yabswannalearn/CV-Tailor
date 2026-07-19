@@ -7,7 +7,7 @@ from database import get_db
 from models import database_models as db_models
 from models.schemas import GenerateRequest, GenerateCoverLetterRequest
 from services.llm_service import generate_latex_resume, generate_cover_letter
-from services.pdf_service import PDFCompilationError, compile_latex_to_pdf, pdf_page_count
+from services.pdf_service import PDFCompilationError, compile_latex_to_pdf, pdf_page_count, apply_single_page_autofit
 from limiter import limiter
 from fastapi import Request
 
@@ -43,6 +43,7 @@ async def get_templates():
 
 class CompileLatexRequest(BaseModel):
     latex: str
+    auto_fit: bool = False
 
 
 @router.post("/cv")
@@ -109,11 +110,23 @@ async def compile_latex(data: CompileLatexRequest, request: Request):
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     require_one_page(pdf_bytes)
 
+from services.docx_service import convert_latex_to_docx
+
+
+@router.post("/export/docx")
+@limiter.limit("10/minute")
+async def export_docx(data: CompileLatexRequest, request: Request):
+    try:
+        docx_bytes = await asyncio.to_thread(convert_latex_to_docx, data.latex)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to generate DOCX: {exc}") from exc
+
     return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={"Content-Disposition": "inline; filename=tailored_resume.pdf"}
+        content=docx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": "attachment; filename=tailored_resume.docx"}
     )
+
 
 @router.post("/compile-with-check")
 @limiter.limit("10/minute")
@@ -131,6 +144,20 @@ async def compile_latex_with_check(data: CompileLatexRequest, request: Request):
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     pages = pdf_page_count(pdf_bytes)
+
+    if pages > 1 and not auto_fitted:
+        header_fallback = request.headers.get("X-Auto-Fit-Fallback") == "true"
+        if data.auto_fit or header_fallback:
+            tightened = apply_single_page_autofit(latex_code)
+            try:
+                pdf_bytes_tight = await asyncio.to_thread(compile_latex_to_pdf, tightened)
+                pages_tight = pdf_page_count(pdf_bytes_tight)
+                pdf_bytes = pdf_bytes_tight
+                pages = pages_tight
+                latex_code = tightened
+                auto_fitted = True
+            except Exception:
+                pass
 
     from services.ats_check import ats_check
     import base64
