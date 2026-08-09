@@ -110,6 +110,8 @@ class JobApplication(Base):
     latex_source = Column(Text)
     cover_letter = Column(Text)
     template_id = Column(String(50), default="classic", nullable=False)
+    match_score = Column(Integer, nullable=True)
+    match_analysis = Column(JSON, nullable=True)
 
     owner = relationship("User", back_populates="job_applications")
 
