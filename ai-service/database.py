@@ -49,6 +49,8 @@ def init_db():
             "ALTER TABLE profiles ADD COLUMN IF NOT EXISTS preferred_template VARCHAR(50) DEFAULT 'classic'",
             "ALTER TABLE profiles ADD COLUMN IF NOT EXISTS preset_slug VARCHAR(50) DEFAULT 'blank'",
             "ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS template_id VARCHAR(50) NOT NULL DEFAULT 'classic'",
+            "ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS match_score INTEGER",
+            "ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS match_analysis JSON",
         ):
             conn.execute(text(statement))
 

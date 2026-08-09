@@ -510,17 +510,30 @@ export default function TrackerPage() {
                 {stats.total} application{stats.total !== 1 ? "s" : ""} · {jobs.filter(j => j.has_pdf).length} with generated CVs
               </p>
             </div>
-            <button onClick={openCreate}
-              className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold tracking-[0.15em] uppercase rounded-sm transition-colors"
-              style={{ background: "#1a1814", color: "#f5f2ed" }}
-              onMouseEnter={e => e.currentTarget.style.background = "#2a2520"}
-              onMouseLeave={e => e.currentTarget.style.background = "#1a1814"}>
-              <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
-                <line x1="5.5" y1="1" x2="5.5" y2="10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                <line x1="1" y1="5.5" x2="10" y2="5.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-              </svg>
-              Add Application
-            </button>
+            <div className="flex items-center gap-3">
+              <button onClick={() => router.push("/discover")}
+                className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold tracking-[0.15em] uppercase rounded-sm border transition-colors"
+                style={{ borderColor: "#5a8a00", color: "#5a8a00", background: "transparent" }}
+                onMouseEnter={e => e.currentTarget.style.background = "#eef3e0"}
+                onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+                  <circle cx="4.3" cy="4.3" r="3.3" stroke="currentColor" strokeWidth="1.4"/>
+                  <line x1="6.8" y1="6.8" x2="10" y2="10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+                </svg>
+                Discover Jobs
+              </button>
+              <button onClick={openCreate}
+                className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold tracking-[0.15em] uppercase rounded-sm transition-colors"
+                style={{ background: "#1a1814", color: "#f5f2ed" }}
+                onMouseEnter={e => e.currentTarget.style.background = "#2a2520"}
+                onMouseLeave={e => e.currentTarget.style.background = "#1a1814"}>
+                <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+                  <line x1="5.5" y1="1" x2="5.5" y2="10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                  <line x1="1" y1="5.5" x2="10" y2="5.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                </svg>
+                Add Application
+              </button>
+            </div>
           </div>
 
           {/* Stats */}

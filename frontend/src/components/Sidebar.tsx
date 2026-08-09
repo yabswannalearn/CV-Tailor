@@ -39,6 +39,14 @@ const IconTracker = () => (
   </svg>
 );
 
+const IconDiscover = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+    <circle cx="7" cy="7" r="5" stroke="currentColor" strokeWidth="1.3"/>
+    <line x1="10.5" y1="10.5" x2="14" y2="14" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+    <circle cx="7" cy="7" r="1.6" fill="currentColor"/>
+  </svg>
+);
+
 const IconLogout = () => (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
     <path d="M6 2H3a1 1 0 00-1 1v10a1 1 0 001 1h3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
@@ -59,6 +67,7 @@ const NAV_ITEMS = [
   { label: "Dashboard",   href: "/dashboard",   icon: <IconDashboard /> },
   { label: "Generate CV", href: "/generate",    icon: <IconGenerate /> },
   { label: "Job Tracker", href: "/tracker",     icon: <IconTracker /> },
+  { label: "Discover",    href: "/discover",    icon: <IconDiscover /> },
 ];
 
 // ── Sidebar ───────────────────────────────────────────────────────
