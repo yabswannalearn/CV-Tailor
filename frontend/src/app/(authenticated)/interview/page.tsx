@@ -1,24 +1,12 @@
 "use client";
-import { Suspense, useState, useEffect, useRef, useCallback } from "react";
+import { Suspense, useState, useEffect, useRef, useCallback, useMemo, type RefObject } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import dynamic from "next/dynamic";
 import Link from "next/link";
-
-const Document = dynamic(() => import("react-pdf").then(m => m.Document), { ssr: false });
-const Page = dynamic(() => import("react-pdf").then(m => m.Page), { ssr: false });
-
-import "react-pdf/dist/Page/AnnotationLayer.css";
-import "react-pdf/dist/Page/TextLayer.css";
 import { API_URL } from "@/lib/api";
 import InlineQueryError from "@/components/InlineQueryError";
 import { useQueryClient } from "@tanstack/react-query";
 import { trackerDetailsQueryOptions, useCurrentUser, useTrackerJobs, type JobDetails, type JobSummary } from "@/lib/queries";
-
-if (typeof window !== "undefined") {
-  import("react-pdf").then(({ pdfjs }) => {
-    pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
-  });
-}
+import type { FaceLandmarker } from "@mediapipe/tasks-vision";
 
 const API = API_URL;
 const MEDIAPIPE_WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm";
@@ -51,8 +39,28 @@ interface Feedback {
 
 type SessionState = "select" | "ready" | "question" | "recording" | "analyzing" | "feedback" | "complete";
 
+type SpeechRecognitionEventLike = {
+  resultIndex: number;
+  results: { length: number; [index: number]: { isFinal: boolean; [index: number]: { transcript: string } } };
+};
+type SpeechRecognitionErrorEventLike = { error: string };
+type SpeechRecognitionLike = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+
 declare global {
-  interface Window { SpeechRecognition: any; webkitSpeechRecognition: any; }
+  interface Window {
+    SpeechRecognition?: SpeechRecognitionConstructor;
+    webkitSpeechRecognition?: SpeechRecognitionConstructor;
+  }
 }
 
 function ScoreRing({ score, size = 72, label }: { score: number; size?: number; label?: string }) {
@@ -107,7 +115,17 @@ function EyeContactMeter({ pct }: { pct: number }) {
   );
 }
 
-function CameraPreview({ videoRef, cameraError, liveEyeContact, sessionState, timeElapsed, formatTime, mediapipeReady, liveSmile }: any) {
+type CameraPreviewProps = {
+  videoRef: RefObject<HTMLVideoElement | null>;
+  cameraError: string;
+  liveEyeContact: number;
+  sessionState: SessionState;
+  timeElapsed: number;
+  formatTime: (seconds: number) => string;
+  mediapipeReady: boolean;
+};
+
+function CameraPreview({ videoRef, cameraError, liveEyeContact, sessionState, timeElapsed, formatTime, mediapipeReady }: CameraPreviewProps) {
   return (
     <div className="relative rounded-sm overflow-hidden shrink-0"
       style={{ width: 200, height: 150, background: "#1a1814", border: "1px solid #d4cfc7" }}>
@@ -149,7 +167,7 @@ function InterviewPageContent() {
   const [sessionState, setSessionState] = useState<SessionState>("select");
   const userQuery = useCurrentUser();
   const jobsQuery = useTrackerJobs(!userQuery.isError);
-  const jobs: JobSummary[] = jobsQuery.data || [];
+  const jobs: JobSummary[] = useMemo(() => jobsQuery.data || [], [jobsQuery.data]);
   const [selectedJob, setSelectedJob] = useState<JobDetails | null>(null);
   const [questions, setQuestions] = useState<string[]>([]);
   const [currentQ, setCurrentQ] = useState(0);
@@ -169,11 +187,11 @@ function InterviewPageContent() {
   const [selectionError, setSelectionError] = useState("");
 
   const videoRef = useRef<HTMLVideoElement>(null);
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const isRecordingRef = useRef(false); 
   const transcriptRef = useRef("");
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const faceLandmarkerRef = useRef<any>(null);
+  const faceLandmarkerRef = useRef<FaceLandmarker | null>(null);
   const animFrameRef = useRef<number | null>(null);
   const metricsRef = useRef({
     eyeContactFrames: 0, totalFrames: 0, smileSum: 0,
@@ -274,13 +292,13 @@ function InterviewPageContent() {
       metricsRef.current.totalFrames++;
       if (isLooking) metricsRef.current.eyeContactFrames++;
 
-      const smileL = blendshapes.find((b: any) => b.categoryName === "mouthSmileLeft")?.score || 0;
-      const smileR = blendshapes.find((b: any) => b.categoryName === "mouthSmileRight")?.score || 0;
+      const smileL = blendshapes.find(b => b.categoryName === "mouthSmileLeft")?.score || 0;
+      const smileR = blendshapes.find(b => b.categoryName === "mouthSmileRight")?.score || 0;
       const smile = (smileL + smileR) / 2;
       metricsRef.current.smileSum += smile;
 
-      const blinkL = blendshapes.find((b: any) => b.categoryName === "eyeBlinkLeft")?.score || 0;
-      const blinkR = blendshapes.find((b: any) => b.categoryName === "eyeBlinkRight")?.score || 0;
+      const blinkL = blendshapes.find(b => b.categoryName === "eyeBlinkLeft")?.score || 0;
+      const blinkR = blendshapes.find(b => b.categoryName === "eyeBlinkRight")?.score || 0;
       const isBlinking = (blinkL + blinkR) / 2 > 0.4;
       if (isBlinking && !metricsRef.current.lastBlinkState) metricsRef.current.blinkCount++;
       metricsRef.current.lastBlinkState = isBlinking;
@@ -331,12 +349,13 @@ function InterviewPageContent() {
   const startRecognition = useCallback(() => {
     if (!speechSupported) return;
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return;
     const recognition = new SR();
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = "en-US";
 
-    recognition.onresult = (event: any) => {
+    recognition.onresult = event => {
       let final = "", interim = "";
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const t = event.results[i][0].transcript;
@@ -347,7 +366,7 @@ function InterviewPageContent() {
       setInterimTranscript(interim);
     };
 
-    recognition.onerror = (e: any) => {
+    recognition.onerror = e => {
       if (e.error === "no-speech" || e.error === "aborted") return;
       setError(`Speech error: ${e.error}`);
     };
@@ -407,7 +426,7 @@ function InterviewPageContent() {
       setFeedback(fb);
       setAllFeedback(prev => [...prev, { question: questions[currentQ], answer, feedback: fb }]);
       setSessionState("feedback");
-    } catch (err: any) { setError(err.message); setSessionState("question"); }
+    } catch (err: unknown) { setError(err instanceof Error ? err.message : "Analysis failed"); setSessionState("question"); }
   };
 
   const nextQuestion = () => {
@@ -493,7 +512,6 @@ function InterviewPageContent() {
                 timeElapsed={timeElapsed} 
                 formatTime={formatTime} 
                 mediapipeReady={mediapipeReady} 
-                liveSmile={liveSmile}
               />
               <div className="flex-1">
                 <div className="text-[10px] tracking-[0.2em] uppercase mb-3" style={{ color: "#a8a39c" }}>What we track</div>
@@ -579,7 +597,7 @@ function InterviewPageContent() {
                     <span className="text-[10px]" style={{ color: "#a8a39c" }}>Question {currentQ + 1}</span>
                   </div>
                   <p className="text-base leading-relaxed" style={{ fontFamily: "'Georgia', serif", color: "#1a1814" }}>
-                    "{questions[currentQ]}"
+                    &ldquo;{questions[currentQ]}&rdquo;
                   </p>
                 </div>
 
@@ -683,7 +701,6 @@ function InterviewPageContent() {
                   timeElapsed={timeElapsed} 
                   formatTime={formatTime} 
                   mediapipeReady={mediapipeReady} 
-                  liveSmile={liveSmile}
                 />
                 {mediapipeReady && (
                   <div className="p-3 rounded-sm" style={{ background: "#edeae4", border: "1px solid #d4cfc7" }}>

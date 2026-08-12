@@ -9,7 +9,7 @@ import { API_URL } from "@/lib/api";
 import { useResumeUiStore } from "@/lib/uiStore";
 import InlineQueryError from "@/components/InlineQueryError";
 import RouteLoading from "@/components/RouteLoading";
-import { useCurrentUser, usePresets, useProfile, useTrackerJobs } from "@/lib/queries";
+import { useCurrentUser, usePresets, useProfile, useTrackerDetails } from "@/lib/queries";
 
 const Document = dynamic(() => import("react-pdf").then(m => m.Document), { ssr: false });
 const Page = dynamic(() => import("react-pdf").then(m => m.Page), { ssr: false });
@@ -272,7 +272,7 @@ function GeneratePageContent() {
   const userQuery = useCurrentUser();
   const profileQuery = useProfile();
   const presetsQuery = usePresets();
-  const jobsQuery = useTrackerJobs(Boolean(jobId) && !userQuery.isError);
+  const jobDetailsQuery = useTrackerDetails(jobId ? Number(jobId) : null);
 
   const [jd, setJd] = useState("");
   const { selectedTemplate, setSelectedTemplate, editorMode, setEditorMode } = useResumeUiStore();
@@ -485,10 +485,8 @@ function GeneratePageContent() {
   }, [presetsQuery.data]);
 
   useEffect(() => {
-    if (!jobId || !jobsQuery.data) return;
-    const job = jobsQuery.data.find(item => item.id === Number(jobId));
-    if (job) setJobLabel(`${job.company_name} — ${job.job_title}`);
-  }, [jobId, jobsQuery.data]);
+    if (jobDetailsQuery.data) setJobLabel(`${jobDetailsQuery.data.company_name} — ${jobDetailsQuery.data.job_title}`);
+  }, [jobDetailsQuery.data]);
 
   useEffect(() => { 
     setSections(parseSections(latex));
@@ -729,13 +727,13 @@ function GeneratePageContent() {
   };
 
   // ── Pre-generation ─────────────────────────────────────────────
-  const startupLoading = userQuery.isPending || profileQuery.isPending || presetsQuery.isPending || jobLatexLoading || (Boolean(jobId) && jobsQuery.isPending);
+  const startupLoading = userQuery.isPending || profileQuery.isPending || presetsQuery.isPending || jobLatexLoading || (Boolean(jobId) && jobDetailsQuery.isPending);
   const startupError = jobLatexError
     || (profileQuery.error instanceof Error ? profileQuery.error.message : "")
     || (presetsQuery.error instanceof Error ? presetsQuery.error.message : "")
-    || (jobsQuery.error instanceof Error ? jobsQuery.error.message : "");
+    || (jobDetailsQuery.error instanceof Error ? jobDetailsQuery.error.message : "");
   if (startupLoading) return <RouteLoading />;
-  if (startupError) return <div className="p-6 sm:p-10"><InlineQueryError message={startupError} onRetry={() => { void loadJobLatex(); void profileQuery.refetch(); void presetsQuery.refetch(); void jobsQuery.refetch(); }} /></div>;
+  if (startupError) return <div className="p-6 sm:p-10"><InlineQueryError message={startupError} onRetry={() => { void loadJobLatex(); void profileQuery.refetch(); void presetsQuery.refetch(); void jobDetailsQuery.refetch(); }} /></div>;
 
   if (!hasGenerated) {
     return (

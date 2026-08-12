@@ -1,5 +1,5 @@
 "use client";
-import { Suspense, useState, useEffect, useRef, useCallback } from "react";
+import { Suspense, useState, useEffect, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { API_URL } from "@/lib/api";
@@ -116,7 +116,6 @@ function CodePageContent() {
   const [genDifficulty, setGenDifficulty] = useState("Medium");
   const [problemsLoading, setProblemsLoading] = useState(true);
   const [problemsError, setProblemsError] = useState("");
-  const editorRef = useRef<any>(null);
 
   // ── Auth + load ──────────────────────────────────────────────────
   const loadProblems = useCallback(async () => {
@@ -160,7 +159,7 @@ function CodePageContent() {
   };
 
   // ── Run code ─────────────────────────────────────────────────────
-  const handleRun = async () => {
+  const handleRun = useCallback(async () => {
     if (!code.trim()) return;
     setRunning(true); setRightPanel("output");
     try {
@@ -171,7 +170,7 @@ function CodePageContent() {
       const data: RunResult = await res.json();
       setRunResult(data);
     } finally { setRunning(false); }
-  };
+  }, [code]);
 
   // ── Hint ─────────────────────────────────────────────────────────
   const handleHint = async () => {
@@ -277,7 +276,7 @@ function CodePageContent() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [code]);
+  }, [handleRun]);
 
   const bootLoading = problemsLoading || userQuery.isPending || jobsQuery.isPending;
   const bootError = problemsError || (jobsQuery.error instanceof Error ? jobsQuery.error.message : "");
@@ -505,7 +504,6 @@ function CodePageContent() {
                   language="python"
                   value={code}
                   onChange={v => setCode(v || "")}
-                  onMount={editor => { editorRef.current = editor; }}
                   theme="vs-dark"
                   options={{
                     fontSize: 13,
@@ -739,7 +737,7 @@ function CodePageContent() {
               <div className="p-4">
                 {!runResult?.stderr && (
                   <div className="flex flex-col items-center justify-center py-12 gap-2">
-                    <p className="text-[10px] text-center" style={{ color: "#a8a39c" }}>Run your code first — error explanations appear here when there's a traceback</p>
+                    <p className="text-[10px] text-center" style={{ color: "#a8a39c" }}>Run your code first — error explanations appear here when there&apos;s a traceback</p>
                   </div>
                 )}
                 {runResult?.stderr && (

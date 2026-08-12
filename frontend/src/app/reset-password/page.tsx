@@ -19,7 +19,7 @@ export default function ResetPasswordPage() {
       if (!res.ok) throw new Error(await getApiError(res, "We couldn’t reset your password. Please request a new link."));
       const data = await res.json();
       setMessage(data.message); setTimeout(() => router.push("/login"), 1500);
-    } catch (err: any) { setError(err.message); }
+    } catch (err: unknown) { setError(err instanceof Error ? err.message : "We couldn’t reset your password."); }
     finally { setLoading(false); }
   };
 
