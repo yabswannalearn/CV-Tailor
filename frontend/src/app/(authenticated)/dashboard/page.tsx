@@ -3,9 +3,9 @@ import { useState, useEffect, useRef, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { toast } from "sonner";
-import { API_URL, getApiError } from "@/lib/api";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCurrentUser } from "@/lib/queries";
+import { API_URL } from "@/lib/api";
+import { useQueryClient } from "@tanstack/react-query";
+import { queryKeys, useCurrentUser, usePresets, useProfile } from "@/lib/queries";
 import { motion, AnimatePresence } from "framer-motion";
 import { useDropzone } from "react-dropzone";
 import { UploadCloud } from "lucide-react";
@@ -102,24 +102,8 @@ export default function DashboardPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const queryClient = useQueryClient()
   const { data: user, isError: userError, isPending: userLoading } = useCurrentUser()
-  const { data: profileData, error: profileQueryError, isError: profileError, isPending: profileLoading, refetch: refetchProfile } = useQuery<Profile>({
-    queryKey: ["profile", "me"],
-    queryFn: async () => {
-      const res = await fetch(`${API}/profile/me`, { credentials: "include" })
-      if (!res.ok) throw new Error(await getApiError(res, "Unable to load your profile."))
-      return res.json()
-    },
-    retry: false,
-  })
-  const { data: presets = [], error: presetsQueryError, isError: presetsError, isPending: presetsLoading, refetch: refetchPresets } = useQuery<{slug: string, display_name: string}[]>({
-    queryKey: ["presets"],
-    queryFn: async () => {
-      const res = await fetch(`${API}/presets`)
-      if (!res.ok) throw new Error("Unable to load resume presets.")
-      return res.json()
-    },
-    staleTime: 10 * 60_000,
-  })
+  const { data: profileData, error: profileQueryError, isError: profileError, isPending: profileLoading, refetch: refetchProfile } = useProfile()
+  const { data: presets = [], error: presetsQueryError, isError: presetsError, isPending: presetsLoading, refetch: refetchPresets } = usePresets()
   const userEmail = user?.email || ""
 
   const processFile = async (file: File) => {
@@ -245,7 +229,7 @@ export default function DashboardPage() {
       if (!res.ok) throw new Error()
       setSaveStatus("success")
       setTimeout(() => setSaveStatus("idle"), 3000)
-      await queryClient.invalidateQueries({ queryKey: ["profile", "me"] })
+      await queryClient.invalidateQueries({ queryKey: queryKeys.profile })
     } catch {
       setSaveStatus("error")
     } finally {

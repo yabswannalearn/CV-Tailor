@@ -11,6 +11,8 @@ import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 import { API_URL } from "@/lib/api";
 import InlineQueryError from "@/components/InlineQueryError";
+import { useQueryClient } from "@tanstack/react-query";
+import { trackerDetailsQueryOptions, useCurrentUser, useTrackerJobs, type JobDetails, type JobSummary } from "@/lib/queries";
 
 if (typeof window !== "undefined") {
   import("react-pdf").then(({ pdfjs }) => {
@@ -20,13 +22,6 @@ if (typeof window !== "undefined") {
 
 const API = API_URL;
 const MEDIAPIPE_WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm";
-
-interface Job {
-  id: number;
-  company_name: string;
-  job_title: string;
-  job_description?: string;
-}
 
 interface DeliveryMetrics {
   eye_contact_pct: number;
@@ -147,12 +142,15 @@ function CameraPreview({ videoRef, cameraError, liveEyeContact, sessionState, ti
 
 function InterviewPageContent() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const preselectedJobId = searchParams.get("job_id");
 
   const [sessionState, setSessionState] = useState<SessionState>("select");
-  const [jobs, setJobs] = useState<Job[]>([]);
-  const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+  const userQuery = useCurrentUser();
+  const jobsQuery = useTrackerJobs(!userQuery.isError);
+  const jobs: JobSummary[] = jobsQuery.data || [];
+  const [selectedJob, setSelectedJob] = useState<JobDetails | null>(null);
   const [questions, setQuestions] = useState<string[]>([]);
   const [currentQ, setCurrentQ] = useState(0);
   const [transcript, setTranscript] = useState("");
@@ -167,8 +165,8 @@ function InterviewPageContent() {
   const [mediapipeReady, setMediapipeReady] = useState(false);
   const [liveEyeContact, setLiveEyeContact] = useState(0);
   const [liveSmile, setLiveSmile] = useState(0);
-  const [jobsLoading, setJobsLoading] = useState(true);
-  const [jobsError, setJobsError] = useState("");
+  const [selectingJobId, setSelectingJobId] = useState<number | null>(null);
+  const [selectionError, setSelectionError] = useState("");
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const recognitionRef = useRef<any>(null);
@@ -182,38 +180,32 @@ function InterviewPageContent() {
     blinkCount: 0, lastBlinkState: false, startTime: 0,
   });
 
-  const loadJobs = useCallback(async () => {
-    setJobsLoading(true);
-    setJobsError("");
+  const prepareJob = useCallback(async (job: JobSummary) => {
+    setSelectingJobId(job.id);
+    setSelectionError("");
     try {
-      const [authResponse, jobsResponse] = await Promise.all([
-        fetch(`${API}/auth/me`, { credentials: "include" }),
-        fetch(`${API}/tracker/`, { credentials: "include" }),
-      ]);
-      if (!authResponse.ok) {
-        router.replace("/login");
-        return;
-      }
-      if (!jobsResponse.ok) throw new Error("We couldn’t load your applications.");
-      const data: Job[] = await jobsResponse.json();
-      setJobs(data);
-      if (preselectedJobId) {
-        const job = data.find(item => item.id === Number(preselectedJobId));
-        if (job) { setSelectedJob(job); setSessionState("ready"); }
-      }
+      const details = await queryClient.fetchQuery(trackerDetailsQueryOptions(job.id));
+      setSelectedJob(details);
+      setSessionState("ready");
     } catch (error) {
-      setJobsError(error instanceof Error ? error.message : "We couldn’t load your applications.");
+      setSelectionError(error instanceof Error ? error.message : "We couldn’t load this application.");
     } finally {
-      setJobsLoading(false);
+      setSelectingJobId(null);
     }
-  }, [preselectedJobId, router]);
+  }, [queryClient]);
 
   useEffect(() => {
-    void loadJobs();
+    if (userQuery.isError) router.replace("/login");
     if (!("SpeechRecognition" in window) && !("webkitSpeechRecognition" in window)) {
       setSpeechSupported(false);
     }
-  }, [loadJobs]);
+  }, [router, userQuery.isError]);
+
+  useEffect(() => {
+    if (!preselectedJobId || jobs.length === 0 || selectedJob) return;
+    const job = jobs.find(item => item.id === Number(preselectedJobId));
+    if (job) void prepareJob(job);
+  }, [jobs, preselectedJobId, prepareJob, selectedJob]);
 
   const initCamera = async () => {
     try {
@@ -440,13 +432,13 @@ function InterviewPageContent() {
               <h1 className="text-2xl font-bold" style={{ fontFamily: "'Georgia', serif" }}>AI Interview Practice</h1>
               <p className="text-xs mt-1" style={{ color: "#a8a39c" }}>Select a job to practice for</p>
             </div>
-            {jobsLoading && jobs.length === 0 ? (
+            {jobsQuery.isPending && jobs.length === 0 ? (
               <div role="status" className="grid gap-3 py-8 sm:grid-cols-2">
                 {Array.from({ length: 4 }, (_, index) => <span key={index} className="h-24 animate-pulse rounded-sm bg-[#ddd8d0]" />)}
                 <span className="sr-only">Loading applications…</span>
               </div>
-            ) : jobsError && jobs.length === 0 ? (
-              <InlineQueryError message={jobsError} onRetry={() => { void loadJobs(); }} />
+            ) : jobsQuery.isError && jobs.length === 0 ? (
+              <InlineQueryError message={jobsQuery.error instanceof Error ? jobsQuery.error.message : "We couldn’t load your applications."} onRetry={() => { void jobsQuery.refetch(); }} />
             ) : jobs.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 gap-3">
                 <p className="text-sm" style={{ color: "#a8a39c" }}>No jobs in your tracker yet</p>
@@ -457,9 +449,10 @@ function InterviewPageContent() {
               </div>
             ) : (
               <div className="space-y-2">
+                {selectionError && <InlineQueryError message={selectionError} onRetry={() => { setSelectionError(""); }} retryLabel="Dismiss" />}
                 {jobs.map(job => (
-                  <button key={job.id} onClick={() => { setSelectedJob(job); setSessionState("ready"); }}
-                    className="w-full text-left px-4 py-4 rounded-sm transition-all"
+                  <button key={job.id} onClick={() => { void prepareJob(job); }} disabled={selectingJobId !== null}
+                    className="w-full text-left px-4 py-4 rounded-sm transition-all disabled:opacity-60"
                     style={{ background: "#edeae4", border: "1px solid #d4cfc7" }}
                     onMouseEnter={e => { e.currentTarget.style.borderColor = "#8ab030"; e.currentTarget.style.background = "#e8f5c0"; }}
                     onMouseLeave={e => { e.currentTarget.style.borderColor = "#d4cfc7"; e.currentTarget.style.background = "#edeae4"; }}>
@@ -469,9 +462,7 @@ function InterviewPageContent() {
                         <div className="text-xs mt-0.5" style={{ color: "#7a7570" }}>{job.job_title}</div>
                       </div>
                       <div className="flex items-center gap-2">
-                        {job.job_description
-                          ? <span className="text-[9px] px-2 py-0.5 rounded-sm" style={{ background: "#e8f5c0", color: "#3d6600", border: "1px solid #8ab030" }}>JD Ready</span>
-                          : <span className="text-[9px] px-2 py-0.5 rounded-sm" style={{ background: "#f0ede8", color: "#a8a39c", border: "1px solid #d4cfc7" }}>No JD</span>}
+                        {selectingJobId === job.id && <span className="text-[9px] px-2 py-0.5 rounded-sm" style={{ background: "#e8f5c0", color: "#3d6600", border: "1px solid #8ab030" }}>Loading…</span>}
                         <span style={{ color: "#d4cfc7" }}>→</span>
                       </div>
                     </div>

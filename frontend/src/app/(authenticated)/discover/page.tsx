@@ -1,8 +1,9 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { JobMatchCard, ScrapedJobMatch } from "@/components/tracker/JobMatchCard";
-import { API_URL, getApiError } from "@/lib/api";
+import { getApiError } from "@/lib/api";
+import { usePresets } from "@/lib/queries";
 
 const PAPER = {
   bg: "#f5f2ed",
@@ -31,9 +32,7 @@ const JOB_TYPES = ["Full-Time", "Part-Time", "Contract", "Gig"];
 export default function DiscoverPage() {
   const router = useRouter();
 
-  const [presets, setPresets] = useState<{ slug: string; display_name: string }[]>([]);
-  const [presetsLoading, setPresetsLoading] = useState(true);
-  const [presetsError, setPresetsError] = useState(false);
+  const { data: presets = [], isPending: presetsLoading, isError: presetsError, refetch: refetchPresets } = usePresets();
   const [keyword, setKeyword] = useState("");
   const [selectedPreset, setSelectedPreset] = useState("");
   const [selectedSources, setSelectedSources] = useState<string[]>(["onlinejobs", "linkedin", "remoteok", "weworkremotely"]);
@@ -48,25 +47,6 @@ export default function DiscoverPage() {
   const [searchKeyword, setSearchKeyword] = useState("");
   const [sourceStatus, setSourceStatus] = useState<Record<string, string>>({});
   const [profileDefaults, setProfileDefaults] = useState<{ preset_slug?: string; skills?: string[] }>({});
-
-  const loadPresets = useCallback(async () => {
-    setPresetsLoading(true);
-    setPresetsError(false);
-    try {
-      const response = await fetch(`${API_URL}/presets`);
-      if (!response.ok) throw new Error();
-      const data = await response.json();
-      setPresets(Array.isArray(data) ? data : []);
-    } catch {
-      setPresetsError(true);
-    } finally {
-      setPresetsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadPresets();
-  }, [loadPresets]);
 
   const fetchJobs = useCallback(async (custom?: {
     kw?: string; preset?: string; srcs?: string[]; types?: string[]; score?: number;
@@ -109,10 +89,6 @@ export default function DiscoverPage() {
       setIsLoading(false);
     }
   }, [keyword, selectedPreset, selectedSources, selectedJobTypes, minScore]);
-
-  useEffect(() => {
-    void loadPresets();
-  }, [loadPresets]);
 
   const handleSearchSubmit = (e: React.FormEvent) => { e.preventDefault(); fetchJobs(); };
 
@@ -207,7 +183,7 @@ export default function DiscoverPage() {
                     ))}
                   </select>
                   {presetsError && (
-                    <button type="button" onClick={() => { void loadPresets(); }} className="mt-2 text-[10px] font-bold text-[#b83030] underline">
+                    <button type="button" onClick={() => { void refetchPresets(); }} className="mt-2 text-[10px] font-bold text-[#b83030] underline">
                       Couldn’t load roles — try again
                     </button>
                   )}

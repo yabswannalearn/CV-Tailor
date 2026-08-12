@@ -7,7 +7,7 @@ import dynamic from "next/dynamic";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 import { API_URL } from "@/lib/api";
-import { useCurrentUser, useTrackerDetails, useTrackerJobs } from "@/lib/queries";
+import { queryKeys, useCurrentUser, useTrackerDetails, useTrackerJobs } from "@/lib/queries";
 import { queryClient } from "@/lib/queryClient";
 import { setExpandedJob, setFilterStatus, setSearchQuery, setStatsOpen, type RootState } from "@/lib/store";
 import { useDispatch, useSelector } from "react-redux";
@@ -368,7 +368,7 @@ export default function TrackerPage() {
   };
 
   const loadAll = async () => {
-    await queryClient.invalidateQueries({ queryKey: ["tracker", "jobs"] });
+    await queryClient.invalidateQueries({ queryKey: queryKeys.trackerJobs });
   };
 
   const openCreate = () => { setEditingJob(null); setForm(EMPTY); setJobDescriptionOpen(false); setShowModal(true); };
@@ -463,7 +463,7 @@ export default function TrackerPage() {
         const data = await res.json();
         const updatedJob = { ...job, cover_letter: data.cover_letter };
         setJobs(jobs.map(j => j.id === job.id ? updatedJob : j));
-        queryClient.setQueryData(["tracker", "details", job.id], updatedJob);
+        queryClient.setQueryData(queryKeys.trackerDetails(job.id), updatedJob);
         setViewingClFor(updatedJob);
       }
     } catch {
@@ -483,7 +483,7 @@ export default function TrackerPage() {
       if (res.ok) {
         const data = await res.json();
         setJobs(jobs.map(j => j.id === id ? data : j));
-        queryClient.setQueryData(["tracker", "details", id], data);
+        queryClient.setQueryData(queryKeys.trackerDetails(id), data);
       }
     } catch {
       console.error("Failed to save cover letter");

@@ -9,6 +9,7 @@ import { API_URL } from "@/lib/api";
 import { useResumeUiStore } from "@/lib/uiStore";
 import InlineQueryError from "@/components/InlineQueryError";
 import RouteLoading from "@/components/RouteLoading";
+import { useCurrentUser, usePresets, useProfile, useTrackerJobs } from "@/lib/queries";
 
 const Document = dynamic(() => import("react-pdf").then(m => m.Document), { ssr: false });
 const Page = dynamic(() => import("react-pdf").then(m => m.Page), { ssr: false });
@@ -268,6 +269,10 @@ function GeneratePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const jobId = searchParams.get("job_id");
+  const userQuery = useCurrentUser();
+  const profileQuery = useProfile();
+  const presetsQuery = usePresets();
+  const jobsQuery = useTrackerJobs(Boolean(jobId) && !userQuery.isError);
 
   const [jd, setJd] = useState("");
   const { selectedTemplate, setSelectedTemplate, editorMode, setEditorMode } = useResumeUiStore();
@@ -305,8 +310,8 @@ function GeneratePageContent() {
   const [useMonaco, setUseMonaco] = useState(true);
   const [editorTheme, setEditorTheme] = useState<"vs-dark" | "vs">("vs-dark");
   const [downloadingDocx, setDownloadingDocx] = useState(false);
-  const [startupLoading, setStartupLoading] = useState(true);
-  const [startupError, setStartupError] = useState("");
+  const [jobLatexLoading, setJobLatexLoading] = useState(Boolean(jobId));
+  const [jobLatexError, setJobLatexError] = useState("");
 
   const handleDownloadTex = () => {
     if (!latex) return;
@@ -429,58 +434,61 @@ function GeneratePageContent() {
     return () => clearTimeout(timer);
   }, [latex, autoCompile]);
 
-  const loadStartupData = useCallback(async () => {
-    setStartupLoading(true);
-    setStartupError("");
+  const loadJobLatex = useCallback(async () => {
+    if (!jobId) {
+      setJobLatexLoading(false);
+      return;
+    }
+    setJobLatexLoading(true);
+    setJobLatexError("");
     try {
-      const [presetsResponse, profileResponse, userResponse] = await Promise.all([
-        fetch(`${API_URL}/presets`),
-        fetch(`${API_URL}/profile/me`, { credentials: "include" }),
-        fetch(`${API_URL}/auth/me`, { credentials: "include" }),
-      ]);
-      if (!userResponse.ok) {
-        router.replace("/login");
-        return;
+      const response = await fetch(`${API_URL}/tracker/${jobId}/latex`, { credentials: "include" });
+      if (!response.ok) {
+        if (response.status === 404) return;
+        throw new Error("We couldn’t load the saved resume for this application.");
       }
-      if (!presetsResponse.ok || !profileResponse.ok) throw new Error("We couldn’t load your resume setup.");
-      const [presetData, profile, user] = await Promise.all([
-        presetsResponse.json(),
-        profileResponse.json(),
-        userResponse.json(),
-      ]);
-      setPresets(presetData);
-      if (profile?.preset_slug) setPresetSlug(profile.preset_slug);
-      setUserEmail(user.email);
-      setCredits(user.credits);
-
-      if (jobId) {
-        const [latexResponse, jobsResponse] = await Promise.all([
-          fetch(`${API_URL}/tracker/${jobId}/latex`, { credentials: "include" }),
-          fetch(`${API_URL}/tracker/`, { credentials: "include" }),
-        ]);
-        if (!jobsResponse.ok) throw new Error("We couldn’t load the selected application.");
-        const jobs: { id: number; company_name: string; job_title: string }[] = await jobsResponse.json();
-        const job = jobs.find(item => item.id === Number(jobId));
-        if (job) setJobLabel(`${job.company_name} — ${job.job_title}`);
-        if (latexResponse.ok) {
-          const data = await latexResponse.json();
-          if (data?.latex) {
-            setLatex(data.latex);
-            setHasGenerated(true);
-            window.setTimeout(() => { void compileLatexRef.current(data.latex); }, 100);
-          }
-        }
+      const data = await response.json();
+      if (data?.latex) {
+        setLatex(data.latex);
+        setHasGenerated(true);
+        window.setTimeout(() => { void compileLatexRef.current(data.latex); }, 100);
       }
     } catch (error) {
-      setStartupError(error instanceof Error ? error.message : "We couldn’t load your resume setup.");
+      setJobLatexError(error instanceof Error ? error.message : "We couldn’t load the saved resume.");
     } finally {
-      setStartupLoading(false);
+      setJobLatexLoading(false);
     }
-  }, [jobId, router]);
+  }, [jobId]);
 
   useEffect(() => {
-    void loadStartupData();
-  }, [loadStartupData]);
+    void loadJobLatex();
+  }, [loadJobLatex]);
+
+  useEffect(() => {
+    if (userQuery.isError) router.replace("/login");
+    if (userQuery.data) {
+      setUserEmail(userQuery.data.email);
+      setCredits(userQuery.data.credits);
+    }
+  }, [router, userQuery.data, userQuery.isError]);
+
+  useEffect(() => {
+    if (profileQuery.data?.preset_slug) setPresetSlug(profileQuery.data.preset_slug);
+  }, [profileQuery.data]);
+
+  useEffect(() => {
+    if (presetsQuery.data) setPresets(presetsQuery.data.map(preset => ({
+      slug: preset.slug,
+      display_name: preset.display_name,
+      recommended_template: preset.recommended_template || "classic",
+    })));
+  }, [presetsQuery.data]);
+
+  useEffect(() => {
+    if (!jobId || !jobsQuery.data) return;
+    const job = jobsQuery.data.find(item => item.id === Number(jobId));
+    if (job) setJobLabel(`${job.company_name} — ${job.job_title}`);
+  }, [jobId, jobsQuery.data]);
 
   useEffect(() => { 
     setSections(parseSections(latex));
@@ -721,8 +729,13 @@ function GeneratePageContent() {
   };
 
   // ── Pre-generation ─────────────────────────────────────────────
+  const startupLoading = userQuery.isPending || profileQuery.isPending || presetsQuery.isPending || jobLatexLoading || (Boolean(jobId) && jobsQuery.isPending);
+  const startupError = jobLatexError
+    || (profileQuery.error instanceof Error ? profileQuery.error.message : "")
+    || (presetsQuery.error instanceof Error ? presetsQuery.error.message : "")
+    || (jobsQuery.error instanceof Error ? jobsQuery.error.message : "");
   if (startupLoading) return <RouteLoading />;
-  if (startupError) return <div className="p-6 sm:p-10"><InlineQueryError message={startupError} onRetry={() => { void loadStartupData(); }} /></div>;
+  if (startupError) return <div className="p-6 sm:p-10"><InlineQueryError message={startupError} onRetry={() => { void loadJobLatex(); void profileQuery.refetch(); void presetsQuery.refetch(); void jobsQuery.refetch(); }} /></div>;
 
   if (!hasGenerated) {
     return (

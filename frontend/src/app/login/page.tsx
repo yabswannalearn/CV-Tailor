@@ -2,6 +2,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { API_URL, getApiError } from "@/lib/api";
+import { queryClient } from "@/lib/queryClient";
+import { warmAuthenticatedData } from "@/lib/queries";
 
 const GRAIN = `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`;
 
@@ -32,8 +34,9 @@ export default function LoginPage() {
       }
 
       router.push("/dashboard");
-    } catch (err: any) {
-      setError(err.message);
+      void warmAuthenticatedData(queryClient);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "We couldn’t sign you in.");
     } finally {
       setLoading(false);
     }

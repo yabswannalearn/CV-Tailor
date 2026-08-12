@@ -5,6 +5,8 @@ import dynamic from "next/dynamic";
 import { API_URL } from "@/lib/api";
 import InlineQueryError from "@/components/InlineQueryError";
 import RouteLoading from "@/components/RouteLoading";
+import { useQueryClient } from "@tanstack/react-query";
+import { trackerDetailsQueryOptions, useCurrentUser, useTrackerJobs, type JobSummary } from "@/lib/queries";
 
 // Monaco editor — client only (no SSR)
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), { ssr: false });
@@ -85,6 +87,7 @@ function ScoreRing({ score }: { score: number }) {
 // ── Main ──────────────────────────────────────────────────────────
 function CodePageContent() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const jobIdParam = searchParams.get("job_id");
 
@@ -106,42 +109,42 @@ function CodePageContent() {
   const [filterDiff, setFilterDiff] = useState<Difficulty>("All");
   const [filterTag, setFilterTag] = useState<string>("All");
   const [searchQuery, setSearchQuery] = useState("");
-  const [jobs, setJobs] = useState<{ id: number; company_name: string; job_title: string; job_description?: string }[]>([]);
+  const userQuery = useCurrentUser();
+  const jobsQuery = useTrackerJobs(!userQuery.isError);
+  const jobs: JobSummary[] = jobsQuery.data || [];
   const [selectedJobForGen, setSelectedJobForGen] = useState<string>("");
   const [genDifficulty, setGenDifficulty] = useState("Medium");
-  const [bootLoading, setBootLoading] = useState(true);
-  const [bootError, setBootError] = useState("");
+  const [problemsLoading, setProblemsLoading] = useState(true);
+  const [problemsError, setProblemsError] = useState("");
   const editorRef = useRef<any>(null);
 
   // ── Auth + load ──────────────────────────────────────────────────
-  const loadBootData = useCallback(async () => {
-    setBootLoading(true);
-    setBootError("");
+  const loadProblems = useCallback(async () => {
+    setProblemsLoading(true);
+    setProblemsError("");
     try {
-      const [authResponse, problemsResponse, jobsResponse] = await Promise.all([
-        fetch(`${API}/auth/me`, { credentials: "include" }),
-        fetch(`${API}/code/problems`, { credentials: "include" }),
-        fetch(`${API}/tracker/`, { credentials: "include" }),
-      ]);
-      if (!authResponse.ok) {
-        router.replace("/login");
-        return;
-      }
-      if (!problemsResponse.ok || !jobsResponse.ok) throw new Error("We couldn’t load your practice workspace.");
-      const [problemsData, jobsData] = await Promise.all([problemsResponse.json(), jobsResponse.json()]);
+      const problemsResponse = await fetch(`${API}/code/problems`, { credentials: "include" });
+      if (!problemsResponse.ok) throw new Error("We couldn’t load your coding problems.");
+      const problemsData = await problemsResponse.json();
       setProblems(problemsData.problems || []);
-      setJobs(jobsData);
-      if (jobIdParam) setSelectedJobForGen(jobIdParam);
     } catch (error) {
-      setBootError(error instanceof Error ? error.message : "We couldn’t load your practice workspace.");
+      setProblemsError(error instanceof Error ? error.message : "We couldn’t load your coding problems.");
     } finally {
-      setBootLoading(false);
+      setProblemsLoading(false);
     }
-  }, [jobIdParam, router]);
+  }, []);
 
   useEffect(() => {
-    void loadBootData();
-  }, [loadBootData]);
+    void loadProblems();
+  }, [loadProblems]);
+
+  useEffect(() => {
+    if (userQuery.isError) router.replace("/login");
+  }, [router, userQuery.isError]);
+
+  useEffect(() => {
+    if (jobIdParam) setSelectedJobForGen(jobIdParam);
+  }, [jobIdParam]);
 
   // ── Load full problem ────────────────────────────────────────────
   const selectProblem = async (p: Problem) => {
@@ -236,12 +239,13 @@ function CodePageContent() {
     if (!job) return;
     setGenerateLoading(true); setRightPanel("generate");
     try {
+      const details = await queryClient.fetchQuery(trackerDetailsQueryOptions(job.id));
       const res = await fetch(`${API}/code/generate`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
           job_title: job.job_title,
-          jd: job.job_description || "",
+          jd: details.job_description || "",
           difficulty: genDifficulty,
           count: 3,
         }),
@@ -275,9 +279,11 @@ function CodePageContent() {
     return () => window.removeEventListener("keydown", handler);
   }, [code]);
 
+  const bootLoading = problemsLoading || userQuery.isPending || jobsQuery.isPending;
+  const bootError = problemsError || (jobsQuery.error instanceof Error ? jobsQuery.error.message : "");
   if (bootLoading && problems.length === 0 && jobs.length === 0) return <RouteLoading />;
   if (bootError && problems.length === 0 && jobs.length === 0) {
-    return <div className="p-6 sm:p-10"><InlineQueryError message={bootError} onRetry={() => { void loadBootData(); }} /></div>;
+    return <div className="p-6 sm:p-10"><InlineQueryError message={bootError} onRetry={() => { void loadProblems(); void jobsQuery.refetch(); }} /></div>;
   }
 
   return (
