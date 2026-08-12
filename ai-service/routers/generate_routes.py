@@ -171,6 +171,26 @@ async def compile_latex_with_check(data: CompileLatexRequest, request: Request):
         "latex": latex_code if auto_fitted else None
     }
 
+
+@router.post("/compile-preview")
+@limiter.limit("30/minute")
+async def compile_latex_preview(data: CompileLatexRequest, request: Request):
+    try:
+        pdf_bytes = await asyncio.to_thread(compile_latex_to_pdf, data.latex, True)
+    except PDFCompilationError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    pages = pdf_page_count(pdf_bytes)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Cache-Control": "no-store",
+            "Content-Disposition": "inline; filename=preview.pdf",
+            "X-PDF-Pages": str(pages),
+        },
+    )
+
 @router.post("/ats-check")
 @limiter.limit("5/minute")
 async def generate_ats_check(data: GenerateRequest, request: Request, db: Session = Depends(get_db)):

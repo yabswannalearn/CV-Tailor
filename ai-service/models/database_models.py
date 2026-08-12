@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Date, LargeBinary, JSON, Boolean
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Date, LargeBinary, JSON, Boolean, Index
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from database import Base
@@ -42,7 +42,7 @@ class Profile(Base):
 class Education(Base):
     __tablename__ = "education"
     id = Column(Integer, primary_key=True)
-    profile_id = Column(Integer, ForeignKey("profiles.id"))
+    profile_id = Column(Integer, ForeignKey("profiles.id"), index=True)
     school_name = Column(String(150))
     course = Column(String(150))
     location = Column(String(100))
@@ -53,7 +53,7 @@ class Education(Base):
 class Experience(Base):
     __tablename__ = "experience"
     id = Column(Integer, primary_key=True)
-    profile_id = Column(Integer, ForeignKey("profiles.id"))
+    profile_id = Column(Integer, ForeignKey("profiles.id"), index=True)
     job_title = Column(String(100))
     company = Column(String(100))
     location = Column(String(100))
@@ -64,7 +64,7 @@ class Experience(Base):
 class Project(Base):
     __tablename__ = "projects"
     id = Column(Integer, primary_key=True)
-    profile_id = Column(Integer, ForeignKey("profiles.id"))
+    profile_id = Column(Integer, ForeignKey("profiles.id"), index=True)
     name = Column(String(100))
     description = Column(Text)
     date_range = Column(String(50))
@@ -73,14 +73,14 @@ class Project(Base):
 class Skill(Base):
     __tablename__ = "skills"
     id = Column(Integer, primary_key=True)
-    profile_id = Column(Integer, ForeignKey("profiles.id"))
+    profile_id = Column(Integer, ForeignKey("profiles.id"), index=True)
     skill_name = Column(String(50))
     owner = relationship("Profile", back_populates="skills")
 
 class Certification(Base):
     __tablename__ = "certifications"
     id = Column(Integer, primary_key=True)
-    profile_id = Column(Integer, ForeignKey("profiles.id"))
+    profile_id = Column(Integer, ForeignKey("profiles.id"), index=True)
     name = Column(String(150))
     issuer = Column(String(150))
     date_issued = Column(String(50))
@@ -88,6 +88,10 @@ class Certification(Base):
 
 class JobApplication(Base):
     __tablename__ = "job_applications"
+    __table_args__ = (
+        Index("ix_job_applications_user_created", "user_id", "created_at"),
+        Index("ix_job_applications_user_status", "user_id", "status"),
+    )
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     company_name = Column(String(150), nullable=False)

@@ -6,8 +6,6 @@ python-dotenv
 requests
 sqlalchemy
 tecto
-celery
-redis
 scrapling
 camoufox
 curl_cffi

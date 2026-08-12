@@ -1,14 +1,6 @@
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-import os
-from dotenv import load_dotenv
 
-load_dotenv()
-
-redis_url = os.getenv("REDIS_URL")
-
-# Fallback to memory if redis url is not provided
-if redis_url:
-    limiter = Limiter(key_func=get_remote_address, storage_uri=redis_url)
-else:
-    limiter = Limiter(key_func=get_remote_address)
+# This application currently runs as a single FastAPI process. Keep rate-limit
+# counters in-process so requests never depend on an external data store.
+limiter = Limiter(key_func=get_remote_address)

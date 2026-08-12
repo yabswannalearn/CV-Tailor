@@ -23,10 +23,23 @@ def normalize_database_url(url: str) -> str:
 
 DATABASE_URL = normalize_database_url(DATABASE_URL)
 
+def positive_int_env(name: str, default: int) -> int:
+    try:
+        value = int(os.getenv(name, str(default)))
+    except ValueError:
+        return default
+    return value if value > 0 else default
+
+
 engine = create_engine(
     DATABASE_URL,
     pool_pre_ping=True,
-    pool_recycle=300,
+    pool_recycle=positive_int_env("DB_POOL_RECYCLE_SECONDS", 1800),
+    pool_timeout=positive_int_env("DB_POOL_TIMEOUT_SECONDS", 5),
+    connect_args={
+        "connect_timeout": positive_int_env("DB_CONNECT_TIMEOUT_SECONDS", 5),
+        "application_name": "cv_tailor",
+    },
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
@@ -51,6 +64,13 @@ def init_db():
             "ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS template_id VARCHAR(50) NOT NULL DEFAULT 'classic'",
             "ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS match_score INTEGER",
             "ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS match_analysis JSON",
+            "CREATE INDEX IF NOT EXISTS ix_education_profile_id ON education (profile_id)",
+            "CREATE INDEX IF NOT EXISTS ix_experience_profile_id ON experience (profile_id)",
+            "CREATE INDEX IF NOT EXISTS ix_projects_profile_id ON projects (profile_id)",
+            "CREATE INDEX IF NOT EXISTS ix_skills_profile_id ON skills (profile_id)",
+            "CREATE INDEX IF NOT EXISTS ix_certifications_profile_id ON certifications (profile_id)",
+            "CREATE INDEX IF NOT EXISTS ix_job_applications_user_created ON job_applications (user_id, created_at)",
+            "CREATE INDEX IF NOT EXISTS ix_job_applications_user_status ON job_applications (user_id, status)",
         ):
             conn.execute(text(statement))
 

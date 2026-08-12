@@ -16,6 +16,13 @@ with engine.connect() as conn:
     conn.execute(text("ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS template_id VARCHAR(50) NOT NULL DEFAULT 'classic';"))
     conn.execute(text("ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS match_score INTEGER;"))
     conn.execute(text("ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS match_analysis JSON;"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_education_profile_id ON education (profile_id);"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_experience_profile_id ON experience (profile_id);"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_projects_profile_id ON projects (profile_id);"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_skills_profile_id ON skills (profile_id);"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_certifications_profile_id ON certifications (profile_id);"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_job_applications_user_created ON job_applications (user_id, created_at);"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_job_applications_user_status ON job_applications (user_id, status);"))
     
     conn.execute(text("""
     CREATE TABLE IF NOT EXISTS resume_presets (

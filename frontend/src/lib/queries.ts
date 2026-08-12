@@ -29,8 +29,6 @@ export type JobDetails = JobSummary & {
   cover_letter?: string;
 };
 
-export type TrackerStats = { total: number; by_status: Record<string, number> };
-
 async function readJson<T>(path: string, fallback: string): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, { credentials: "include" });
   if (!response.ok) throw new Error(await getApiError(response, fallback));
@@ -40,7 +38,6 @@ async function readJson<T>(path: string, fallback: string): Promise<T> {
 export const queryKeys = {
   currentUser: ["current-user"] as const,
   trackerJobs: ["tracker", "jobs"] as const,
-  trackerStats: ["tracker", "stats"] as const,
   trackerDetails: (id: number) => ["tracker", "details", id] as const,
 };
 
@@ -56,14 +53,6 @@ export function useTrackerJobs(enabled = true) {
   return useQuery({
     queryKey: queryKeys.trackerJobs,
     queryFn: () => readJson<JobSummary[]>("/tracker/", "Unable to load your applications."),
-    enabled,
-  });
-}
-
-export function useTrackerStats(enabled = true) {
-  return useQuery({
-    queryKey: queryKeys.trackerStats,
-    queryFn: () => readJson<TrackerStats>("/tracker/stats", "Unable to load application statistics."),
     enabled,
   });
 }
