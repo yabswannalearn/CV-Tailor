@@ -8,7 +8,7 @@ from routers import database_routes, generate_routes, auth_routes, tracker_route
 import logging
 import os
 from dotenv import load_dotenv
-from database import init_db
+from database import init_db, reset_request_path, set_request_path
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from limiter import limiter
@@ -43,6 +43,15 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+
+@app.middleware("http")
+async def database_request_context(request: Request, call_next):
+    token = set_request_path(request.url.path)
+    try:
+        return await call_next(request)
+    finally:
+        reset_request_path(token)
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
