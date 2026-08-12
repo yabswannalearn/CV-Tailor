@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import dynamic from "next/dynamic";
@@ -7,7 +7,7 @@ import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 import AppLayout from "@/components/AppLayout";
 import { API_URL } from "@/lib/api";
-import { useCurrentUser, useTrackerDetails, useTrackerJobs, useTrackerStats } from "@/lib/queries";
+import { useCurrentUser, useTrackerDetails, useTrackerJobs } from "@/lib/queries";
 import { queryClient } from "@/lib/queryClient";
 import { setExpandedJob, setFilterStatus, setSearchQuery, setStatsOpen, type RootState } from "@/lib/store";
 import { useDispatch, useSelector } from "react-redux";
@@ -302,7 +302,6 @@ export default function TrackerPage() {
   const trackerUi = useSelector((state: RootState) => state.trackerUi);
   const { isError: userError } = useCurrentUser();
   const jobsQuery = useTrackerJobs(!userError);
-  const statsQuery = useTrackerStats(!userError);
   const expandedJob = trackerUi.expandedJob;
   const detailsQuery = useTrackerDetails(expandedJob);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -319,7 +318,13 @@ export default function TrackerPage() {
   const [jobDescriptionOpen, setJobDescriptionOpen] = useState(false);
 
   const loading = jobsQuery.isLoading;
-  const stats = statsQuery.data || { total: 0, by_status: {} };
+  const stats = useMemo(() => ({
+    total: jobs.length,
+    by_status: jobs.reduce<Record<string, number>>((counts, job) => {
+      counts[job.status] = (counts[job.status] || 0) + 1;
+      return counts;
+    }, {}),
+  }), [jobs]);
   const filterStatus = trackerUi.filterStatus as Status | "All";
   const searchQuery = trackerUi.searchQuery;
 
@@ -362,10 +367,7 @@ export default function TrackerPage() {
   };
 
   const loadAll = async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["tracker", "jobs"] }),
-      queryClient.invalidateQueries({ queryKey: ["tracker", "stats"] }),
-    ]);
+    await queryClient.invalidateQueries({ queryKey: ["tracker", "jobs"] });
   };
 
   const openCreate = () => { setEditingJob(null); setForm(EMPTY); setJobDescriptionOpen(false); setShowModal(true); };

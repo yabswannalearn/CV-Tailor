@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, selectinload
 from database import get_db
 from models import database_models as db_models
 from models.schemas import UserProfile
@@ -12,6 +12,65 @@ router = APIRouter(
     prefix="/profile",
     tags=["profile"]
 )
+
+PROFILE_LOAD_OPTIONS = (
+    selectinload(db_models.Profile.education),
+    selectinload(db_models.Profile.experience),
+    selectinload(db_models.Profile.projects),
+    selectinload(db_models.Profile.skills),
+    selectinload(db_models.Profile.certifications),
+)
+
+
+def serialize_profile(profile: db_models.Profile) -> dict:
+    return {
+        "id": profile.id,
+        "user_id": profile.user_id,
+        "first_name": profile.first_name,
+        "last_name": profile.last_name,
+        "mobile_no": profile.mobile_no,
+        "email": profile.email,
+        "linkedin": profile.linkedin,
+        "github": profile.github,
+        "portfolio": profile.portfolio,
+        "preset_slug": profile.preset_slug,
+        "education": [
+            {
+                "school_name": item.school_name,
+                "course": item.course,
+                "location": item.location,
+                "description": item.description,
+            }
+            for item in profile.education
+        ],
+        "experience": [
+            {
+                "job_title": item.job_title,
+                "company": item.company,
+                "location": item.location,
+                "description": item.description,
+                "date_range": item.date_range,
+            }
+            for item in profile.experience
+        ],
+        "projects": [
+            {
+                "name": item.name,
+                "description": item.description,
+                "date_range": item.date_range,
+            }
+            for item in profile.projects
+        ],
+        "skills": [{"skill_name": item.skill_name} for item in profile.skills],
+        "certifications": [
+            {
+                "name": item.name,
+                "issuer": item.issuer,
+                "date_issued": item.date_issued,
+            }
+            for item in profile.certifications
+        ],
+    }
 
 @router.post("/auto-fill-resume")
 @limiter.limit("3/minute")
@@ -145,63 +204,16 @@ async def save_profile(profile_data: UserProfile, request: Request, db: Session 
         raise HTTPException(status_code=500, detail=f"Database Sync Error: {str(e)}")
 
 
-@router.get("/load/{email}")
+@router.get("/me")
 @limiter.limit("30/minute")
-async def load_profile(email: str, request: Request, db: Session = Depends(get_db)):
-    profile = db.query(db_models.Profile).options(
-        joinedload(db_models.Profile.education),
-        joinedload(db_models.Profile.experience),
-        joinedload(db_models.Profile.projects),
-        joinedload(db_models.Profile.skills),
-        joinedload(db_models.Profile.certifications),
-    ).join(db_models.User).filter(db_models.User.email == email).first()
+async def load_current_profile(request: Request, db: Session = Depends(get_db)):
+    user_id = request.session.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
 
+    profile = db.query(db_models.Profile).options(*PROFILE_LOAD_OPTIONS).filter(
+        db_models.Profile.user_id == user_id
+    ).first()
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
-
-    return {
-        "id": profile.id,
-        "user_id": profile.user_id,
-        "first_name": profile.first_name,
-        "last_name": profile.last_name,
-        "mobile_no": profile.mobile_no,
-        "email": profile.email,
-        "linkedin": profile.linkedin,
-        "github": profile.github,
-        "portfolio": profile.portfolio,
-        "preset_slug": profile.preset_slug,
-        "education": [
-            {
-                "school_name": e.school_name,
-                "course": e.course,
-                "location": e.location,
-                "description": e.description  # add this
-            } for e in profile.education
-        ],
-        "experience": [
-            {
-                "job_title": e.job_title,
-                "company": e.company,
-                "location": e.location,
-                "description": e.description,
-                "date_range": e.date_range
-            } for e in profile.experience
-        ],
-        "projects": [
-            {
-                "name": p.name,
-                "description": p.description,
-                "date_range": p.date_range
-            } for p in profile.projects
-        ],
-        "skills": [
-            {"skill_name": s.skill_name} for s in profile.skills
-        ],
-        "certifications": [
-            {
-                "name": c.name,
-                "issuer": c.issuer,
-                "date_issued": c.date_issued
-            } for c in profile.certifications
-        ],
-    }
+    return serialize_profile(profile)

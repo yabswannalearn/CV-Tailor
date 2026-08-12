@@ -102,13 +102,13 @@ export default function DashboardPage() {
   const queryClient = useQueryClient()
   const { data: user, isError: userError, isPending: userLoading } = useCurrentUser()
   const { data: profileData, isError: profileError, isPending: profileLoading } = useQuery<Profile>({
-    queryKey: ["profile", user?.email],
-    enabled: Boolean(user?.email),
+    queryKey: ["profile", "me"],
     queryFn: async () => {
-      const res = await fetch(`${API}/profile/load/${encodeURIComponent(user!.email)}`, { credentials: "include" })
+      const res = await fetch(`${API}/profile/me`, { credentials: "include" })
       if (!res.ok) throw new Error(await getApiError(res, "Unable to load your profile."))
       return res.json()
     },
+    retry: false,
   })
   const { data: presets = [], isPending: presetsLoading } = useQuery<{slug: string, display_name: string}[]>({
     queryKey: ["presets"],
@@ -212,9 +212,9 @@ export default function DashboardPage() {
     setProfileHydrated(true)
   }, [profileData])
 
-  const dashboardLoading = userLoading || presetsLoading || (Boolean(user?.email) && profileLoading) || (Boolean(profileData) && !profileHydrated)
+  const dashboardLoading = userLoading || presetsLoading || profileLoading || (Boolean(profileData) && !profileHydrated)
 
-  if (dashboardLoading || userError || (Boolean(user?.email) && profileLoading && !profileError)) {
+  if (dashboardLoading || userError || (profileLoading && !profileError)) {
     return <AppLayout><DashboardSkeleton /></AppLayout>
   }
 
@@ -231,7 +231,7 @@ export default function DashboardPage() {
       if (!res.ok) throw new Error()
       setSaveStatus("success")
       setTimeout(() => setSaveStatus("idle"), 3000)
-      await queryClient.invalidateQueries({ queryKey: ["profile", userEmail] })
+      await queryClient.invalidateQueries({ queryKey: ["profile", "me"] })
     } catch {
       setSaveStatus("error")
     } finally {
