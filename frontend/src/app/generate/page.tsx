@@ -11,10 +11,11 @@ import { useResumeUiStore } from "@/lib/uiStore";
 const Document = dynamic(() => import("react-pdf").then(m => m.Document), { ssr: false });
 const Page = dynamic(() => import("react-pdf").then(m => m.Page), { ssr: false });
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), { ssr: false });
+const PDF_WORKER_SRC = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
 
 if (typeof window !== "undefined") {
   import("react-pdf").then(({ pdfjs }) => {
-    pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+    pdfjs.GlobalWorkerOptions.workerSrc = PDF_WORKER_SRC;
   }).catch(() => {});
 }
 
@@ -342,15 +343,25 @@ function GeneratePageContent() {
   const containerRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef(false);
   const lastCompiledLatexRef = useRef<string>("");
-  const compileLatexRef = useRef<(src?: string) => Promise<void>>(async () => {});
+  const compileInFlightRef = useRef(false);
+  const pendingCompileRef = useRef<{ source: string; checkAts: boolean } | null>(null);
+  const compileLatexRef = useRef<(src?: string, checkAts?: boolean) => Promise<void>>(async () => {});
 
   // ── compile helper (defined before useEffect so it can be called from it) ──
-  const compileLatex = useCallback(async (src?: string) => {
+  const compileLatex = useCallback(async (src?: string, checkAts = true) => {
     const source = src ?? latex;
     if (!source.trim()) return;
+
+    if (compileInFlightRef.current) {
+      pendingCompileRef.current = { source, checkAts };
+      return;
+    }
+
+    compileInFlightRef.current = true;
     setAppState("compiling"); setErrorMsg("");
     try {
-      const res = await fetch(`${API_URL}/generate/compile-with-check`, {
+      const endpoint = checkAts ? "/generate/compile-with-check" : "/generate/compile-preview";
+      const res = await fetch(`${API_URL}${endpoint}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ latex: source }),
       });
@@ -362,24 +373,40 @@ function GeneratePageContent() {
         } catch {}
         throw new Error(message);
       }
-      const { pdf_b64, ats, num_pages } = await res.json();
-      const byteCharacters = atob(pdf_b64);
-      const byteNumbers = new Array(byteCharacters.length);
-      for (let i = 0; i < byteCharacters.length; i++) { byteNumbers[i] = byteCharacters.charCodeAt(i); }
-      const byteArray = new Uint8Array(byteNumbers);
-      const blob = new Blob([byteArray], { type: "application/pdf" });
+
+      let blob: Blob;
+      let pages: number;
+      if (checkAts) {
+        const { pdf_b64, ats, num_pages } = await res.json();
+        const bytes = Uint8Array.from(atob(pdf_b64), char => char.charCodeAt(0));
+        blob = new Blob([bytes], { type: "application/pdf" });
+        pages = num_pages;
+        setAtsResult(ats);
+      } else {
+        blob = await res.blob();
+        pages = Number(res.headers.get("X-PDF-Pages") || "1");
+      }
+
       const newBlobUrl = window.URL.createObjectURL(blob);
       lastCompiledLatexRef.current = source;
       setPdfUrl(prevUrl => {
         if (prevUrl) window.URL.revokeObjectURL(prevUrl);
         return newBlobUrl;
       });
-      setAtsResult(ats);
       setAppState("editing");
-      if (num_pages) setNumPages(num_pages);
+      if (pages) setNumPages(pages);
       setCurrentPage(1);
-    } catch (err: unknown) { setErrorMsg(err instanceof Error ? err.message : "Compile failed"); setAppState("error"); }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : "Compile failed");
+      setAppState("error");
+    } finally {
+      compileInFlightRef.current = false;
+      const pending = pendingCompileRef.current;
+      pendingCompileRef.current = null;
+      if (pending && pending.source !== source) {
+        window.setTimeout(() => compileLatexRef.current(pending.source, pending.checkAts), 0);
+      }
+    }
   }, [latex]);
 
   useEffect(() => {
@@ -392,7 +419,7 @@ function GeneratePageContent() {
     if (latex === lastCompiledLatexRef.current) return;
 
     const timer = setTimeout(() => {
-      compileLatexRef.current(latex);
+      compileLatexRef.current(latex, false);
     }, 800);
 
     return () => clearTimeout(timer);
@@ -404,20 +431,20 @@ function GeneratePageContent() {
       .then(data => setPresets(data))
       .catch(console.error);
 
+    fetch(`${API_URL}/profile/me`, { credentials: "include" })
+      .then(res => res.ok ? res.json() : null)
+      .then(profile => {
+        if (profile?.preset_slug) setPresetSlug(profile.preset_slug);
+      })
+      .catch(console.error);
+
     // Auth check
     fetch(`${API_URL}/auth/me`, { credentials: "include" })
       .then(res => { if (!res.ok) { router.push("/login"); return null; } return res.json(); })
       .then(data => { 
         if (data) { 
           setUserEmail(data.email); 
-          setCredits(data.credits); 
-          fetch(`${API_URL}/profile/load/${data.email}`, { credentials: "include" })
-            .then(res => res.ok ? res.json() : null)
-            .then(p => {
-              if (p && p.preset_slug) {
-                 setPresetSlug(p.preset_slug);
-              }
-            });
+          setCredits(data.credits);
         } 
       })
       .catch(() => router.push("/login"));
@@ -572,6 +599,7 @@ function GeneratePageContent() {
         throw new Error(err.detail || "Generation failed"); 
       }
       const { latex: gen, pdf_b64, ats } = await res.json();
+      lastCompiledLatexRef.current = gen;
       setLatex(gen);
       setDraftReady(false);
       setCredits(c => Math.max(0, c - 1));
@@ -959,7 +987,7 @@ function GeneratePageContent() {
 
               <div className="flex flex-1 items-start justify-center overflow-auto p-4 sm:p-6">
                 {isBusy && <div className="absolute mt-20 rounded-lg bg-white/80 px-4 py-3 text-xs shadow-sm" style={{ color: C.textMuted }}>Updating your preview…</div>}
-                {pdfUrl && <div style={{ filter: "drop-shadow(0 6px 20px rgba(0,0,0,0.18))" }}><Document file={pdfUrl} onLoadSuccess={onDocumentLoadSuccess} loading={<div className="p-10 text-xs" style={{ color: C.textMuted }}>Loading preview…</div>} error={<div className="p-10 text-xs" style={{ color: C.red }}>Preview unavailable</div>}><Page pageNumber={currentPage} renderTextLayer={true} renderAnnotationLayer={true} width={Math.min(660, window.innerWidth < 1024 ? window.innerWidth - 64 : window.innerWidth * 0.43)} /></Document></div>}
+                {pdfUrl && <div style={{ filter: "drop-shadow(0 6px 20px rgba(0,0,0,0.18))" }}><Document file={pdfUrl} onLoadSuccess={onDocumentLoadSuccess} loading={<div className="p-10 text-xs" style={{ color: C.textMuted }}>Loading preview…</div>} error={<div className="p-10 text-xs" style={{ color: C.red }}>Preview unavailable</div>}><Page pageNumber={currentPage} renderTextLayer={true} renderAnnotationLayer={false} width={Math.min(660, window.innerWidth < 1024 ? window.innerWidth - 64 : window.innerWidth * 0.43)} /></Document></div>}
               </div>
             </section>
           </div>
@@ -1042,7 +1070,7 @@ function GeneratePageContent() {
           </header>
           <div className="flex flex-1 items-start justify-center overflow-auto p-8">
             {isBusy && <div className="absolute mt-10 rounded-lg bg-white/80 px-4 py-3 text-xs shadow-sm" style={{ color: C.textMuted }}>Updating your preview…</div>}
-            {pdfUrl && <div style={{ filter: "drop-shadow(0 8px 24px rgba(0,0,0,0.18))" }}><Document file={pdfUrl} onLoadSuccess={onDocumentLoadSuccess} loading={<div className="p-10 text-xs" style={{ color: C.textMuted }}>Loading preview…</div>} error={<div className="p-10 text-xs" style={{ color: C.red }}>Preview unavailable</div>}><Page pageNumber={currentPage} renderTextLayer={true} renderAnnotationLayer={true} width={Math.min(760, window.innerWidth - 120)} /></Document></div>}
+            {pdfUrl && <div style={{ filter: "drop-shadow(0 8px 24px rgba(0,0,0,0.18))" }}><Document file={pdfUrl} onLoadSuccess={onDocumentLoadSuccess} loading={<div className="p-10 text-xs" style={{ color: C.textMuted }}>Loading preview…</div>} error={<div className="p-10 text-xs" style={{ color: C.red }}>Preview unavailable</div>}><Page pageNumber={currentPage} renderTextLayer={true} renderAnnotationLayer={false} width={Math.min(760, window.innerWidth - 120)} /></Document></div>}
           </div>
         </div>
       </AppLayout>
@@ -1467,25 +1495,31 @@ function GeneratePageContent() {
               </div>
             </div>
 
-            <div className="flex-1 overflow-auto flex items-start justify-center py-8 px-6"
+            <div className="relative flex-1 overflow-auto flex items-start justify-center py-8 px-6"
               style={{ background: "#e8e4dd" }} onDoubleClick={handlePdfDoubleClick}>
-              {appState === "compiling" && (
+              {appState === "compiling" && !pdfUrl && (
                 <div className="flex flex-col items-center justify-center h-full gap-4">
                   <div className="flex gap-2">{[0,150,300].map(d => <span key={d} className="w-2 h-2 rounded-full animate-bounce" style={{ background: C.green, animationDelay: `${d}ms` }} />)}</div>
                   <p className="text-[10px] tracking-widest uppercase" style={{ color: C.textMuted }}>Compiling LaTeX...</p>
                 </div>
               )}
-              {!isBusy && pdfUrl && (
-                <div style={{ filter: "drop-shadow(0 4px 24px rgba(0,0,0,0.18))", cursor: "text" }}>
+              {pdfUrl && (
+                <div style={{ filter: "drop-shadow(0 4px 24px rgba(0,0,0,0.18))", cursor: "text", opacity: appState === "compiling" ? 0.72 : 1, transition: "opacity 150ms ease" }}>
                   <Document file={pdfUrl} onLoadSuccess={onDocumentLoadSuccess}
                     loading={<div className="flex items-center justify-center h-40 text-[10px] uppercase" style={{ color: C.textMuted }}>Loading...</div>}
                     error={<div className="flex items-center justify-center h-40 text-[11px]" style={{ color: C.red }}>Failed to render</div>}>
-                    <Page pageNumber={currentPage} renderTextLayer={true} renderAnnotationLayer={true}
+                    <Page pageNumber={currentPage} renderTextLayer={true} renderAnnotationLayer={false}
                       width={Math.min(700, window.innerWidth < 1024 ? window.innerWidth - 64 : (window.innerWidth * (1 - splitPct / 100)) - 60)} />
                   </Document>
                 </div>
               )}
-              {!isBusy && !pdfUrl && appState === "error" && (
+              {appState === "compiling" && pdfUrl && (
+                <div className="pointer-events-none absolute right-4 top-4 z-20 rounded-full border px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] shadow-sm"
+                  style={{ background: "rgba(255,253,249,0.94)", borderColor: C.greenBorder, color: C.green }}>
+                  Updating preview…
+                </div>
+              )}
+              {!pdfUrl && appState === "error" && (
                 <div className="flex flex-col items-center justify-center h-full gap-3">
                   <span className="text-sm" style={{ color: C.red }}>✗ Compilation Error</span>
                   <span className="text-[11px] max-w-xs text-center" style={{ color: C.textMuted }}>{errorMsg}</span>

@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tempfile
 import logging
+from functools import lru_cache
 from pathlib import Path
 from shutil import which
 
@@ -59,6 +60,7 @@ def apply_single_page_autofit(latex_code: str) -> str:
     return latex_code
 
 
+@lru_cache(maxsize=1)
 def get_tectonic_command() -> str | None:
     path_command = which("tectonic") or which("tecto")
     
@@ -141,7 +143,7 @@ def write_fontconfig(cache_dir: Path) -> Path:
     )
     return fonts_conf
 
-def compile_latex_to_pdf(latex: str) -> bytes:
+def compile_latex_to_pdf(latex: str, fast_preview: bool = False) -> bytes:
     compiler = get_tectonic_command()
     if not compiler:
         raise PDFCompilationError(
@@ -164,8 +166,12 @@ def compile_latex_to_pdf(latex: str) -> bytes:
         fonts_conf = write_fontconfig(cache_dir)
 
         try:
+            command = [compiler]
+            if fast_preview:
+                command.extend(["--only-cached", "--reruns", "0"])
+            command.extend(["--outdir", str(work_dir), str(tex_file)])
             result = subprocess.run(
-                [compiler, "--outdir", str(work_dir), str(tex_file)],
+                command,
                 cwd=work_dir,
                 capture_output=True,
                 text=True,
@@ -189,6 +195,10 @@ def compile_latex_to_pdf(latex: str) -> bytes:
                 pdf_file = generated_pdfs[0]
 
         if result.returncode != 0 and not pdf_file.exists():
+            if fast_preview:
+                logger.info("Fast preview cache miss; retrying with a full Tectonic compile.")
+                return compile_latex_to_pdf(latex)
+
             details = "\n".join(part for part in [result.stdout, result.stderr] if part)
             logger.error(f"Tectonic compilation failed:\n{details}")
             
