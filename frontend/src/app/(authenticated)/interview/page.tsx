@@ -10,6 +10,7 @@ const Page = dynamic(() => import("react-pdf").then(m => m.Page), { ssr: false }
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 import { API_URL } from "@/lib/api";
+import InlineQueryError from "@/components/InlineQueryError";
 
 if (typeof window !== "undefined") {
   import("react-pdf").then(({ pdfjs }) => {
@@ -166,6 +167,8 @@ function InterviewPageContent() {
   const [mediapipeReady, setMediapipeReady] = useState(false);
   const [liveEyeContact, setLiveEyeContact] = useState(0);
   const [liveSmile, setLiveSmile] = useState(0);
+  const [jobsLoading, setJobsLoading] = useState(true);
+  const [jobsError, setJobsError] = useState("");
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const recognitionRef = useRef<any>(null);
@@ -179,22 +182,38 @@ function InterviewPageContent() {
     blinkCount: 0, lastBlinkState: false, startTime: 0,
   });
 
+  const loadJobs = useCallback(async () => {
+    setJobsLoading(true);
+    setJobsError("");
+    try {
+      const [authResponse, jobsResponse] = await Promise.all([
+        fetch(`${API}/auth/me`, { credentials: "include" }),
+        fetch(`${API}/tracker/`, { credentials: "include" }),
+      ]);
+      if (!authResponse.ok) {
+        router.replace("/login");
+        return;
+      }
+      if (!jobsResponse.ok) throw new Error("We couldn’t load your applications.");
+      const data: Job[] = await jobsResponse.json();
+      setJobs(data);
+      if (preselectedJobId) {
+        const job = data.find(item => item.id === Number(preselectedJobId));
+        if (job) { setSelectedJob(job); setSessionState("ready"); }
+      }
+    } catch (error) {
+      setJobsError(error instanceof Error ? error.message : "We couldn’t load your applications.");
+    } finally {
+      setJobsLoading(false);
+    }
+  }, [preselectedJobId, router]);
+
   useEffect(() => {
-    fetch(`${API}/auth/me`, { credentials: "include" })
-      .then(res => { if (!res.ok) router.push("/login"); });
-    fetch(`${API}/tracker/`, { credentials: "include" })
-      .then(res => res.ok ? res.json() : [])
-      .then(data => {
-        setJobs(data);
-        if (preselectedJobId) {
-          const job = data.find((j: Job) => j.id === parseInt(preselectedJobId));
-          if (job) { setSelectedJob(job); setSessionState("ready"); }
-        }
-      });
+    void loadJobs();
     if (!("SpeechRecognition" in window) && !("webkitSpeechRecognition" in window)) {
       setSpeechSupported(false);
     }
-  }, []);
+  }, [loadJobs]);
 
   const initCamera = async () => {
     try {
@@ -421,7 +440,14 @@ function InterviewPageContent() {
               <h1 className="text-2xl font-bold" style={{ fontFamily: "'Georgia', serif" }}>AI Interview Practice</h1>
               <p className="text-xs mt-1" style={{ color: "#a8a39c" }}>Select a job to practice for</p>
             </div>
-            {jobs.length === 0 ? (
+            {jobsLoading && jobs.length === 0 ? (
+              <div role="status" className="grid gap-3 py-8 sm:grid-cols-2">
+                {Array.from({ length: 4 }, (_, index) => <span key={index} className="h-24 animate-pulse rounded-sm bg-[#ddd8d0]" />)}
+                <span className="sr-only">Loading applications…</span>
+              </div>
+            ) : jobsError && jobs.length === 0 ? (
+              <InlineQueryError message={jobsError} onRetry={() => { void loadJobs(); }} />
+            ) : jobs.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 gap-3">
                 <p className="text-sm" style={{ color: "#a8a39c" }}>No jobs in your tracker yet</p>
                 <Link href="/tracker" prefetch

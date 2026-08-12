@@ -7,6 +7,8 @@ import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 import { API_URL } from "@/lib/api";
 import { useResumeUiStore } from "@/lib/uiStore";
+import InlineQueryError from "@/components/InlineQueryError";
+import RouteLoading from "@/components/RouteLoading";
 
 const Document = dynamic(() => import("react-pdf").then(m => m.Document), { ssr: false });
 const Page = dynamic(() => import("react-pdf").then(m => m.Page), { ssr: false });
@@ -303,6 +305,8 @@ function GeneratePageContent() {
   const [useMonaco, setUseMonaco] = useState(true);
   const [editorTheme, setEditorTheme] = useState<"vs-dark" | "vs">("vs-dark");
   const [downloadingDocx, setDownloadingDocx] = useState(false);
+  const [startupLoading, setStartupLoading] = useState(true);
+  const [startupError, setStartupError] = useState("");
 
   const handleDownloadTex = () => {
     if (!latex) return;
@@ -425,57 +429,58 @@ function GeneratePageContent() {
     return () => clearTimeout(timer);
   }, [latex, autoCompile]);
 
-  useEffect(() => {
-    fetch(`${API_URL}/presets`)
-      .then(res => res.json())
-      .then(data => setPresets(data))
-      .catch(console.error);
+  const loadStartupData = useCallback(async () => {
+    setStartupLoading(true);
+    setStartupError("");
+    try {
+      const [presetsResponse, profileResponse, userResponse] = await Promise.all([
+        fetch(`${API_URL}/presets`),
+        fetch(`${API_URL}/profile/me`, { credentials: "include" }),
+        fetch(`${API_URL}/auth/me`, { credentials: "include" }),
+      ]);
+      if (!userResponse.ok) {
+        router.replace("/login");
+        return;
+      }
+      if (!presetsResponse.ok || !profileResponse.ok) throw new Error("We couldn’t load your resume setup.");
+      const [presetData, profile, user] = await Promise.all([
+        presetsResponse.json(),
+        profileResponse.json(),
+        userResponse.json(),
+      ]);
+      setPresets(presetData);
+      if (profile?.preset_slug) setPresetSlug(profile.preset_slug);
+      setUserEmail(user.email);
+      setCredits(user.credits);
 
-    fetch(`${API_URL}/profile/me`, { credentials: "include" })
-      .then(res => res.ok ? res.json() : null)
-      .then(profile => {
-        if (profile?.preset_slug) setPresetSlug(profile.preset_slug);
-      })
-      .catch(console.error);
-
-    // Auth check
-    fetch(`${API_URL}/auth/me`, { credentials: "include" })
-      .then(res => { if (!res.ok) { router.push("/login"); return null; } return res.json(); })
-      .then(data => { 
-        if (data) { 
-          setUserEmail(data.email); 
-          setCredits(data.credits);
-        } 
-      })
-      .catch(() => router.push("/login"));
-
-    // If coming from tracker, load existing LaTeX
-    if (jobId) {
-      fetch(`${API_URL}/tracker/${jobId}/latex`, { credentials: "include" })
-        .then(res => res.ok ? res.json() : null)
-        .then(data => {
+      if (jobId) {
+        const [latexResponse, jobsResponse] = await Promise.all([
+          fetch(`${API_URL}/tracker/${jobId}/latex`, { credentials: "include" }),
+          fetch(`${API_URL}/tracker/`, { credentials: "include" }),
+        ]);
+        if (!jobsResponse.ok) throw new Error("We couldn’t load the selected application.");
+        const jobs: { id: number; company_name: string; job_title: string }[] = await jobsResponse.json();
+        const job = jobs.find(item => item.id === Number(jobId));
+        if (job) setJobLabel(`${job.company_name} — ${job.job_title}`);
+        if (latexResponse.ok) {
+          const data = await latexResponse.json();
           if (data?.latex) {
             setLatex(data.latex);
             setHasGenerated(true);
-            // Compile after state is set via a small delay
-            setTimeout(() => {
-              compileLatex(data.latex);
-            }, 100);
+            window.setTimeout(() => { void compileLatexRef.current(data.latex); }, 100);
           }
-        });
-
-      // Also fetch job info for label
-      fetch(`${API_URL}/tracker/`, { credentials: "include" })
-        .then(res => res.ok ? res.json() : null)
-        .then((jobs: { id: number; company_name: string; job_title: string }[] | null) => {
-          if (jobs) {
-            const job = jobs.find(j => j.id === parseInt(jobId));
-            if (job) setJobLabel(`${job.company_name} — ${job.job_title}`);
-          }
-        });
+        }
+      }
+    } catch (error) {
+      setStartupError(error instanceof Error ? error.message : "We couldn’t load your resume setup.");
+    } finally {
+      setStartupLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobId]);
+  }, [jobId, router]);
+
+  useEffect(() => {
+    void loadStartupData();
+  }, [loadStartupData]);
 
   useEffect(() => { 
     setSections(parseSections(latex));
@@ -716,6 +721,9 @@ function GeneratePageContent() {
   };
 
   // ── Pre-generation ─────────────────────────────────────────────
+  if (startupLoading) return <RouteLoading />;
+  if (startupError) return <div className="p-6 sm:p-10"><InlineQueryError message={startupError} onRetry={() => { void loadStartupData(); }} /></div>;
+
   if (!hasGenerated) {
     return (
       <main className="h-full font-mono flex flex-col items-center justify-center px-6 py-16"

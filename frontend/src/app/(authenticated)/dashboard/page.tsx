@@ -9,6 +9,7 @@ import { useCurrentUser } from "@/lib/queries";
 import { motion, AnimatePresence } from "framer-motion";
 import { useDropzone } from "react-dropzone";
 import { UploadCloud } from "lucide-react";
+import InlineQueryError from "@/components/InlineQueryError";
 
 const GRAIN = `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`
 
@@ -101,7 +102,7 @@ export default function DashboardPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const queryClient = useQueryClient()
   const { data: user, isError: userError, isPending: userLoading } = useCurrentUser()
-  const { data: profileData, isError: profileError, isPending: profileLoading } = useQuery<Profile>({
+  const { data: profileData, error: profileQueryError, isError: profileError, isPending: profileLoading, refetch: refetchProfile } = useQuery<Profile>({
     queryKey: ["profile", "me"],
     queryFn: async () => {
       const res = await fetch(`${API}/profile/me`, { credentials: "include" })
@@ -110,7 +111,7 @@ export default function DashboardPage() {
     },
     retry: false,
   })
-  const { data: presets = [], isPending: presetsLoading } = useQuery<{slug: string, display_name: string}[]>({
+  const { data: presets = [], error: presetsQueryError, isError: presetsError, isPending: presetsLoading, refetch: refetchPresets } = useQuery<{slug: string, display_name: string}[]>({
     queryKey: ["presets"],
     queryFn: async () => {
       const res = await fetch(`${API}/presets`)
@@ -216,6 +217,19 @@ export default function DashboardPage() {
 
   if (dashboardLoading || userError || (profileLoading && !profileError)) {
     return <DashboardSkeleton />
+  }
+
+  if ((profileError && !profileData) || (presetsError && presets.length === 0)) {
+    const message = profileQueryError instanceof Error
+      ? profileQueryError.message
+      : presetsQueryError instanceof Error
+        ? presetsQueryError.message
+        : "We couldn’t load your dashboard data."
+    return (
+      <div className="mx-auto max-w-3xl p-6 sm:p-10">
+        <InlineQueryError message={message} onRetry={() => { void refetchProfile(); void refetchPresets(); }} />
+      </div>
+    )
   }
 
   const handleSave = async () => {

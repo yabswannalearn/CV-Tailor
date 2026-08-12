@@ -11,6 +11,7 @@ import { useCurrentUser, useTrackerDetails, useTrackerJobs } from "@/lib/queries
 import { queryClient } from "@/lib/queryClient";
 import { setExpandedJob, setFilterStatus, setSearchQuery, setStatsOpen, type RootState } from "@/lib/store";
 import { useDispatch, useSelector } from "react-redux";
+import InlineQueryError from "@/components/InlineQueryError";
 
 const Document = dynamic(() => import("react-pdf").then(m => m.Document), { ssr: false });
 const Page = dynamic(() => import("react-pdf").then(m => m.Page), { ssr: false });
@@ -602,6 +603,11 @@ export default function TrackerPage() {
             <div className="flex items-center justify-center py-20 gap-2">
               {[0,150,300].map(d => <span key={d} className="w-2 h-2 rounded-full animate-bounce" style={{ background: "#3d6600", animationDelay: `${d}ms` }} />)}
             </div>
+          ) : jobsQuery.isError && jobs.length === 0 ? (
+            <InlineQueryError
+              message={jobsQuery.error instanceof Error ? jobsQuery.error.message : "We couldn’t load your applications."}
+              onRetry={() => { void jobsQuery.refetch(); }}
+            />
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 gap-3">
               <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
@@ -802,6 +808,18 @@ export default function TrackerPage() {
                     {/* Expanded */}
                     {expanded && (
                       <div className="px-4 pb-4 pt-2" style={{ borderTop: "1px solid #d4cfc7" }}>
+                        {detailsQuery.isPending ? (
+                          <div role="status" className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                            <span className="h-20 animate-pulse rounded-sm bg-[#ddd8d0]" />
+                            <span className="h-20 animate-pulse rounded-sm bg-[#ddd8d0]" />
+                            <span className="sr-only">Loading application details…</span>
+                          </div>
+                        ) : detailsQuery.isError ? (
+                          <InlineQueryError
+                            message={detailsQuery.error instanceof Error ? detailsQuery.error.message : "We couldn’t load this application."}
+                            onRetry={() => { void detailsQuery.refetch(); }}
+                          />
+                        ) : (
                         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                           <div className="space-y-3">
                             {job.short_description && (
@@ -849,6 +867,7 @@ export default function TrackerPage() {
                             )}
                           </div>
                         </div>
+                        )}
                       </div>
                     )}
                   </div>

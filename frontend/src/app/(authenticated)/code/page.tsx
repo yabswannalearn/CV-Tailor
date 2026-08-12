@@ -3,6 +3,8 @@ import { Suspense, useState, useEffect, useRef, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { API_URL } from "@/lib/api";
+import InlineQueryError from "@/components/InlineQueryError";
+import RouteLoading from "@/components/RouteLoading";
 
 // Monaco editor — client only (no SSR)
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), { ssr: false });
@@ -107,21 +109,39 @@ function CodePageContent() {
   const [jobs, setJobs] = useState<{ id: number; company_name: string; job_title: string; job_description?: string }[]>([]);
   const [selectedJobForGen, setSelectedJobForGen] = useState<string>("");
   const [genDifficulty, setGenDifficulty] = useState("Medium");
+  const [bootLoading, setBootLoading] = useState(true);
+  const [bootError, setBootError] = useState("");
   const editorRef = useRef<any>(null);
 
   // ── Auth + load ──────────────────────────────────────────────────
+  const loadBootData = useCallback(async () => {
+    setBootLoading(true);
+    setBootError("");
+    try {
+      const [authResponse, problemsResponse, jobsResponse] = await Promise.all([
+        fetch(`${API}/auth/me`, { credentials: "include" }),
+        fetch(`${API}/code/problems`, { credentials: "include" }),
+        fetch(`${API}/tracker/`, { credentials: "include" }),
+      ]);
+      if (!authResponse.ok) {
+        router.replace("/login");
+        return;
+      }
+      if (!problemsResponse.ok || !jobsResponse.ok) throw new Error("We couldn’t load your practice workspace.");
+      const [problemsData, jobsData] = await Promise.all([problemsResponse.json(), jobsResponse.json()]);
+      setProblems(problemsData.problems || []);
+      setJobs(jobsData);
+      if (jobIdParam) setSelectedJobForGen(jobIdParam);
+    } catch (error) {
+      setBootError(error instanceof Error ? error.message : "We couldn’t load your practice workspace.");
+    } finally {
+      setBootLoading(false);
+    }
+  }, [jobIdParam, router]);
+
   useEffect(() => {
-    fetch(`${API}/auth/me`, { credentials: "include" })
-      .then(res => { if (!res.ok) router.push("/login"); });
-
-    fetch(`${API}/code/problems`, { credentials: "include" })
-      .then(res => res.ok ? res.json() : { problems: [] })
-      .then(data => setProblems(data.problems));
-
-    fetch(`${API}/tracker/`, { credentials: "include" })
-      .then(res => res.ok ? res.json() : [])
-      .then(data => { setJobs(data); if (jobIdParam) setSelectedJobForGen(jobIdParam); });
-  }, []);
+    void loadBootData();
+  }, [loadBootData]);
 
   // ── Load full problem ────────────────────────────────────────────
   const selectProblem = async (p: Problem) => {
@@ -254,6 +274,11 @@ function CodePageContent() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [code]);
+
+  if (bootLoading && problems.length === 0 && jobs.length === 0) return <RouteLoading />;
+  if (bootError && problems.length === 0 && jobs.length === 0) {
+    return <div className="p-6 sm:p-10"><InlineQueryError message={bootError} onRetry={() => { void loadBootData(); }} /></div>;
+  }
 
   return (
     <div className="code-workspace h-full flex overflow-hidden font-mono" style={{ background: "#f5f2ed", color: "#1a1814" }}>
