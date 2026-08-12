@@ -1,7 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import AppLayout from "@/components/AppLayout";
 import { JobMatchCard, ScrapedJobMatch } from "@/components/tracker/JobMatchCard";
 import { API_URL, getApiError } from "@/lib/api";
 
@@ -132,8 +131,7 @@ export default function DiscoverPage() {
   };
 
   return (
-    <AppLayout>
-      <div className="h-full overflow-auto font-mono" style={{ background: PAPER.bg, color: PAPER.ink }}>
+    <div className="h-full overflow-auto font-mono" style={{ background: PAPER.bg, color: PAPER.ink }}>
         <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
 
           {/* Header */}
@@ -319,7 +317,6 @@ export default function DiscoverPage() {
             </div>
           )}
         </div>
-      </div>
-    </AppLayout>
+    </div>
   );
 }

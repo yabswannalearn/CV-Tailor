@@ -1,10 +1,10 @@
 "use client";
 import { Suspense, useState, useCallback, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import dynamic from "next/dynamic";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
-import AppLayout from "@/components/AppLayout";
 import { API_URL } from "@/lib/api";
 import { useResumeUiStore } from "@/lib/uiStore";
 
@@ -718,15 +718,14 @@ function GeneratePageContent() {
   // ── Pre-generation ─────────────────────────────────────────────
   if (!hasGenerated) {
     return (
-      <AppLayout>
-        <main className="h-full font-mono flex flex-col items-center justify-center px-6 py-16"
+      <main className="h-full font-mono flex flex-col items-center justify-center px-6 py-16"
           style={{ background: C.bg, color: C.text }}>
           <div className="pointer-events-none fixed inset-0 opacity-[0.07] z-0"
             style={{ backgroundImage: GRAIN, backgroundRepeat: "repeat", backgroundSize: "128px" }} />
           <div className="relative z-10 w-full max-w-2xl">
             <div className="mb-10">
               <div className="flex items-center gap-3 mb-2">
-                <button onClick={() => router.push("/dashboard")} className="text-xs tracking-[0.3em] uppercase hover:opacity-60 transition-opacity" style={{ color: C.green }}>← dashboard</button>
+                <Link href="/dashboard" prefetch className="text-xs tracking-[0.3em] uppercase hover:opacity-60 transition-opacity" style={{ color: C.green }}>← dashboard</Link>
                 <span className="h-px flex-1" style={{ background: C.border }} />
                 <span className="text-xs" style={{ color: C.textFaint }}>v0.1</span>
               </div>
@@ -822,18 +821,16 @@ function GeneratePageContent() {
               <span>Gemini</span><span>·</span><span>Go</span><span>·</span><span>LaTeX</span>
             </div>
           </div>
-        </main>
-      </AppLayout>
+      </main>
     );
   }
 
   if (editorMode === "friendly") {
     return (
-      <AppLayout>
-        <div className="flex h-full min-h-0 flex-col" style={{ background: "#f7f5f0", color: C.text }}>
+      <div className="flex h-full min-h-0 flex-col" style={{ background: "#f7f5f0", color: C.text }}>
           <header className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3 sm:px-7 sm:py-4" style={{ background: "#fffdf9", borderColor: C.border }}>
             <div className="flex items-center gap-4">
-              <button onClick={() => jobId ? router.push("/tracker") : router.push("/dashboard")} className="text-xs font-semibold" style={{ color: C.green }}>← Back</button>
+              <Link href={jobId ? "/tracker" : "/dashboard"} prefetch className="text-xs font-semibold" style={{ color: C.green }}>← Back</Link>
               <div className="h-5 w-px" style={{ background: C.border }} />
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: C.textFaint }}>Resume editor</p>
@@ -991,15 +988,13 @@ function GeneratePageContent() {
               </div>
             </section>
           </div>
-        </div>
-      </AppLayout>
+      </div>
     );
   }
 
   if (editorMode === "preview") {
     return (
-      <AppLayout>
-        <div className="flex h-full flex-col" style={{ background: "#e9e5de", color: C.text }}>
+      <div className="flex h-full flex-col" style={{ background: "#e9e5de", color: C.text }}>
           <header className="flex items-center justify-between border-b px-7 py-4" style={{ background: "#fffdf9", borderColor: C.border }}>
             <div><p className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: C.textFaint }}>Resume preview</p><h1 className="text-lg font-semibold" style={{ fontFamily: "Georgia, serif" }}>{jobLabel || "Tailored resume"}</h1></div>
             <div className="flex items-center gap-3">
@@ -1072,24 +1067,22 @@ function GeneratePageContent() {
             {isBusy && <div className="absolute mt-10 rounded-lg bg-white/80 px-4 py-3 text-xs shadow-sm" style={{ color: C.textMuted }}>Updating your preview…</div>}
             {pdfUrl && <div style={{ filter: "drop-shadow(0 8px 24px rgba(0,0,0,0.18))" }}><Document file={pdfUrl} onLoadSuccess={onDocumentLoadSuccess} loading={<div className="p-10 text-xs" style={{ color: C.textMuted }}>Loading preview…</div>} error={<div className="p-10 text-xs" style={{ color: C.red }}>Preview unavailable</div>}><Page pageNumber={currentPage} renderTextLayer={true} renderAnnotationLayer={false} width={Math.min(760, window.innerWidth - 120)} /></Document></div>}
           </div>
-        </div>
-      </AppLayout>
+      </div>
     );
   }
 
   // ── Editor view ────────────────────────────────────────────────
   return (
-    <AppLayout>
-      <div className="h-full flex flex-col overflow-hidden font-mono"
+    <div className="h-full flex flex-col overflow-hidden font-mono"
         style={{ background: C.bg, color: C.text, userSelect: isDragging ? "none" : "auto" }}>
 
         {/* Navbar */}
         <div className="flex min-h-11 flex-wrap items-center justify-between gap-2 px-3 py-2 shrink-0 sm:px-4" style={{ background: C.bgCard, borderBottom: `1px solid ${C.border}` }}>
           <div className="flex items-center gap-3">
-            <button onClick={() => jobId ? router.push("/tracker") : router.push("/dashboard")}
-              className="text-[10px] tracking-[0.3em] uppercase hover:opacity-60 transition-opacity" style={{ color: C.green }}>
+            <Link href={jobId ? "/tracker" : "/dashboard"} prefetch
+                    className="text-[10px] tracking-[0.3em] uppercase hover:opacity-60 transition-opacity" style={{ color: C.green }}>
               {jobId ? "← tracker" : "← dashboard"}
-            </button>
+            </Link>
             <span style={{ color: C.border }}>│</span>
             <div className="flex items-center gap-1.5">
               <svg width="10" height="12" viewBox="0 0 10 12" fill="none">
@@ -1532,8 +1525,7 @@ function GeneratePageContent() {
             </div>
           </div>
         </div>
-      </div>
-    </AppLayout>
+    </div>
   );
 }
 

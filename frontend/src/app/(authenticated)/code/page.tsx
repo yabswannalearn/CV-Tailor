@@ -2,7 +2,6 @@
 import { Suspense, useState, useEffect, useRef, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
-import AppLayout from "@/components/AppLayout";
 import { API_URL } from "@/lib/api";
 
 // Monaco editor — client only (no SSR)
@@ -257,8 +256,7 @@ function CodePageContent() {
   }, [code]);
 
   return (
-    <AppLayout>
-      <div className="code-workspace h-full flex overflow-hidden font-mono" style={{ background: "#f5f2ed", color: "#1a1814" }}>
+    <div className="code-workspace h-full flex overflow-hidden font-mono" style={{ background: "#f5f2ed", color: "#1a1814" }}>
 
         {/* ── LEFT: Problem list ── */}
         <div className="code-sidebar flex flex-col shrink-0 overflow-hidden" style={{ width: 260, borderRight: "1px solid #d4cfc7", background: "#edeae4" }}>
@@ -791,8 +789,7 @@ function CodePageContent() {
             )}
           </div>
         </div>
-      </div>
-    </AppLayout>
+    </div>
   );
 }
 

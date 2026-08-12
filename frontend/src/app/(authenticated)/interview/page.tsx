@@ -2,7 +2,7 @@
 import { Suspense, useState, useEffect, useRef, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
-import AppLayout from "@/components/AppLayout";
+import Link from "next/link";
 
 const Document = dynamic(() => import("react-pdf").then(m => m.Document), { ssr: false });
 const Page = dynamic(() => import("react-pdf").then(m => m.Page), { ssr: false });
@@ -414,8 +414,7 @@ function InterviewPageContent() {
 
   if (sessionState === "select") {
     return (
-      <AppLayout>
-        <div className="h-full overflow-auto font-mono" style={{ background: "#f5f2ed", color: "#1a1814" }}>
+      <div className="h-full overflow-auto font-mono" style={{ background: "#f5f2ed", color: "#1a1814" }}>
           <div className="max-w-2xl mx-auto px-6 py-12">
             <div className="mb-10">
               <div className="text-[10px] tracking-[0.3em] uppercase mb-1" style={{ color: "#5a8a00" }}>cv_tailor</div>
@@ -425,10 +424,10 @@ function InterviewPageContent() {
             {jobs.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 gap-3">
                 <p className="text-sm" style={{ color: "#a8a39c" }}>No jobs in your tracker yet</p>
-                <button onClick={() => router.push("/tracker")}
+                <Link href="/tracker" prefetch
                   className="text-xs px-4 py-2 rounded-sm" style={{ background: "#e8f5c0", color: "#3d6600", border: "1px solid #8ab030" }}>
                   Add a job first →
-                </button>
+                </Link>
               </div>
             ) : (
               <div className="space-y-2">
@@ -455,15 +454,13 @@ function InterviewPageContent() {
               </div>
             )}
           </div>
-        </div>
-      </AppLayout>
+      </div>
     );
   }
 
   if (sessionState === "ready") {
     return (
-      <AppLayout>
-        <div className="h-full overflow-auto font-mono flex items-center justify-center" style={{ background: "#f5f2ed" }}>
+      <div className="h-full overflow-auto font-mono flex items-center justify-center" style={{ background: "#f5f2ed" }}>
           <div className="max-w-xl w-full px-6">
             <div className="text-center mb-8">
               <h2 className="text-xl font-bold mb-1" style={{ fontFamily: "'Georgia', serif", color: "#1a1814" }}>Ready to practice?</h2>
@@ -531,8 +528,7 @@ function InterviewPageContent() {
               </button>
             </div>
           </div>
-        </div>
-      </AppLayout>
+      </div>
     );
   }
 
@@ -542,8 +538,7 @@ function InterviewPageContent() {
     const displayText = transcript + (interimTranscript ? ` ${interimTranscript}` : "");
 
     return (
-      <AppLayout>
-        <div className="h-full overflow-auto font-mono" style={{ background: "#f5f2ed", color: "#1a1814" }}>
+      <div className="h-full overflow-auto font-mono" style={{ background: "#f5f2ed", color: "#1a1814" }}>
           <div className="max-w-4xl mx-auto px-6 py-10">
 
             <div className="flex items-center gap-3 mb-8">
@@ -706,16 +701,14 @@ function InterviewPageContent() {
               </div>
             </div>
           </div>
-        </div>
-      </AppLayout>
+      </div>
     );
   }
 
   if (sessionState === "feedback" && feedback) {
     const hasDelivery = feedback.delivery_score !== null && feedback.delivery_score !== undefined;
     return (
-      <AppLayout>
-        <div className="h-full overflow-auto font-mono" style={{ background: "#f5f2ed", color: "#1a1814" }}>
+      <div className="h-full overflow-auto font-mono" style={{ background: "#f5f2ed", color: "#1a1814" }}>
           <div className="max-w-3xl mx-auto px-6 py-10">
 
             <div className="flex items-center gap-3 mb-8">
@@ -812,15 +805,13 @@ function InterviewPageContent() {
               {currentQ + 1 >= questions.length ? "See Summary →" : `Next Question (${currentQ + 2}/${questions.length}) →`}
             </button>
           </div>
-        </div>
-      </AppLayout>
+      </div>
     );
   }
 
   if (sessionState === "complete") {
     return (
-      <AppLayout>
-        <div className="h-full overflow-auto font-mono" style={{ background: "#f5f2ed", color: "#1a1814" }}>
+      <div className="h-full overflow-auto font-mono" style={{ background: "#f5f2ed", color: "#1a1814" }}>
           <div className="max-w-3xl mx-auto px-6 py-10">
             <div className="text-center mb-10">
               <div className="text-[10px] tracking-[0.3em] uppercase mb-2" style={{ color: "#5a8a00" }}>session complete</div>
@@ -870,17 +861,16 @@ function InterviewPageContent() {
                 style={{ border: "1px solid #d4cfc7", color: "#7a7570" }}>
                 Practice Again
               </button>
-              <button onClick={() => router.push("/tracker")}
+              <Link href="/tracker" prefetch
                 className="flex-1 py-3 text-xs font-bold tracking-[0.15em] uppercase rounded-sm transition-colors"
                 style={{ background: "#1a1814", color: "#f5f2ed" }}
                 onMouseEnter={e => e.currentTarget.style.background = "#2a2520"}
                 onMouseLeave={e => e.currentTarget.style.background = "#1a1814"}>
                 Back to Tracker
-              </button>
+              </Link>
             </div>
           </div>
-        </div>
-      </AppLayout>
+      </div>
     );
   }
 

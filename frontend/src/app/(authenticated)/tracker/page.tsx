@@ -1,11 +1,11 @@
 "use client";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { toast } from "sonner";
 import dynamic from "next/dynamic";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
-import AppLayout from "@/components/AppLayout";
 import { API_URL } from "@/lib/api";
 import { useCurrentUser, useTrackerDetails, useTrackerJobs } from "@/lib/queries";
 import { queryClient } from "@/lib/queryClient";
@@ -499,8 +499,8 @@ export default function TrackerPage() {
   });
 
   return (
-    <AppLayout>
-      <div className="h-full overflow-auto font-mono" style={{ background: "#f5f2ed", color: "#1a1814" }}>
+    <>
+    <div className="h-full overflow-auto font-mono" style={{ background: "#f5f2ed", color: "#1a1814" }}>
         <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
 
           {/* Header */}
@@ -513,7 +513,7 @@ export default function TrackerPage() {
               </p>
             </div>
             <div className="flex items-center gap-3">
-              <button onClick={() => router.push("/discover")}
+              <Link href="/discover" prefetch
                 className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold tracking-[0.15em] uppercase rounded-sm border transition-colors"
                 style={{ borderColor: "#5a8a00", color: "#5a8a00", background: "transparent" }}
                 onMouseEnter={e => e.currentTarget.style.background = "#eef3e0"}
@@ -523,7 +523,7 @@ export default function TrackerPage() {
                   <line x1="6.8" y1="6.8" x2="10" y2="10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
                 </svg>
                 Discover Jobs
-              </button>
+              </Link>
               <button onClick={openCreate}
                 className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold tracking-[0.15em] uppercase rounded-sm transition-colors"
                 style={{ background: "#1a1814", color: "#f5f2ed" }}
@@ -701,8 +701,9 @@ export default function TrackerPage() {
 
                         {/* View PDF */}
                         {job.has_pdf && (
-                        <button
-                            onClick={() => router.push(`/generate?job_id=${job.id}`)}
+                        <Link
+                            href={`/generate?job_id=${job.id}`}
+                            prefetch
                             title="Open in editor"
                             className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold tracking-[0.08em] uppercase rounded-sm transition-all"
                             style={{ background: "#f5f2ed", color: "#4a4540", border: "1px solid #d4cfc7" }}
@@ -713,7 +714,7 @@ export default function TrackerPage() {
                             <path d="M3 5.5h4M3 7h2.5" stroke="currentColor" strokeWidth="1"/>
                             </svg>
                             Open Editor
-                        </button>
+                        </Link>
                         )}
 
                         <div className="hidden h-5 w-px shrink-0 sm:block" style={{ background: "#d4cfc7" }} />
@@ -1008,7 +1009,7 @@ export default function TrackerPage() {
           onSave={handleSaveCoverLetter}
         />
       )}
-    </AppLayout>
+    </>
   );
 }
  

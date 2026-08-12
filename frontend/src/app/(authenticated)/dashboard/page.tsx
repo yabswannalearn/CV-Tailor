@@ -1,7 +1,7 @@
 "use client"
 import { useState, useEffect, useRef, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import AppLayout from "@/components/AppLayout";
+import Link from "next/link"
 import { toast } from "sonner";
 import { API_URL, getApiError } from "@/lib/api";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -215,7 +215,7 @@ export default function DashboardPage() {
   const dashboardLoading = userLoading || presetsLoading || profileLoading || (Boolean(profileData) && !profileHydrated)
 
   if (dashboardLoading || userError || (profileLoading && !profileError)) {
-    return <AppLayout><DashboardSkeleton /></AppLayout>
+    return <DashboardSkeleton />
   }
 
   const handleSave = async () => {
@@ -263,8 +263,7 @@ export default function DashboardPage() {
   const tabs = ["personal", "education", "experience", "projects", "skills", "certifications"] as const
 
   return (
-    <AppLayout>
-      <div {...getRootProps()} className="relative min-h-screen">
+    <div {...getRootProps()} className="relative min-h-screen">
         <input {...getInputProps()} />
         
         <AnimatePresence>
@@ -306,10 +305,10 @@ export default function DashboardPage() {
             </div>
           </div>
           <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:gap-3">
-            <button onClick={() => router.push("/generate")}
-              className="flex-1 px-3 py-2 text-center bg-[#1a1814] text-[#f5f2ed] text-xs font-bold tracking-[0.15em] uppercase rounded-sm hover:bg-[#2a2520] transition-colors sm:flex-none sm:px-4">
+            <Link href="/generate" prefetch
+                        className="flex-1 px-3 py-2 text-center bg-[#1a1814] text-[#f5f2ed] text-xs font-bold tracking-[0.15em] uppercase rounded-sm hover:bg-[#2a2520] transition-colors sm:flex-none sm:px-4">
               Generate CV →
-            </button>
+            </Link>
             <input 
               type="file" 
               accept=".pdf" 
@@ -640,8 +639,7 @@ export default function DashboardPage() {
         </div>
       </div>
     </main>
-      </div>
-    </AppLayout>
+    </div>
   )
 }
 
