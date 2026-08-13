@@ -109,6 +109,7 @@ MODERN_RESUME = r"""
     \resumeSubHeadingListStart
 <<PROJECTS>>
     \resumeSubHeadingListEnd
+    \vspace{3pt}
 
 %-----------TECHNICAL SKILLS-----------
 \section{Technical Skills}
