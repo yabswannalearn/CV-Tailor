@@ -1,9 +1,9 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import AppLayout from "@/components/AppLayout";
 import { JobMatchCard, ScrapedJobMatch } from "@/components/tracker/JobMatchCard";
-import { API_URL, getApiError } from "@/lib/api";
+import { getApiError } from "@/lib/api";
+import { usePresets } from "@/lib/queries";
 
 const PAPER = {
   bg: "#f5f2ed",
@@ -32,7 +32,7 @@ const JOB_TYPES = ["Full-Time", "Part-Time", "Contract", "Gig"];
 export default function DiscoverPage() {
   const router = useRouter();
 
-  const [presets, setPresets] = useState<{ slug: string; display_name: string }[]>([]);
+  const { data: presets = [], isPending: presetsLoading, isError: presetsError, refetch: refetchPresets } = usePresets();
   const [keyword, setKeyword] = useState("");
   const [selectedPreset, setSelectedPreset] = useState("");
   const [selectedSources, setSelectedSources] = useState<string[]>(["onlinejobs", "linkedin", "remoteok", "weworkremotely"]);
@@ -47,13 +47,6 @@ export default function DiscoverPage() {
   const [searchKeyword, setSearchKeyword] = useState("");
   const [sourceStatus, setSourceStatus] = useState<Record<string, string>>({});
   const [profileDefaults, setProfileDefaults] = useState<{ preset_slug?: string; skills?: string[] }>({});
-
-  useEffect(() => {
-    fetch(`${API_URL}/presets`)
-      .then(r => r.ok ? r.json() : [])
-      .then(d => setPresets(Array.isArray(d) ? d : []))
-      .catch(() => setPresets([]));
-  }, []);
 
   const fetchJobs = useCallback(async (custom?: {
     kw?: string; preset?: string; srcs?: string[]; types?: string[]; score?: number;
@@ -97,13 +90,6 @@ export default function DiscoverPage() {
     }
   }, [keyword, selectedPreset, selectedSources, selectedJobTypes, minScore]);
 
-  useEffect(() => {
-    fetch(`${API_URL}/presets`)
-      .then(r => r.ok ? r.json() : [])
-      .then(d => setPresets(Array.isArray(d) ? d : []))
-      .catch(() => setPresets([]));
-  }, []);
-
   const handleSearchSubmit = (e: React.FormEvent) => { e.preventDefault(); fetchJobs(); };
 
   const toggleSource = (s: string) =>
@@ -132,8 +118,7 @@ export default function DiscoverPage() {
   };
 
   return (
-    <AppLayout>
-      <div className="h-full overflow-auto font-mono" style={{ background: PAPER.bg, color: PAPER.ink }}>
+    <div className="h-full overflow-auto font-mono" style={{ background: PAPER.bg, color: PAPER.ink }}>
         <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
 
           {/* Header */}
@@ -188,14 +173,20 @@ export default function DiscoverPage() {
                   <select
                     value={selectedPreset}
                     onChange={e => setSelectedPreset(e.target.value)}
+                    disabled={presetsLoading}
                     className="w-full text-sm p-2 rounded-sm outline-none font-mono"
                     style={{ border: `1px solid ${PAPER.border}`, background: "#fff" }}
                   >
-                    <option value="">-- All Role Types --</option>
+                    <option value="">{presetsLoading ? "Loading role types…" : "-- All Role Types --"}</option>
                     {presets.map(p => (
                       <option key={p.slug} value={p.slug}>{p.display_name}</option>
                     ))}
                   </select>
+                  {presetsError && (
+                    <button type="button" onClick={() => { void refetchPresets(); }} className="mt-2 text-[10px] font-bold text-[#b83030] underline">
+                      Couldn’t load roles — try again
+                    </button>
+                  )}
                 </div>
 
                 {/* Min score */}
@@ -304,7 +295,10 @@ export default function DiscoverPage() {
               <p className="text-sm" style={{ color: PAPER.sub }}>Searching remote job boards & analyzing profile match...</p>
             </div>
           ) : error ? (
-            <div className="p-4 rounded-xl text-center text-sm" style={{ background: "#ffeaea", color: "#b83030", border: "1px solid #f8b8b8" }}>{error}</div>
+            <div role="alert" className="p-4 rounded-xl text-center text-sm" style={{ background: "#ffeaea", color: "#b83030", border: "1px solid #f8b8b8" }}>
+              <p>{error}</p>
+              <button type="button" onClick={() => { void fetchJobs(); }} className="mt-3 rounded-sm border border-[#b83030] px-3 py-1.5 text-xs font-bold uppercase tracking-[0.08em]">Try again</button>
+            </div>
           ) : !hasSearched ? (
             <div className="py-20 text-center text-sm" style={{ color: PAPER.muted }}>
               Enter a keyword or adjust your filters, then press <span className="font-semibold" style={{ color: PAPER.ink }}>Search</span> to find matching remote jobs.
@@ -319,7 +313,6 @@ export default function DiscoverPage() {
             </div>
           )}
         </div>
-      </div>
-    </AppLayout>
+    </div>
   );
 }

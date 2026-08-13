@@ -1,24 +1,27 @@
 "use client";
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { API_URL } from "@/lib/api";
 
-export default function VerifyPage() {
+function VerifyContent() {
   const router = useRouter();
-  const [message, setMessage] = useState("Verifying your email...");
-  const [error, setError] = useState(false);
+  const token = useSearchParams().get("token");
+  const [message, setMessage] = useState(token ? "Verifying your email..." : "This verification link is missing a token.");
+  const [error, setError] = useState(!token);
 
   useEffect(() => {
-    const token = new URLSearchParams(window.location.search).get("token");
-    if (!token) { setError(true); setMessage("This verification link is missing a token."); return; }
+    if (!token) return;
     fetch(`${API_URL}/auth/verify-email?token=${encodeURIComponent(token)}`)
-      .then(async res => {
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.detail || "Verification failed.");
+      .then(async response => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.detail || "Verification failed.");
         setMessage(data.message || "Email verified. You can now sign in.");
       })
-      .catch(err => { setError(true); setMessage(err.message); });
-  }, []);
+      .catch((reason: unknown) => {
+        setError(true);
+        setMessage(reason instanceof Error ? reason.message : "Verification failed.");
+      });
+  }, [token]);
 
   return (
     <main className="min-h-screen bg-[#f5f2ed] px-6 py-16 font-mono text-[#1a1814]">
@@ -32,4 +35,8 @@ export default function VerifyPage() {
       </div>
     </main>
   );
+}
+
+export default function VerifyPage() {
+  return <Suspense fallback={null}><VerifyContent /></Suspense>;
 }

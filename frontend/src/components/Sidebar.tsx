@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
+import Link from "next/link";
 import { API_URL } from "@/lib/api";
 import { useCurrentUser } from "@/lib/queries";
 import { queryClient } from "@/lib/queryClient";
@@ -47,6 +48,19 @@ const IconDiscover = () => (
   </svg>
 );
 
+const IconCode = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+    <path d="M6 4L2 8l4 4M10 4l4 4-4 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+
+const IconInterview = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+    <circle cx="8" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.3"/>
+    <path d="M3 14c.4-3 2.1-4.5 5-4.5s4.6 1.5 5 4.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+  </svg>
+);
+
 const IconLogout = () => (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
     <path d="M6 2H3a1 1 0 00-1 1v10a1 1 0 001 1h3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
@@ -68,6 +82,8 @@ const NAV_ITEMS = [
   { label: "Generate CV", href: "/generate",    icon: <IconGenerate /> },
   { label: "Job Tracker", href: "/tracker",     icon: <IconTracker /> },
   { label: "Discover",    href: "/discover",    icon: <IconDiscover /> },
+  { label: "Code",        href: "/code",        icon: <IconCode /> },
+  { label: "Interview",   href: "/interview",   icon: <IconInterview /> },
 ];
 
 // ── Sidebar ───────────────────────────────────────────────────────
@@ -163,12 +179,17 @@ export default function Sidebar() {
         {NAV_ITEMS.map(item => {
           const active = isActive(item.href);
           return (
-            <button
+            <Link
               key={item.href}
-              onClick={() => router.push(item.href)}
+              href={item.href}
+              prefetch
               onMouseEnter={() => setHoveredItem(item.href)}
               onMouseLeave={() => setHoveredItem(null)}
-              className="flex items-center gap-3 rounded-sm transition-all duration-150 relative group"
+              onFocus={() => setHoveredItem(item.href)}
+              onBlur={() => setHoveredItem(null)}
+              aria-current={active ? "page" : undefined}
+              title={collapsed ? item.label : undefined}
+              className="flex items-center gap-3 rounded-sm transition-all duration-150 relative group focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#3d6600]"
               style={{
                 padding: collapsed ? "8px 0" : "8px 10px",
                 justifyContent: collapsed ? "center" : "flex-start",
@@ -190,7 +211,7 @@ export default function Sidebar() {
                   {item.label}
                 </div>
               )}
-            </button>
+            </Link>
           );
         })}
       </nav>

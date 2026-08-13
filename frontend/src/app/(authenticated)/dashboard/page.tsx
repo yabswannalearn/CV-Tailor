@@ -1,14 +1,15 @@
 "use client"
 import { useState, useEffect, useRef, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import AppLayout from "@/components/AppLayout";
+import Link from "next/link"
 import { toast } from "sonner";
-import { API_URL, getApiError } from "@/lib/api";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCurrentUser } from "@/lib/queries";
+import { API_URL } from "@/lib/api";
+import { useQueryClient } from "@tanstack/react-query";
+import { queryKeys, useCurrentUser, usePresets, useProfile } from "@/lib/queries";
 import { motion, AnimatePresence } from "framer-motion";
 import { useDropzone } from "react-dropzone";
 import { UploadCloud } from "lucide-react";
+import InlineQueryError from "@/components/InlineQueryError";
 
 const GRAIN = `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`
 
@@ -101,24 +102,8 @@ export default function DashboardPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const queryClient = useQueryClient()
   const { data: user, isError: userError, isPending: userLoading } = useCurrentUser()
-  const { data: profileData, isError: profileError, isPending: profileLoading } = useQuery<Profile>({
-    queryKey: ["profile", "me"],
-    queryFn: async () => {
-      const res = await fetch(`${API}/profile/me`, { credentials: "include" })
-      if (!res.ok) throw new Error(await getApiError(res, "Unable to load your profile."))
-      return res.json()
-    },
-    retry: false,
-  })
-  const { data: presets = [], isPending: presetsLoading } = useQuery<{slug: string, display_name: string}[]>({
-    queryKey: ["presets"],
-    queryFn: async () => {
-      const res = await fetch(`${API}/presets`)
-      if (!res.ok) throw new Error("Unable to load resume presets.")
-      return res.json()
-    },
-    staleTime: 10 * 60_000,
-  })
+  const { data: profileData, error: profileQueryError, isError: profileError, isPending: profileLoading, refetch: refetchProfile } = useProfile()
+  const { data: presets = [], error: presetsQueryError, isError: presetsError, isPending: presetsLoading, refetch: refetchPresets } = usePresets()
   const userEmail = user?.email || ""
 
   const processFile = async (file: File) => {
@@ -215,7 +200,20 @@ export default function DashboardPage() {
   const dashboardLoading = userLoading || presetsLoading || profileLoading || (Boolean(profileData) && !profileHydrated)
 
   if (dashboardLoading || userError || (profileLoading && !profileError)) {
-    return <AppLayout><DashboardSkeleton /></AppLayout>
+    return <DashboardSkeleton />
+  }
+
+  if ((profileError && !profileData) || (presetsError && presets.length === 0)) {
+    const message = profileQueryError instanceof Error
+      ? profileQueryError.message
+      : presetsQueryError instanceof Error
+        ? presetsQueryError.message
+        : "We couldn’t load your dashboard data."
+    return (
+      <div className="mx-auto max-w-3xl p-6 sm:p-10">
+        <InlineQueryError message={message} onRetry={() => { void refetchProfile(); void refetchPresets(); }} />
+      </div>
+    )
   }
 
   const handleSave = async () => {
@@ -231,7 +229,7 @@ export default function DashboardPage() {
       if (!res.ok) throw new Error()
       setSaveStatus("success")
       setTimeout(() => setSaveStatus("idle"), 3000)
-      await queryClient.invalidateQueries({ queryKey: ["profile", "me"] })
+      await queryClient.invalidateQueries({ queryKey: queryKeys.profile })
     } catch {
       setSaveStatus("error")
     } finally {
@@ -263,8 +261,7 @@ export default function DashboardPage() {
   const tabs = ["personal", "education", "experience", "projects", "skills", "certifications"] as const
 
   return (
-    <AppLayout>
-      <div {...getRootProps()} className="relative min-h-screen">
+    <div {...getRootProps()} className="relative min-h-screen">
         <input {...getInputProps()} />
         
         <AnimatePresence>
@@ -306,10 +303,10 @@ export default function DashboardPage() {
             </div>
           </div>
           <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:gap-3">
-            <button onClick={() => router.push("/generate")}
-              className="flex-1 px-3 py-2 text-center bg-[#1a1814] text-[#f5f2ed] text-xs font-bold tracking-[0.15em] uppercase rounded-sm hover:bg-[#2a2520] transition-colors sm:flex-none sm:px-4">
+            <Link href="/generate" prefetch
+                        className="flex-1 px-3 py-2 text-center bg-[#1a1814] text-[#f5f2ed] text-xs font-bold tracking-[0.15em] uppercase rounded-sm hover:bg-[#2a2520] transition-colors sm:flex-none sm:px-4">
               Generate CV →
-            </button>
+            </Link>
             <input 
               type="file" 
               accept=".pdf" 
@@ -640,8 +637,7 @@ export default function DashboardPage() {
         </div>
       </div>
     </main>
-      </div>
-    </AppLayout>
+    </div>
   )
 }
 

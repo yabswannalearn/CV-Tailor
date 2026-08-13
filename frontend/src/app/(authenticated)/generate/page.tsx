@@ -1,12 +1,15 @@
 "use client";
 import { Suspense, useState, useCallback, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import dynamic from "next/dynamic";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
-import AppLayout from "@/components/AppLayout";
 import { API_URL } from "@/lib/api";
 import { useResumeUiStore } from "@/lib/uiStore";
+import InlineQueryError from "@/components/InlineQueryError";
+import RouteLoading from "@/components/RouteLoading";
+import { useCurrentUser, usePresets, useProfile, useTrackerDetails } from "@/lib/queries";
 
 const Document = dynamic(() => import("react-pdf").then(m => m.Document), { ssr: false });
 const Page = dynamic(() => import("react-pdf").then(m => m.Page), { ssr: false });
@@ -266,6 +269,10 @@ function GeneratePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const jobId = searchParams.get("job_id");
+  const userQuery = useCurrentUser();
+  const profileQuery = useProfile();
+  const presetsQuery = usePresets();
+  const jobDetailsQuery = useTrackerDetails(jobId ? Number(jobId) : null);
 
   const [jd, setJd] = useState("");
   const { selectedTemplate, setSelectedTemplate, editorMode, setEditorMode } = useResumeUiStore();
@@ -303,6 +310,8 @@ function GeneratePageContent() {
   const [useMonaco, setUseMonaco] = useState(true);
   const [editorTheme, setEditorTheme] = useState<"vs-dark" | "vs">("vs-dark");
   const [downloadingDocx, setDownloadingDocx] = useState(false);
+  const [jobLatexLoading, setJobLatexLoading] = useState(Boolean(jobId));
+  const [jobLatexError, setJobLatexError] = useState("");
 
   const handleDownloadTex = () => {
     if (!latex) return;
@@ -425,57 +434,59 @@ function GeneratePageContent() {
     return () => clearTimeout(timer);
   }, [latex, autoCompile]);
 
-  useEffect(() => {
-    fetch(`${API_URL}/presets`)
-      .then(res => res.json())
-      .then(data => setPresets(data))
-      .catch(console.error);
-
-    fetch(`${API_URL}/profile/me`, { credentials: "include" })
-      .then(res => res.ok ? res.json() : null)
-      .then(profile => {
-        if (profile?.preset_slug) setPresetSlug(profile.preset_slug);
-      })
-      .catch(console.error);
-
-    // Auth check
-    fetch(`${API_URL}/auth/me`, { credentials: "include" })
-      .then(res => { if (!res.ok) { router.push("/login"); return null; } return res.json(); })
-      .then(data => { 
-        if (data) { 
-          setUserEmail(data.email); 
-          setCredits(data.credits);
-        } 
-      })
-      .catch(() => router.push("/login"));
-
-    // If coming from tracker, load existing LaTeX
-    if (jobId) {
-      fetch(`${API_URL}/tracker/${jobId}/latex`, { credentials: "include" })
-        .then(res => res.ok ? res.json() : null)
-        .then(data => {
-          if (data?.latex) {
-            setLatex(data.latex);
-            setHasGenerated(true);
-            // Compile after state is set via a small delay
-            setTimeout(() => {
-              compileLatex(data.latex);
-            }, 100);
-          }
-        });
-
-      // Also fetch job info for label
-      fetch(`${API_URL}/tracker/`, { credentials: "include" })
-        .then(res => res.ok ? res.json() : null)
-        .then((jobs: { id: number; company_name: string; job_title: string }[] | null) => {
-          if (jobs) {
-            const job = jobs.find(j => j.id === parseInt(jobId));
-            if (job) setJobLabel(`${job.company_name} — ${job.job_title}`);
-          }
-        });
+  const loadJobLatex = useCallback(async () => {
+    if (!jobId) {
+      setJobLatexLoading(false);
+      return;
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    setJobLatexLoading(true);
+    setJobLatexError("");
+    try {
+      const response = await fetch(`${API_URL}/tracker/${jobId}/latex`, { credentials: "include" });
+      if (!response.ok) {
+        if (response.status === 404) return;
+        throw new Error("We couldn’t load the saved resume for this application.");
+      }
+      const data = await response.json();
+      if (data?.latex) {
+        setLatex(data.latex);
+        setHasGenerated(true);
+        window.setTimeout(() => { void compileLatexRef.current(data.latex); }, 100);
+      }
+    } catch (error) {
+      setJobLatexError(error instanceof Error ? error.message : "We couldn’t load the saved resume.");
+    } finally {
+      setJobLatexLoading(false);
+    }
   }, [jobId]);
+
+  useEffect(() => {
+    void loadJobLatex();
+  }, [loadJobLatex]);
+
+  useEffect(() => {
+    if (userQuery.isError) router.replace("/login");
+    if (userQuery.data) {
+      setUserEmail(userQuery.data.email);
+      setCredits(userQuery.data.credits);
+    }
+  }, [router, userQuery.data, userQuery.isError]);
+
+  useEffect(() => {
+    if (profileQuery.data?.preset_slug) setPresetSlug(profileQuery.data.preset_slug);
+  }, [profileQuery.data]);
+
+  useEffect(() => {
+    if (presetsQuery.data) setPresets(presetsQuery.data.map(preset => ({
+      slug: preset.slug,
+      display_name: preset.display_name,
+      recommended_template: preset.recommended_template || "classic",
+    })));
+  }, [presetsQuery.data]);
+
+  useEffect(() => {
+    if (jobDetailsQuery.data) setJobLabel(`${jobDetailsQuery.data.company_name} — ${jobDetailsQuery.data.job_title}`);
+  }, [jobDetailsQuery.data]);
 
   useEffect(() => { 
     setSections(parseSections(latex));
@@ -716,17 +727,24 @@ function GeneratePageContent() {
   };
 
   // ── Pre-generation ─────────────────────────────────────────────
+  const startupLoading = userQuery.isPending || profileQuery.isPending || presetsQuery.isPending || jobLatexLoading || (Boolean(jobId) && jobDetailsQuery.isPending);
+  const startupError = jobLatexError
+    || (profileQuery.error instanceof Error ? profileQuery.error.message : "")
+    || (presetsQuery.error instanceof Error ? presetsQuery.error.message : "")
+    || (jobDetailsQuery.error instanceof Error ? jobDetailsQuery.error.message : "");
+  if (startupLoading) return <RouteLoading />;
+  if (startupError) return <div className="p-6 sm:p-10"><InlineQueryError message={startupError} onRetry={() => { void loadJobLatex(); void profileQuery.refetch(); void presetsQuery.refetch(); void jobDetailsQuery.refetch(); }} /></div>;
+
   if (!hasGenerated) {
     return (
-      <AppLayout>
-        <main className="h-full font-mono flex flex-col items-center justify-center px-6 py-16"
+      <main className="h-full font-mono flex flex-col items-center justify-center px-6 py-16"
           style={{ background: C.bg, color: C.text }}>
           <div className="pointer-events-none fixed inset-0 opacity-[0.07] z-0"
             style={{ backgroundImage: GRAIN, backgroundRepeat: "repeat", backgroundSize: "128px" }} />
           <div className="relative z-10 w-full max-w-2xl">
             <div className="mb-10">
               <div className="flex items-center gap-3 mb-2">
-                <button onClick={() => router.push("/dashboard")} className="text-xs tracking-[0.3em] uppercase hover:opacity-60 transition-opacity" style={{ color: C.green }}>← dashboard</button>
+                <Link href="/dashboard" prefetch className="text-xs tracking-[0.3em] uppercase hover:opacity-60 transition-opacity" style={{ color: C.green }}>← dashboard</Link>
                 <span className="h-px flex-1" style={{ background: C.border }} />
                 <span className="text-xs" style={{ color: C.textFaint }}>v0.1</span>
               </div>
@@ -822,18 +840,16 @@ function GeneratePageContent() {
               <span>Gemini</span><span>·</span><span>Go</span><span>·</span><span>LaTeX</span>
             </div>
           </div>
-        </main>
-      </AppLayout>
+      </main>
     );
   }
 
   if (editorMode === "friendly") {
     return (
-      <AppLayout>
-        <div className="flex h-full min-h-0 flex-col" style={{ background: "#f7f5f0", color: C.text }}>
+      <div className="flex h-full min-h-0 flex-col" style={{ background: "#f7f5f0", color: C.text }}>
           <header className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3 sm:px-7 sm:py-4" style={{ background: "#fffdf9", borderColor: C.border }}>
             <div className="flex items-center gap-4">
-              <button onClick={() => jobId ? router.push("/tracker") : router.push("/dashboard")} className="text-xs font-semibold" style={{ color: C.green }}>← Back</button>
+              <Link href={jobId ? "/tracker" : "/dashboard"} prefetch className="text-xs font-semibold" style={{ color: C.green }}>← Back</Link>
               <div className="h-5 w-px" style={{ background: C.border }} />
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: C.textFaint }}>Resume editor</p>
@@ -991,15 +1007,13 @@ function GeneratePageContent() {
               </div>
             </section>
           </div>
-        </div>
-      </AppLayout>
+      </div>
     );
   }
 
   if (editorMode === "preview") {
     return (
-      <AppLayout>
-        <div className="flex h-full flex-col" style={{ background: "#e9e5de", color: C.text }}>
+      <div className="flex h-full flex-col" style={{ background: "#e9e5de", color: C.text }}>
           <header className="flex items-center justify-between border-b px-7 py-4" style={{ background: "#fffdf9", borderColor: C.border }}>
             <div><p className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: C.textFaint }}>Resume preview</p><h1 className="text-lg font-semibold" style={{ fontFamily: "Georgia, serif" }}>{jobLabel || "Tailored resume"}</h1></div>
             <div className="flex items-center gap-3">
@@ -1072,24 +1086,22 @@ function GeneratePageContent() {
             {isBusy && <div className="absolute mt-10 rounded-lg bg-white/80 px-4 py-3 text-xs shadow-sm" style={{ color: C.textMuted }}>Updating your preview…</div>}
             {pdfUrl && <div style={{ filter: "drop-shadow(0 8px 24px rgba(0,0,0,0.18))" }}><Document file={pdfUrl} onLoadSuccess={onDocumentLoadSuccess} loading={<div className="p-10 text-xs" style={{ color: C.textMuted }}>Loading preview…</div>} error={<div className="p-10 text-xs" style={{ color: C.red }}>Preview unavailable</div>}><Page pageNumber={currentPage} renderTextLayer={true} renderAnnotationLayer={false} width={Math.min(760, window.innerWidth - 120)} /></Document></div>}
           </div>
-        </div>
-      </AppLayout>
+      </div>
     );
   }
 
   // ── Editor view ────────────────────────────────────────────────
   return (
-    <AppLayout>
-      <div className="h-full flex flex-col overflow-hidden font-mono"
+    <div className="h-full flex flex-col overflow-hidden font-mono"
         style={{ background: C.bg, color: C.text, userSelect: isDragging ? "none" : "auto" }}>
 
         {/* Navbar */}
         <div className="flex min-h-11 flex-wrap items-center justify-between gap-2 px-3 py-2 shrink-0 sm:px-4" style={{ background: C.bgCard, borderBottom: `1px solid ${C.border}` }}>
           <div className="flex items-center gap-3">
-            <button onClick={() => jobId ? router.push("/tracker") : router.push("/dashboard")}
-              className="text-[10px] tracking-[0.3em] uppercase hover:opacity-60 transition-opacity" style={{ color: C.green }}>
+            <Link href={jobId ? "/tracker" : "/dashboard"} prefetch
+                    className="text-[10px] tracking-[0.3em] uppercase hover:opacity-60 transition-opacity" style={{ color: C.green }}>
               {jobId ? "← tracker" : "← dashboard"}
-            </button>
+            </Link>
             <span style={{ color: C.border }}>│</span>
             <div className="flex items-center gap-1.5">
               <svg width="10" height="12" viewBox="0 0 10 12" fill="none">
@@ -1532,8 +1544,7 @@ function GeneratePageContent() {
             </div>
           </div>
         </div>
-      </div>
-    </AppLayout>
+    </div>
   );
 }
 

@@ -1,9 +1,12 @@
 "use client";
-import { Suspense, useState, useEffect, useRef, useCallback } from "react";
+import { Suspense, useState, useEffect, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
-import AppLayout from "@/components/AppLayout";
 import { API_URL } from "@/lib/api";
+import InlineQueryError from "@/components/InlineQueryError";
+import RouteLoading from "@/components/RouteLoading";
+import { useQueryClient } from "@tanstack/react-query";
+import { trackerDetailsQueryOptions, useCurrentUser, useTrackerJobs, type JobSummary } from "@/lib/queries";
 
 // Monaco editor — client only (no SSR)
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), { ssr: false });
@@ -84,6 +87,7 @@ function ScoreRing({ score }: { score: number }) {
 // ── Main ──────────────────────────────────────────────────────────
 function CodePageContent() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const jobIdParam = searchParams.get("job_id");
 
@@ -105,24 +109,41 @@ function CodePageContent() {
   const [filterDiff, setFilterDiff] = useState<Difficulty>("All");
   const [filterTag, setFilterTag] = useState<string>("All");
   const [searchQuery, setSearchQuery] = useState("");
-  const [jobs, setJobs] = useState<{ id: number; company_name: string; job_title: string; job_description?: string }[]>([]);
+  const userQuery = useCurrentUser();
+  const jobsQuery = useTrackerJobs(!userQuery.isError);
+  const jobs: JobSummary[] = jobsQuery.data || [];
   const [selectedJobForGen, setSelectedJobForGen] = useState<string>("");
   const [genDifficulty, setGenDifficulty] = useState("Medium");
-  const editorRef = useRef<any>(null);
+  const [problemsLoading, setProblemsLoading] = useState(true);
+  const [problemsError, setProblemsError] = useState("");
 
   // ── Auth + load ──────────────────────────────────────────────────
-  useEffect(() => {
-    fetch(`${API}/auth/me`, { credentials: "include" })
-      .then(res => { if (!res.ok) router.push("/login"); });
-
-    fetch(`${API}/code/problems`, { credentials: "include" })
-      .then(res => res.ok ? res.json() : { problems: [] })
-      .then(data => setProblems(data.problems));
-
-    fetch(`${API}/tracker/`, { credentials: "include" })
-      .then(res => res.ok ? res.json() : [])
-      .then(data => { setJobs(data); if (jobIdParam) setSelectedJobForGen(jobIdParam); });
+  const loadProblems = useCallback(async () => {
+    setProblemsLoading(true);
+    setProblemsError("");
+    try {
+      const problemsResponse = await fetch(`${API}/code/problems`, { credentials: "include" });
+      if (!problemsResponse.ok) throw new Error("We couldn’t load your coding problems.");
+      const problemsData = await problemsResponse.json();
+      setProblems(problemsData.problems || []);
+    } catch (error) {
+      setProblemsError(error instanceof Error ? error.message : "We couldn’t load your coding problems.");
+    } finally {
+      setProblemsLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void loadProblems();
+  }, [loadProblems]);
+
+  useEffect(() => {
+    if (userQuery.isError) router.replace("/login");
+  }, [router, userQuery.isError]);
+
+  useEffect(() => {
+    if (jobIdParam) setSelectedJobForGen(jobIdParam);
+  }, [jobIdParam]);
 
   // ── Load full problem ────────────────────────────────────────────
   const selectProblem = async (p: Problem) => {
@@ -138,7 +159,7 @@ function CodePageContent() {
   };
 
   // ── Run code ─────────────────────────────────────────────────────
-  const handleRun = async () => {
+  const handleRun = useCallback(async () => {
     if (!code.trim()) return;
     setRunning(true); setRightPanel("output");
     try {
@@ -149,7 +170,7 @@ function CodePageContent() {
       const data: RunResult = await res.json();
       setRunResult(data);
     } finally { setRunning(false); }
-  };
+  }, [code]);
 
   // ── Hint ─────────────────────────────────────────────────────────
   const handleHint = async () => {
@@ -217,12 +238,13 @@ function CodePageContent() {
     if (!job) return;
     setGenerateLoading(true); setRightPanel("generate");
     try {
+      const details = await queryClient.fetchQuery(trackerDetailsQueryOptions(job.id));
       const res = await fetch(`${API}/code/generate`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
           job_title: job.job_title,
-          jd: job.job_description || "",
+          jd: details.job_description || "",
           difficulty: genDifficulty,
           count: 3,
         }),
@@ -254,11 +276,17 @@ function CodePageContent() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [code]);
+  }, [handleRun]);
+
+  const bootLoading = problemsLoading || userQuery.isPending || jobsQuery.isPending;
+  const bootError = problemsError || (jobsQuery.error instanceof Error ? jobsQuery.error.message : "");
+  if (bootLoading && problems.length === 0 && jobs.length === 0) return <RouteLoading />;
+  if (bootError && problems.length === 0 && jobs.length === 0) {
+    return <div className="p-6 sm:p-10"><InlineQueryError message={bootError} onRetry={() => { void loadProblems(); void jobsQuery.refetch(); }} /></div>;
+  }
 
   return (
-    <AppLayout>
-      <div className="code-workspace h-full flex overflow-hidden font-mono" style={{ background: "#f5f2ed", color: "#1a1814" }}>
+    <div className="code-workspace h-full flex overflow-hidden font-mono" style={{ background: "#f5f2ed", color: "#1a1814" }}>
 
         {/* ── LEFT: Problem list ── */}
         <div className="code-sidebar flex flex-col shrink-0 overflow-hidden" style={{ width: 260, borderRight: "1px solid #d4cfc7", background: "#edeae4" }}>
@@ -476,7 +504,6 @@ function CodePageContent() {
                   language="python"
                   value={code}
                   onChange={v => setCode(v || "")}
-                  onMount={editor => { editorRef.current = editor; }}
                   theme="vs-dark"
                   options={{
                     fontSize: 13,
@@ -710,7 +737,7 @@ function CodePageContent() {
               <div className="p-4">
                 {!runResult?.stderr && (
                   <div className="flex flex-col items-center justify-center py-12 gap-2">
-                    <p className="text-[10px] text-center" style={{ color: "#a8a39c" }}>Run your code first — error explanations appear here when there's a traceback</p>
+                    <p className="text-[10px] text-center" style={{ color: "#a8a39c" }}>Run your code first — error explanations appear here when there&apos;s a traceback</p>
                   </div>
                 )}
                 {runResult?.stderr && (
@@ -791,8 +818,7 @@ function CodePageContent() {
             )}
           </div>
         </div>
-      </div>
-    </AppLayout>
+    </div>
   );
 }
 

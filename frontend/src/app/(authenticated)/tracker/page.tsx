@@ -1,16 +1,18 @@
 "use client";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { toast } from "sonner";
 import dynamic from "next/dynamic";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
-import AppLayout from "@/components/AppLayout";
-import { API_URL } from "@/lib/api";
-import { useCurrentUser, useTrackerDetails, useTrackerJobs } from "@/lib/queries";
-import { queryClient } from "@/lib/queryClient";
+import { API_URL, getApiError } from "@/lib/api";
+import { queryKeys, useCurrentUser, useTrackerDetails, useTrackerJobs, type JobDetails, type JobSummary } from "@/lib/queries";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { patchJob, prependJob, removeJob, replaceJob } from "@/lib/trackerCache";
 import { setExpandedJob, setFilterStatus, setSearchQuery, setStatsOpen, type RootState } from "@/lib/store";
 import { useDispatch, useSelector } from "react-redux";
+import InlineQueryError from "@/components/InlineQueryError";
 
 const Document = dynamic(() => import("react-pdf").then(m => m.Document), { ssr: false });
 const Page = dynamic(() => import("react-pdf").then(m => m.Page), { ssr: false });
@@ -29,32 +31,30 @@ type Status = "Saved" | "Applied" | "Interview" | "Tech Test" | "Offer" | "Rejec
 type Priority = "High" | "Medium" | "Low";
 type TemplateId = "classic" | "modern";
 
-interface Job {
-  id: number;
-  company_name: string;
-  job_title: string;
-  job_url?: string;
-  short_description?: string;
-  job_description?: string;
-  has_pdf: boolean;
-  pdf_generated_at?: string;
-  status: Status;
-  date_applied?: string;
-  follow_up_date?: string;
-  job_type?: string;
-  location?: string;
-  salary_range?: string;
-  priority: Priority;
-  notes?: string;
-  cover_letter?: string;
-  template_id?: TemplateId;
-}
+type Job = JobDetails;
 
 type JobForm = {
   company_name: string; job_title: string; job_url: string;
   short_description: string; job_description: string; status: Status;
   date_applied: string; follow_up_date: string; job_type: string;
   location: string; salary_range: string; priority: Priority; notes: string;
+  template_id: TemplateId;
+};
+
+type JobPayload = {
+  company_name: string;
+  job_title: string;
+  job_url: string | null;
+  short_description: string;
+  job_description: string | null;
+  status: Status;
+  date_applied: string | null;
+  follow_up_date: string | null;
+  job_type: string | null;
+  location: string;
+  salary_range: string;
+  priority: Priority;
+  notes: string;
   template_id: TemplateId;
 };
 
@@ -298,17 +298,17 @@ function CoverLetterModal({ job, onClose, onSave }: { job: Job; onClose: () => v
 // ── Main page ─────────────────────────────────────────────────────
 export default function TrackerPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const dispatch = useDispatch();
   const trackerUi = useSelector((state: RootState) => state.trackerUi);
   const { isError: userError } = useCurrentUser();
   const jobsQuery = useTrackerJobs(!userError);
   const expandedJob = trackerUi.expandedJob;
   const detailsQuery = useTrackerDetails(expandedJob);
-  const [jobs, setJobs] = useState<Job[]>([]);
+  const jobs = useMemo(() => (jobsQuery.data || []) as Job[], [jobsQuery.data]);
   const [showModal, setShowModal] = useState(false);
   const [editingJob, setEditingJob] = useState<Job | null>(null);
   const [form, setForm] = useState<JobForm>(EMPTY);
-  const [saving, setSaving] = useState(false);
   const [generatingFor, setGeneratingFor] = useState<number | null>(null);
   const [generatingClFor, setGeneratingClFor] = useState<number | null>(null);
   const [viewingPdfFor, setViewingPdfFor] = useState<Job | null>(null);
@@ -327,10 +327,6 @@ export default function TrackerPage() {
   }), [jobs]);
   const filterStatus = trackerUi.filterStatus as Status | "All";
   const searchQuery = trackerUi.searchQuery;
-
-  useEffect(() => {
-    if (jobsQuery.data) setJobs(jobsQuery.data as Job[]);
-  }, [jobsQuery.data]);
 
   useEffect(() => {
     if (userError) router.push("/login");
@@ -366,9 +362,127 @@ export default function TrackerPage() {
     }
   };
 
-  const loadAll = async () => {
-    await queryClient.invalidateQueries({ queryKey: ["tracker", "jobs"] });
-  };
+  type SaveVariables = { id: number | null; body: JobPayload; optimistic: JobSummary };
+  type MutationSnapshot = { previousJobs?: JobSummary[]; previousDetails?: JobDetails };
+
+  const saveMutation = useMutation<JobDetails, Error, SaveVariables, MutationSnapshot & { optimisticId: number }>({
+    mutationFn: async ({ id, body }) => {
+      const response = await fetch(id === null ? `${API}/tracker/` : `${API}/tracker/${id}`, {
+        method: id === null ? "POST" : "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) throw new Error(await getApiError(response, "Unable to save this application."));
+      return response.json();
+    },
+    onMutate: async ({ id, body, optimistic }) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.trackerJobs });
+      const previousJobs = queryClient.getQueryData<JobSummary[]>(queryKeys.trackerJobs);
+      const previousDetails = id === null ? undefined : queryClient.getQueryData<JobDetails>(queryKeys.trackerDetails(id));
+      const optimisticId = id ?? optimistic.id;
+      queryClient.setQueryData<JobSummary[]>(
+        queryKeys.trackerJobs,
+        current => id === null ? prependJob(current, optimistic) : patchJob(current, id, optimistic),
+      );
+      if (id !== null && previousDetails) {
+        queryClient.setQueryData(queryKeys.trackerDetails(id), {
+          ...previousDetails,
+          ...optimistic,
+          job_description: body.job_description || undefined,
+          notes: body.notes || undefined,
+        });
+      }
+      setShowModal(false);
+      return { previousJobs, previousDetails, optimisticId };
+    },
+    onError: (error, variables, context) => {
+      queryClient.setQueryData(queryKeys.trackerJobs, context?.previousJobs);
+      if (variables.id !== null && context?.previousDetails) {
+        queryClient.setQueryData(queryKeys.trackerDetails(variables.id), context.previousDetails);
+      }
+      setShowModal(true);
+      toast.error(error.message);
+    },
+    onSuccess: (saved, variables, context) => {
+      queryClient.setQueryData<JobSummary[]>(queryKeys.trackerJobs, current =>
+        replaceJob(current, context.optimisticId, saved),
+      );
+      queryClient.setQueryData(queryKeys.trackerDetails(saved.id), saved);
+      setEditingJob(null);
+      toast.success(variables.id === null ? "Application added." : "Application updated.");
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.trackerJobs });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.trackerStats });
+    },
+  });
+
+  const deleteMutation = useMutation<{ status: string }, Error, number, MutationSnapshot & { wasExpanded: boolean }>({
+    mutationFn: async id => {
+      const response = await fetch(`${API}/tracker/${id}`, { method: "DELETE", credentials: "include" });
+      if (!response.ok) throw new Error(await getApiError(response, "Unable to delete this application."));
+      return response.json();
+    },
+    onMutate: async id => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.trackerJobs });
+      const previousJobs = queryClient.getQueryData<JobSummary[]>(queryKeys.trackerJobs);
+      const previousDetails = queryClient.getQueryData<JobDetails>(queryKeys.trackerDetails(id));
+      queryClient.setQueryData<JobSummary[]>(queryKeys.trackerJobs, current => removeJob(current, id));
+      queryClient.removeQueries({ queryKey: queryKeys.trackerDetails(id), exact: true });
+      const wasExpanded = expandedJob === id;
+      if (wasExpanded) dispatch(setExpandedJob(null));
+      return { previousJobs, previousDetails, wasExpanded };
+    },
+    onError: (error, id, context) => {
+      queryClient.setQueryData(queryKeys.trackerJobs, context?.previousJobs);
+      if (context?.previousDetails) queryClient.setQueryData(queryKeys.trackerDetails(id), context.previousDetails);
+      if (context?.wasExpanded) dispatch(setExpandedJob(id));
+      toast.error(error.message);
+    },
+    onSuccess: (_, id) => {
+      queryClient.removeQueries({ queryKey: queryKeys.trackerDetails(id), exact: true });
+      toast.success("Application deleted.");
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.trackerJobs });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.trackerStats });
+    },
+  });
+
+  const statusMutation = useMutation<JobDetails, Error, { job: Job; status: Status }, MutationSnapshot>({
+    mutationFn: async ({ job, status }) => {
+      const response = await fetch(`${API}/tracker/${job.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ status }),
+      });
+      if (!response.ok) throw new Error(await getApiError(response, "Unable to update application status."));
+      return response.json();
+    },
+    onMutate: async ({ job, status }) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.trackerJobs });
+      const previousJobs = queryClient.getQueryData<JobSummary[]>(queryKeys.trackerJobs);
+      const previousDetails = queryClient.getQueryData<JobDetails>(queryKeys.trackerDetails(job.id));
+      queryClient.setQueryData<JobSummary[]>(queryKeys.trackerJobs, current => patchJob(current, job.id, { status }));
+      if (previousDetails) queryClient.setQueryData(queryKeys.trackerDetails(job.id), { ...previousDetails, status });
+      return { previousJobs, previousDetails };
+    },
+    onError: (error, { job }, context) => {
+      queryClient.setQueryData(queryKeys.trackerJobs, context?.previousJobs);
+      if (context?.previousDetails) queryClient.setQueryData(queryKeys.trackerDetails(job.id), context.previousDetails);
+      toast.error(error.message);
+    },
+    onSuccess: saved => {
+      queryClient.setQueryData<JobSummary[]>(queryKeys.trackerJobs, current => replaceJob(current, saved.id, saved));
+      queryClient.setQueryData(queryKeys.trackerDetails(saved.id), saved);
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.trackerJobs });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.trackerStats });
+    },
+  });
 
   const openCreate = () => { setEditingJob(null); setForm(EMPTY); setJobDescriptionOpen(false); setShowModal(true); };
   const openEdit = (job: Job) => {
@@ -387,34 +501,43 @@ export default function TrackerPage() {
     setShowModal(true);
   };
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!form.company_name.trim() || !form.job_title.trim()) return;
-    setSaving(true);
-    try {
-      const body = {
-        ...form,
-        date_applied: form.date_applied || null,
-        follow_up_date: form.follow_up_date || null,
-        job_url: form.job_url || null,
-        job_type: form.job_type || null,
-        job_description: form.job_description || null,
-      };
-      const res = editingJob
-        ? await fetch(`${API}/tracker/${editingJob.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify(body) })
-        : await fetch(`${API}/tracker/`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify(body) });
-      if (res.ok) { setShowModal(false); await loadAll(); }
-    } finally { setSaving(false); }
+    const body: JobPayload = {
+      ...form,
+      date_applied: form.date_applied || null,
+      follow_up_date: form.follow_up_date || null,
+      job_url: form.job_url || null,
+      job_type: form.job_type || null,
+      job_description: form.job_description || null,
+    };
+    const optimistic: JobSummary = {
+      id: editingJob?.id ?? -Date.now(),
+      company_name: form.company_name,
+      job_title: form.job_title,
+      job_url: form.job_url || undefined,
+      short_description: form.short_description || undefined,
+      has_pdf: editingJob?.has_pdf ?? false,
+      pdf_generated_at: editingJob?.pdf_generated_at,
+      status: form.status,
+      date_applied: form.date_applied || undefined,
+      follow_up_date: form.follow_up_date || undefined,
+      job_type: form.job_type || undefined,
+      location: form.location || undefined,
+      salary_range: form.salary_range || undefined,
+      priority: form.priority,
+      template_id: form.template_id,
+    };
+    saveMutation.mutate({ id: editingJob?.id ?? null, body, optimistic });
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = (id: number) => {
     if (!confirm("Delete this job application?")) return;
-    await fetch(`${API}/tracker/${id}`, { method: "DELETE", credentials: "include" });
-    await loadAll();
+    deleteMutation.mutate(id);
   };
 
-  const handleStatusChange = async (job: Job, newStatus: Status) => {
-    await fetch(`${API}/tracker/${job.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ status: newStatus }) });
-    await loadAll();
+  const handleStatusChange = (job: Job, newStatus: Status) => {
+    statusMutation.mutate({ job, status: newStatus });
   };
 
   const handleGeneratePdf = async (job: Job) => {
@@ -434,7 +557,11 @@ export default function TrackerPage() {
         setGenerateError({ id: job.id, msg: err.detail || "Generation failed" });
         setTimeout(() => setGenerateError(null), 4000);
       } else {
-        await loadAll();
+        const pdfGeneratedAt = new Date().toISOString();
+        queryClient.setQueryData<JobSummary[]>(queryKeys.trackerJobs, current => patchJob(current, job.id, { has_pdf: true, pdf_generated_at: pdfGeneratedAt }));
+        const details = queryClient.getQueryData<JobDetails>(queryKeys.trackerDetails(job.id));
+        if (details) queryClient.setQueryData(queryKeys.trackerDetails(job.id), { ...details, has_pdf: true, pdf_generated_at: pdfGeneratedAt });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.trackerJobs });
       }
     } catch {
       setGenerateError({ id: job.id, msg: "Connection error" });
@@ -461,8 +588,7 @@ export default function TrackerPage() {
       } else {
         const data = await res.json();
         const updatedJob = { ...job, cover_letter: data.cover_letter };
-        setJobs(jobs.map(j => j.id === job.id ? updatedJob : j));
-        queryClient.setQueryData(["tracker", "details", job.id], updatedJob);
+        queryClient.setQueryData(queryKeys.trackerDetails(job.id), updatedJob);
         setViewingClFor(updatedJob);
       }
     } catch {
@@ -480,9 +606,10 @@ export default function TrackerPage() {
         body: JSON.stringify({ cover_letter: text })
       });
       if (res.ok) {
-        const data = await res.json();
-        setJobs(jobs.map(j => j.id === id ? data : j));
-        queryClient.setQueryData(["tracker", "details", id], data);
+        const data: JobDetails = await res.json();
+        queryClient.setQueryData<JobSummary[]>(queryKeys.trackerJobs, current => replaceJob(current, id, data));
+        queryClient.setQueryData(queryKeys.trackerDetails(id), data);
+        void queryClient.invalidateQueries({ queryKey: queryKeys.trackerJobs });
       }
     } catch {
       console.error("Failed to save cover letter");
@@ -499,8 +626,8 @@ export default function TrackerPage() {
   });
 
   return (
-    <AppLayout>
-      <div className="h-full overflow-auto font-mono" style={{ background: "#f5f2ed", color: "#1a1814" }}>
+    <>
+    <div className="h-full overflow-auto font-mono" style={{ background: "#f5f2ed", color: "#1a1814" }}>
         <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
 
           {/* Header */}
@@ -513,7 +640,7 @@ export default function TrackerPage() {
               </p>
             </div>
             <div className="flex items-center gap-3">
-              <button onClick={() => router.push("/discover")}
+              <Link href="/discover" prefetch
                 className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold tracking-[0.15em] uppercase rounded-sm border transition-colors"
                 style={{ borderColor: "#5a8a00", color: "#5a8a00", background: "transparent" }}
                 onMouseEnter={e => e.currentTarget.style.background = "#eef3e0"}
@@ -523,7 +650,7 @@ export default function TrackerPage() {
                   <line x1="6.8" y1="6.8" x2="10" y2="10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
                 </svg>
                 Discover Jobs
-              </button>
+              </Link>
               <button onClick={openCreate}
                 className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold tracking-[0.15em] uppercase rounded-sm transition-colors"
                 style={{ background: "#1a1814", color: "#f5f2ed" }}
@@ -602,6 +729,11 @@ export default function TrackerPage() {
             <div className="flex items-center justify-center py-20 gap-2">
               {[0,150,300].map(d => <span key={d} className="w-2 h-2 rounded-full animate-bounce" style={{ background: "#3d6600", animationDelay: `${d}ms` }} />)}
             </div>
+          ) : jobsQuery.isError && jobs.length === 0 ? (
+            <InlineQueryError
+              message={jobsQuery.error instanceof Error ? jobsQuery.error.message : "We couldn’t load your applications."}
+              onRetry={() => { void jobsQuery.refetch(); }}
+            />
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 gap-3">
               <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
@@ -701,8 +833,9 @@ export default function TrackerPage() {
 
                         {/* View PDF */}
                         {job.has_pdf && (
-                        <button
-                            onClick={() => router.push(`/generate?job_id=${job.id}`)}
+                        <Link
+                            href={`/generate?job_id=${job.id}`}
+                            prefetch
                             title="Open in editor"
                             className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold tracking-[0.08em] uppercase rounded-sm transition-all"
                             style={{ background: "#f5f2ed", color: "#4a4540", border: "1px solid #d4cfc7" }}
@@ -713,7 +846,7 @@ export default function TrackerPage() {
                             <path d="M3 5.5h4M3 7h2.5" stroke="currentColor" strokeWidth="1"/>
                             </svg>
                             Open Editor
-                        </button>
+                        </Link>
                         )}
 
                         <div className="hidden h-5 w-px shrink-0 sm:block" style={{ background: "#d4cfc7" }} />
@@ -801,6 +934,18 @@ export default function TrackerPage() {
                     {/* Expanded */}
                     {expanded && (
                       <div className="px-4 pb-4 pt-2" style={{ borderTop: "1px solid #d4cfc7" }}>
+                        {detailsQuery.isPending ? (
+                          <div role="status" className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                            <span className="h-20 animate-pulse rounded-sm bg-[#ddd8d0]" />
+                            <span className="h-20 animate-pulse rounded-sm bg-[#ddd8d0]" />
+                            <span className="sr-only">Loading application details…</span>
+                          </div>
+                        ) : detailsQuery.isError ? (
+                          <InlineQueryError
+                            message={detailsQuery.error instanceof Error ? detailsQuery.error.message : "We couldn’t load this application."}
+                            onRetry={() => { void detailsQuery.refetch(); }}
+                          />
+                        ) : (
                         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                           <div className="space-y-3">
                             {job.short_description && (
@@ -848,6 +993,7 @@ export default function TrackerPage() {
                             )}
                           </div>
                         </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -981,10 +1127,10 @@ export default function TrackerPage() {
                 onMouseLeave={e => e.currentTarget.style.borderColor = "#d4cfc7"}>
                 Cancel
               </button>
-              <button onClick={handleSave} disabled={saving || !form.company_name.trim() || !form.job_title.trim()}
+              <button onClick={handleSave} disabled={saveMutation.isPending || !form.company_name.trim() || !form.job_title.trim()}
                 className="px-5 py-2 text-xs font-bold tracking-[0.1em] uppercase rounded-sm transition-colors disabled:cursor-not-allowed"
-                style={{ background: saving || !form.company_name || !form.job_title ? "#d4cfc7" : "#1a1814", color: saving || !form.company_name || !form.job_title ? "#a8a39c" : "#f5f2ed" }}>
-                {saving ? "Saving..." : editingJob ? "Save Changes" : "Add Application"}
+                style={{ background: saveMutation.isPending || !form.company_name || !form.job_title ? "#d4cfc7" : "#1a1814", color: saveMutation.isPending || !form.company_name || !form.job_title ? "#a8a39c" : "#f5f2ed" }}>
+                {saveMutation.isPending ? "Saving..." : editingJob ? "Save Changes" : "Add Application"}
               </button>
             </div>
           </div>
@@ -1008,7 +1154,7 @@ export default function TrackerPage() {
           onSave={handleSaveCoverLetter}
         />
       )}
-    </AppLayout>
+    </>
   );
 }
  

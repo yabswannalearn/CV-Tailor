@@ -17,7 +17,7 @@ export default function ForgotPasswordPage() {
       if (!res.ok) throw new Error(await getApiError(res, "We couldn’t request a password reset. Please try again."));
       const data = await res.json();
       setMessage(data.message);
-    } catch (err: any) { setError(err.message); }
+    } catch (err: unknown) { setError(err instanceof Error ? err.message : "We couldn’t request a password reset."); }
     finally { setLoading(false); }
   };
 
