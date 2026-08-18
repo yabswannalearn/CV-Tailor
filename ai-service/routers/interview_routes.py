@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, Request
+from dependencies import get_current_user_id
 from models.schemas import InterviewAnalyzeRequest
 from services.interview_service import get_questions, analyze_answer
 
@@ -10,9 +11,7 @@ async def questions():
 
 @router.post("/analyze")
 async def analyze(data: InterviewAnalyzeRequest, request: Request):
-    user_id = request.session.get("user_id")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+    get_current_user_id(request)
     try:
         result = analyze_answer(
             question=data.question,

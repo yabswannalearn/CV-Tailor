@@ -4,16 +4,11 @@ from typing import Dict, Any, Optional
 from pydantic import BaseModel
 
 from database import get_db
+from dependencies import get_current_user_id
 from models import database_models as db_models
 from services.job_scraper_service import fetch_remote_jobs, SOURCE_REGISTRY
 
 router = APIRouter(prefix="/scraper", tags=["scraper"])
-
-def get_current_user_id(request: Request) -> int:
-    user_id = request.session.get("user_id")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    return user_id
 
 class ImportJobRequest(BaseModel):
     company_name: str

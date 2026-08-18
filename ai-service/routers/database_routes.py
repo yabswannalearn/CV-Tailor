@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File
 from sqlalchemy.orm import Session, selectinload
 from database import get_db
+from dependencies import get_current_user_id
 from models import database_models as db_models
 from models.schemas import UserProfile
 import io
@@ -75,9 +76,7 @@ def serialize_profile(profile: db_models.Profile) -> dict:
 @router.post("/auto-fill-resume")
 @limiter.limit("3/minute")
 async def auto_fill_resume(request: Request, file: UploadFile = File(...), db: Session = Depends(get_db)):
-    user_id = request.session.get("user_id")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+    user_id = get_current_user_id(request)
     
     user = db.query(db_models.User).filter(db_models.User.id == user_id).first()
     if not user or user.credits <= 0:
@@ -109,9 +108,7 @@ async def auto_fill_resume(request: Request, file: UploadFile = File(...), db: S
 @router.post("/save")
 @limiter.limit("30/minute")
 async def save_profile(profile_data: UserProfile, request: Request, db: Session = Depends(get_db)):
-    user_id = request.session.get("user_id")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+    user_id = get_current_user_id(request)
 
     try:
         existing = db.query(db_models.Profile).filter(
@@ -207,9 +204,7 @@ async def save_profile(profile_data: UserProfile, request: Request, db: Session 
 @router.get("/me")
 @limiter.limit("30/minute")
 async def load_current_profile(request: Request, db: Session = Depends(get_db)):
-    user_id = request.session.get("user_id")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+    user_id = get_current_user_id(request)
 
     profile = db.query(db_models.Profile).options(*PROFILE_LOAD_OPTIONS).filter(
         db_models.Profile.user_id == user_id

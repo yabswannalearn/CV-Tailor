@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, joinedload
 from typing import List
 from datetime import datetime
 from database import get_db
+from dependencies import get_current_user_id
 from models import database_models as db_models
 from models.schemas import JobApplicationCreate, JobApplicationUpdate
 from pydantic import BaseModel as PydanticBaseModel
@@ -14,11 +15,14 @@ from services.pdf_service import PDFCompilationError, compile_latex_to_pdf
 
 router = APIRouter(prefix="/tracker", tags=["tracker"])
 
-def get_current_user_id(request: Request) -> int:
-    user_id = request.session.get("user_id")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    return user_id
+def get_job_for_user(db: Session, job_id: int, user_id: int) -> db_models.JobApplication:
+    job = db.query(db_models.JobApplication).filter(
+        db_models.JobApplication.id == job_id,
+        db_models.JobApplication.user_id == user_id
+    ).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job
 
 def serialize_job(job: db_models.JobApplication, include_details: bool = True) -> dict:
     data = {
@@ -46,45 +50,44 @@ def serialize_job(job: db_models.JobApplication, include_details: bool = True) -
         })
     return data
 
+
+# Lightweight projection for the list view — deliberately excludes job_description,
+# notes, cover_letter, latex_source, and pdf_data (large blob columns) so listing
+# jobs doesn't pull them for every row. Detail/write endpoints use serialize_job
+# on the full ORM object instead.
+TRACKER_LIST_COLUMNS = (
+    db_models.JobApplication.id,
+    db_models.JobApplication.company_name,
+    db_models.JobApplication.job_title,
+    db_models.JobApplication.job_url,
+    db_models.JobApplication.short_description,
+    db_models.JobApplication.pdf_data.isnot(None).label("has_pdf"),
+    db_models.JobApplication.pdf_generated_at,
+    db_models.JobApplication.status,
+    db_models.JobApplication.date_applied,
+    db_models.JobApplication.follow_up_date,
+    db_models.JobApplication.job_type,
+    db_models.JobApplication.location,
+    db_models.JobApplication.salary_range,
+    db_models.JobApplication.priority,
+    db_models.JobApplication.template_id,
+)
+
+def serialize_job_row(row) -> dict:
+    data = dict(row._mapping)
+    data["pdf_generated_at"] = data["pdf_generated_at"].isoformat() if data["pdf_generated_at"] else None
+    data["date_applied"] = data["date_applied"].isoformat() if data["date_applied"] else None
+    data["follow_up_date"] = data["follow_up_date"].isoformat() if data["follow_up_date"] else None
+    data["template_id"] = data["template_id"] or "classic"
+    return data
+
 @router.get("")
 async def get_all_jobs(request: Request, db: Session = Depends(get_db)):
     user_id = get_current_user_id(request)
-    jobs = db.query(
-        db_models.JobApplication.id,
-        db_models.JobApplication.company_name,
-        db_models.JobApplication.job_title,
-        db_models.JobApplication.job_url,
-        db_models.JobApplication.short_description,
-        db_models.JobApplication.pdf_data.isnot(None).label("has_pdf"),
-        db_models.JobApplication.pdf_generated_at,
-        db_models.JobApplication.status,
-        db_models.JobApplication.date_applied,
-        db_models.JobApplication.follow_up_date,
-        db_models.JobApplication.job_type,
-        db_models.JobApplication.location,
-        db_models.JobApplication.salary_range,
-        db_models.JobApplication.priority,
-        db_models.JobApplication.template_id,
-    ).filter(
+    jobs = db.query(*TRACKER_LIST_COLUMNS).filter(
         db_models.JobApplication.user_id == user_id
     ).order_by(db_models.JobApplication.created_at.desc()).all()
-    return [{
-        "id": j.id,
-        "company_name": j.company_name,
-        "job_title": j.job_title,
-        "job_url": j.job_url,
-        "short_description": j.short_description,
-        "has_pdf": j.has_pdf,
-        "pdf_generated_at": j.pdf_generated_at.isoformat() if j.pdf_generated_at else None,
-        "status": j.status,
-        "date_applied": j.date_applied.isoformat() if j.date_applied else None,
-        "follow_up_date": j.follow_up_date.isoformat() if j.follow_up_date else None,
-        "job_type": j.job_type,
-        "location": j.location,
-        "salary_range": j.salary_range,
-        "priority": j.priority,
-        "template_id": j.template_id or "classic",
-    } for j in jobs]
+    return [serialize_job_row(j) for j in jobs]
 
 @router.post("")
 async def create_job(data: JobApplicationCreate, request: Request, db: Session = Depends(get_db)):
@@ -98,12 +101,7 @@ async def create_job(data: JobApplicationCreate, request: Request, db: Session =
 @router.patch("/{job_id}")
 async def update_job(job_id: int, data: JobApplicationUpdate, request: Request, db: Session = Depends(get_db)):
     user_id = get_current_user_id(request)
-    job = db.query(db_models.JobApplication).filter(
-        db_models.JobApplication.id == job_id,
-        db_models.JobApplication.user_id == user_id
-    ).first()
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+    job = get_job_for_user(db, job_id, user_id)
     for field, value in data.model_dump(exclude_unset=True).items():
         setattr(job, field, value)
     db.commit()
@@ -113,12 +111,7 @@ async def update_job(job_id: int, data: JobApplicationUpdate, request: Request, 
 @router.delete("/{job_id}")
 async def delete_job(job_id: int, request: Request, db: Session = Depends(get_db)):
     user_id = get_current_user_id(request)
-    job = db.query(db_models.JobApplication).filter(
-        db_models.JobApplication.id == job_id,
-        db_models.JobApplication.user_id == user_id
-    ).first()
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+    job = get_job_for_user(db, job_id, user_id)
     db.delete(job)
     db.commit()
     return {"status": "success"}
@@ -139,12 +132,7 @@ async def get_stats(request: Request, db: Session = Depends(get_db)):
 @router.get("/{job_id}/details")
 async def get_job_details(job_id: int, request: Request, db: Session = Depends(get_db)):
     user_id = get_current_user_id(request)
-    job = db.query(db_models.JobApplication).filter(
-        db_models.JobApplication.id == job_id,
-        db_models.JobApplication.user_id == user_id,
-    ).first()
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+    job = get_job_for_user(db, job_id, user_id)
     return serialize_job(job, include_details=True)
 
 # ── PDF + LaTeX endpoints ─────────────────────────────────────────
@@ -153,12 +141,7 @@ async def get_job_details(job_id: int, request: Request, db: Session = Depends(g
 async def generate_pdf_for_job(job_id: int, request: Request, db: Session = Depends(get_db)):
     user_id = get_current_user_id(request)
 
-    job = db.query(db_models.JobApplication).filter(
-        db_models.JobApplication.id == job_id,
-        db_models.JobApplication.user_id == user_id
-    ).first()
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+    job = get_job_for_user(db, job_id, user_id)
     if not job.job_description:
         raise HTTPException(status_code=400, detail="No job description found for this job")
 
@@ -200,12 +183,7 @@ async def generate_pdf_for_job(job_id: int, request: Request, db: Session = Depe
 async def generate_cover_letter_for_job(job_id: int, request: Request, db: Session = Depends(get_db)):
     user_id = get_current_user_id(request)
 
-    job = db.query(db_models.JobApplication).filter(
-        db_models.JobApplication.id == job_id,
-        db_models.JobApplication.user_id == user_id
-    ).first()
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+    job = get_job_for_user(db, job_id, user_id)
     if not job.job_description:
         raise HTTPException(status_code=400, detail="No job description found for this job")
 
@@ -238,11 +216,8 @@ async def generate_cover_letter_for_job(job_id: int, request: Request, db: Sessi
 @router.get("/{job_id}/pdf")
 async def get_pdf(job_id: int, request: Request, db: Session = Depends(get_db)):
     user_id = get_current_user_id(request)
-    job = db.query(db_models.JobApplication).filter(
-        db_models.JobApplication.id == job_id,
-        db_models.JobApplication.user_id == user_id
-    ).first()
-    if not job or not job.pdf_data:
+    job = get_job_for_user(db, job_id, user_id)
+    if not job.pdf_data:
         raise HTTPException(status_code=404, detail="No PDF found for this job")
     return Response(
         content=job.pdf_data,
@@ -253,12 +228,7 @@ async def get_pdf(job_id: int, request: Request, db: Session = Depends(get_db)):
 @router.get("/{job_id}/latex")
 async def get_latex(job_id: int, request: Request, db: Session = Depends(get_db)):
     user_id = get_current_user_id(request)
-    job = db.query(db_models.JobApplication).filter(
-        db_models.JobApplication.id == job_id,
-        db_models.JobApplication.user_id == user_id
-    ).first()
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+    job = get_job_for_user(db, job_id, user_id)
     if not job.latex_source:
         raise HTTPException(status_code=404, detail="No CV generated for this job yet")
     return {"latex": job.latex_source}
@@ -270,12 +240,7 @@ class SaveLatexRequest(PydanticBaseModel):
 async def save_latex(job_id: int, data: SaveLatexRequest, request: Request, db: Session = Depends(get_db)):
     """Save edited LaTeX back to DB and recompile PDF."""
     user_id = get_current_user_id(request)
-    job = db.query(db_models.JobApplication).filter(
-        db_models.JobApplication.id == job_id,
-        db_models.JobApplication.user_id == user_id
-    ).first()
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+    job = get_job_for_user(db, job_id, user_id)
 
     # Save new LaTeX
     job.latex_source = data.latex
