@@ -410,14 +410,14 @@ async def fetch_remote_jobs(
     limit: int = 15,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
     """Hybrid aggregator. Returns (jobs, source_status)."""
-    active = sources or list(SOURCE_REGISTRY.keys())
+    requested = sources if sources is not None else list(SOURCE_REGISTRY.keys())
+    active = [source for source in requested if source in SOURCE_REGISTRY]
     per_source_limit = max(4, limit // max(1, len(active)))
 
     tasks = []
     for s in active:
-        if s in SOURCE_REGISTRY:
-            _, fn, _ = SOURCE_REGISTRY[s]
-            tasks.append(fn(query, limit=per_source_limit))
+        _, fn, _ = SOURCE_REGISTRY[s]
+        tasks.append(fn(query, limit=per_source_limit))
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -425,11 +425,8 @@ async def fetch_remote_jobs(
     seen = set()
     source_status: Dict[str, str] = {}
 
-    for idx, s in enumerate(active):
-        if s not in SOURCE_REGISTRY:
-            continue
+    for s, res in zip(active, results):
         label, _, _ = SOURCE_REGISTRY[s]
-        res = results[idx]
         if isinstance(res, Exception):
             source_status[label] = "error"
             continue

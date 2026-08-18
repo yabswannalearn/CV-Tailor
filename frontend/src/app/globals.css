@@ -22,6 +22,15 @@
   box-sizing: border-box;
 }
 
+@keyframes alert-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.alert-in {
+  animation: alert-in 180ms ease-out;
+}
+
 @import "tailwindcss";
 
 body {

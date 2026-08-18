@@ -4,6 +4,8 @@ import { useRouter } from "next/navigation";
 import { JobMatchCard, ScrapedJobMatch } from "@/components/tracker/JobMatchCard";
 import { getApiError } from "@/lib/api";
 import { usePresets } from "@/lib/queries";
+import Alert from "@/components/Alert";
+import Button from "@/components/Button";
 
 const PAPER = {
   bg: "#f5f2ed",
@@ -28,6 +30,7 @@ const SOURCES = [
 ];
 
 const JOB_TYPES = ["Full-Time", "Part-Time", "Contract", "Gig"];
+const DEFAULT_SOURCES = ["onlinejobs", "linkedin", "remoteok", "weworkremotely"];
 
 export default function DiscoverPage() {
   const router = useRouter();
@@ -35,9 +38,8 @@ export default function DiscoverPage() {
   const { data: presets = [], isPending: presetsLoading, isError: presetsError, refetch: refetchPresets } = usePresets();
   const [keyword, setKeyword] = useState("");
   const [selectedPreset, setSelectedPreset] = useState("");
-  const [selectedSources, setSelectedSources] = useState<string[]>(["onlinejobs", "linkedin", "remoteok", "weworkremotely"]);
+  const [selectedSources, setSelectedSources] = useState<string[]>(DEFAULT_SOURCES);
   const [selectedJobTypes, setSelectedJobTypes] = useState<string[]>([]);
-  const [minScore, setMinScore] = useState<number>(0);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
 
   const [isLoading, setIsLoading] = useState(false);
@@ -46,10 +48,9 @@ export default function DiscoverPage() {
   const [hasSearched, setHasSearched] = useState(false);
   const [searchKeyword, setSearchKeyword] = useState("");
   const [sourceStatus, setSourceStatus] = useState<Record<string, string>>({});
-  const [profileDefaults, setProfileDefaults] = useState<{ preset_slug?: string; skills?: string[] }>({});
 
   const fetchJobs = useCallback(async (custom?: {
-    kw?: string; preset?: string; srcs?: string[]; types?: string[]; score?: number;
+    kw?: string; preset?: string; srcs?: string[]; types?: string[];
   }) => {
     setIsLoading(true);
     setError(null);
@@ -58,15 +59,13 @@ export default function DiscoverPage() {
     const activePreset = custom?.preset !== undefined ? custom.preset : selectedPreset;
     const activeSrcs = custom?.srcs !== undefined ? custom.srcs : selectedSources;
     const activeTypes = custom?.types !== undefined ? custom.types : selectedJobTypes;
-    const activeScore = custom?.score !== undefined ? custom.score : minScore;
 
     try {
       const qp = new URLSearchParams();
       if (activeKw.trim()) qp.set("keyword", activeKw.trim());
       if (activePreset) qp.set("preset_slug", activePreset);
-      if (activeSrcs.length > 0) qp.set("sources", activeSrcs.join(","));
+      qp.set("sources", activeSrcs.join(","));
       if (activeTypes.length > 0) qp.set("job_types", activeTypes.join(","));
-      if (activeScore > 0) qp.set("min_score", activeScore.toString());
 
       const res = await fetch(`/api/scraper/discover?${qp.toString()}`, {
         headers: { "Content-Type": "application/json" },
@@ -79,16 +78,12 @@ export default function DiscoverPage() {
       setHasSearched(true);
       setSearchKeyword(data.search_keyword || activeKw);
       if (data.source_status) setSourceStatus(data.source_status);
-      if (data.profile_defaults) {
-        setProfileDefaults(data.profile_defaults);
-        if (!selectedPreset && data.profile_defaults.preset_slug) setSelectedPreset(data.profile_defaults.preset_slug);
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error discovering jobs");
     } finally {
       setIsLoading(false);
     }
-  }, [keyword, selectedPreset, selectedSources, selectedJobTypes, minScore]);
+  }, [keyword, selectedPreset, selectedSources, selectedJobTypes]);
 
   const handleSearchSubmit = (e: React.FormEvent) => { e.preventDefault(); fetchJobs(); };
 
@@ -98,11 +93,10 @@ export default function DiscoverPage() {
     setSelectedJobTypes(p => p.includes(t) ? p.filter(x => x !== t) : [...p, t]);
 
   const handleResetFilters = () => {
-    const def = profileDefaults.preset_slug || "software-developer";
-    setKeyword(""); setSelectedPreset(def);
-    setSelectedSources(["onlinejobs", "remoteok", "weworkremotely"]);
-    setSelectedJobTypes([]); setMinScore(0);
-    fetchJobs({ kw: "", preset: def, srcs: ["onlinejobs", "remoteok", "weworkremotely"], types: [], score: 0 });
+    setKeyword(""); setSelectedPreset("");
+    setSelectedSources(DEFAULT_SOURCES);
+    setSelectedJobTypes([]);
+    fetchJobs({ kw: "", preset: "", srcs: DEFAULT_SOURCES, types: [] });
   };
 
   const handleImportJob = async (job: ScrapedJobMatch, redirectTailor: boolean) => {
@@ -126,7 +120,7 @@ export default function DiscoverPage() {
             <div className="text-[10px] tracking-[0.3em] uppercase mb-1" style={{ color: PAPER.green }}>cv_tailor</div>
             <h1 className="text-2xl font-bold" style={{ fontFamily: "'Georgia', serif" }}>Discover Remote Jobs</h1>
             <p className="text-xs mt-1" style={{ color: PAPER.muted }}>
-              Find & score remote postings against your saved Profile, then import them to your tracker in one click.
+              Search selected job websites directly, then import postings to your tracker in one click.
             </p>
           </div>
 
@@ -151,7 +145,7 @@ export default function DiscoverPage() {
                   color: isFilterOpen ? PAPER.green : PAPER.sub,
                 }}
               >
-                Filters{(selectedJobTypes.length > 0 || minScore > 0 || selectedSources.length < 4) ? " •" : ""}
+                Filters{(selectedPreset || selectedJobTypes.length > 0 || selectedSources.join(",") !== DEFAULT_SOURCES.join(",")) ? " •" : ""}
               </button>
               <button
                 type="submit"
@@ -187,22 +181,6 @@ export default function DiscoverPage() {
                       Couldn’t load roles — try again
                     </button>
                   )}
-                </div>
-
-                {/* Min score */}
-                <div>
-                  <label className="block text-[10px] tracking-[0.2em] uppercase mb-1.5" style={{ color: PAPER.sub }}>Min AI Fit Score</label>
-                  <select
-                    value={minScore}
-                    onChange={e => setMinScore(Number(e.target.value))}
-                    className="w-full text-sm p-2 rounded-sm outline-none font-mono"
-                    style={{ border: `1px solid ${PAPER.border}`, background: "#fff" }}
-                  >
-                    <option value={0}>All Scores (0–100)</option>
-                    <option value={60}>≥ 60% (Good)</option>
-                    <option value={70}>≥ 70% (Strong)</option>
-                    <option value={80}>≥ 80% (Exceptional)</option>
-                  </select>
                 </div>
 
                 {/* Sources */}
@@ -251,7 +229,7 @@ export default function DiscoverPage() {
 
                 <div className="sm:col-span-2 md:col-span-3 flex items-center justify-between pt-2" style={{ borderTop: `1px solid ${PAPER.border}` }}>
                   <button type="button" onClick={handleResetFilters} className="text-xs transition-colors" style={{ color: PAPER.sub }} onMouseEnter={e => e.currentTarget.style.color = PAPER.ink} onMouseLeave={e => e.currentTarget.style.color = PAPER.sub}>
-                    ↺ Reset to Profile Defaults
+                    ↺ Reset Filters
                   </button>
                   <button type="button" onClick={() => fetchJobs()} className="px-4 py-1.5 rounded-sm text-xs font-bold tracking-[0.15em] uppercase text-white transition-colors" style={{ background: PAPER.ink }} onMouseEnter={e => e.currentTarget.style.background = "#2a2520"} onMouseLeave={e => e.currentTarget.style.background = PAPER.ink}>
                     Apply & Search
@@ -263,8 +241,8 @@ export default function DiscoverPage() {
             {searchKeyword && (
               <div className="flex flex-col gap-2 text-xs mt-3" style={{ color: PAPER.sub }}>
                 <div className="flex items-center justify-between">
-                  <p>Showing matched remote positions for <span className="font-semibold" style={{ color: PAPER.ink }}>&quot;{searchKeyword}&quot;</span></p>
-                  {jobs.length > 0 && <span>{jobs.length} jobs evaluated</span>}
+                  <p>Showing remote positions for <span className="font-semibold" style={{ color: PAPER.ink }}>&quot;{searchKeyword}&quot;</span></p>
+                  {jobs.length > 0 && <span>{jobs.length} jobs found</span>}
                 </div>
                 {Object.keys(sourceStatus).length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
@@ -292,13 +270,13 @@ export default function DiscoverPage() {
           {isLoading ? (
             <div className="py-20 text-center space-y-3">
               <div className="inline-block w-7 h-7 rounded-full" style={{ border: `3px solid ${PAPER.green}`, borderTopColor: "transparent", animation: "spin 0.8s linear infinite" }} />
-              <p className="text-sm" style={{ color: PAPER.sub }}>Searching remote job boards & analyzing profile match...</p>
+              <p className="text-sm" style={{ color: PAPER.sub }}>Searching selected job websites...</p>
             </div>
           ) : error ? (
-            <div role="alert" className="p-4 rounded-xl text-center text-sm" style={{ background: "#ffeaea", color: "#b83030", border: "1px solid #f8b8b8" }}>
+            <Alert>
               <p>{error}</p>
-              <button type="button" onClick={() => { void fetchJobs(); }} className="mt-3 rounded-sm border border-[#b83030] px-3 py-1.5 text-xs font-bold uppercase tracking-[0.08em]">Try again</button>
-            </div>
+              <Button variant="outline" onClick={() => { void fetchJobs(); }} className="mt-3">Try again</Button>
+            </Alert>
           ) : !hasSearched ? (
             <div className="py-20 text-center text-sm" style={{ color: PAPER.muted }}>
               Enter a keyword or adjust your filters, then press <span className="font-semibold" style={{ color: PAPER.ink }}>Search</span> to find matching remote jobs.

@@ -367,7 +367,7 @@ export default function TrackerPage() {
 
   const saveMutation = useMutation<JobDetails, Error, SaveVariables, MutationSnapshot & { optimisticId: number }>({
     mutationFn: async ({ id, body }) => {
-      const response = await fetch(id === null ? `${API}/tracker/` : `${API}/tracker/${id}`, {
+      const response = await fetch(id === null ? `${API}/tracker` : `${API}/tracker/${id}`, {
         method: id === null ? "POST" : "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
