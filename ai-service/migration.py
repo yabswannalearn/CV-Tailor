@@ -11,6 +11,7 @@ with engine.connect() as conn:
     conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_token_expires_at TIMESTAMPTZ;"))
     conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_token_hash VARCHAR(64);"))
     conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_token_expires_at TIMESTAMPTZ;"))
+    conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;"))
     conn.execute(text("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS preferred_template VARCHAR(50) DEFAULT 'classic';"))
     conn.execute(text("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS preset_slug VARCHAR(50) DEFAULT 'blank';"))
     conn.execute(text("ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS template_id VARCHAR(50) NOT NULL DEFAULT 'classic';"))
@@ -118,6 +119,10 @@ with engine.connect() as conn:
             "recommended_template": p["recommended_template"],
             "lever_guidance": p["lever_guidance"]
         })
+
+    conn.execute(text("""
+    UPDATE users SET is_admin = TRUE WHERE email = 'reinaelyabut.work@gmail.com';
+    """))
 
     conn.commit()
 print("Migration successful")

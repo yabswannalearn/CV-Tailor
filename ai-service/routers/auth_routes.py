@@ -123,9 +123,10 @@ async def me(request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="User not found")
         
     return {
-        "user_id": user.id, 
+        "user_id": user.id,
         "email": user.email,
-        "credits": user.credits
+        "credits": user.credits,
+        "is_admin": user.is_admin
     }
 
 

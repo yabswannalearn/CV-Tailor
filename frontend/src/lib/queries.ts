@@ -1,7 +1,16 @@
 import { queryOptions, useQuery, type QueryClient } from "@tanstack/react-query";
 import { API_URL, getApiError } from "@/lib/api";
 
-export type CurrentUser = { user_id: number; email: string; credits: number };
+export type CurrentUser = { user_id: number; email: string; credits: number; is_admin: boolean };
+
+export type AdminUser = {
+  id: number;
+  email: string;
+  name: string;
+  credits: number;
+  is_admin: boolean;
+  tracker: { total: number; by_status: Partial<Record<ApplicationStatus, number>> };
+};
 export type ApplicationStatus = "Saved" | "Applied" | "Interview" | "Tech Test" | "Offer" | "Rejected" | "Ghosted";
 export type ApplicationPriority = "High" | "Medium" | "Low";
 export type ResumeTemplate = "classic" | "modern";
@@ -80,6 +89,7 @@ export const queryKeys = {
   trackerJobs: ["authenticated", "tracker", "jobs"] as const,
   trackerStats: ["authenticated", "tracker", "stats"] as const,
   trackerDetails: (id: number) => ["authenticated", "tracker", "details", id] as const,
+  adminUsers: ["authenticated", "admin", "users"] as const,
 };
 
 export const currentUserQueryOptions = () => queryOptions({
@@ -115,8 +125,17 @@ export const trackerDetailsQueryOptions = (id: number) => queryOptions({
   queryFn: () => readJson<JobDetails>(`/tracker/${id}/details`, "Unable to load application details."),
 });
 
+export const adminUsersQueryOptions = () => queryOptions({
+  queryKey: queryKeys.adminUsers,
+  queryFn: () => readJson<AdminUser[]>("/admin/users", "Unable to load users."),
+});
+
 export function useCurrentUser() {
   return useQuery(currentUserQueryOptions());
+}
+
+export function useAdminUsers(enabled = true) {
+  return useQuery({ ...adminUsersQueryOptions(), enabled });
 }
 
 export function useProfile() {

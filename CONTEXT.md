@@ -35,6 +35,14 @@ _Avoid_: ATS score, resume grader (use ATS Check).
 **One-page rule**:
 Every generated resume must fit on exactly one page. A resume that spills onto a second page is not a valid generated result.
 
+**Admin**:
+A User with `is_admin = true` on the `users` row — a single boolean flag, not a role table. Admins can access `/admin`, which lists every user (name, falling back to email if no Profile exists yet; credits; aggregate tracked-job counts by status) and can set any user's Credits to an exact value. Seeded idempotently in `migration.py`: flips `is_admin` to true for a known email once that user has registered normally through `/auth/register` — the seed never creates the account itself.
+_Avoid_: role, permission level, superuser.
+
+**Credits**:
+A per-user integer balance (`User.credits`, default 5) that gates AI-driven generation actions (CV generation, PDF generation, cover letter generation, auto-fill) — each action decrements it by 1, and the action is blocked once it hits 0. Adjusted directly by an Admin via `/admin`.
+_Avoid_: tokens, balance, quota.
+
 ## Architectural constraints
 
 - **PDF compilation is Python + Tectonic** (`ai-service/services/pdf_service.py`), invoked directly from FastAPI. The `pdf-service/` Go/Gin app is dead code (nothing calls port 8081) and is not used. ATS validation is Python (`ai-service/services/ats_check.py`), not Go.
