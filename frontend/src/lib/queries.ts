@@ -102,7 +102,7 @@ export const presetsQueryOptions = () => queryOptions({
 
 export const trackerJobsQueryOptions = () => queryOptions({
   queryKey: queryKeys.trackerJobs,
-  queryFn: () => readJson<JobSummary[]>("/tracker/", "Unable to load your applications."),
+  queryFn: () => readJson<JobSummary[]>("/tracker", "Unable to load your applications."),
 });
 
 export const trackerStatsQueryOptions = () => queryOptions({

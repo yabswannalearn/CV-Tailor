@@ -4,6 +4,8 @@ import { useRouter } from "next/navigation";
 import { JobMatchCard, ScrapedJobMatch } from "@/components/tracker/JobMatchCard";
 import { getApiError } from "@/lib/api";
 import { usePresets } from "@/lib/queries";
+import Alert from "@/components/Alert";
+import Button from "@/components/Button";
 
 const PAPER = {
   bg: "#f5f2ed",
@@ -271,10 +273,10 @@ export default function DiscoverPage() {
               <p className="text-sm" style={{ color: PAPER.sub }}>Searching selected job websites...</p>
             </div>
           ) : error ? (
-            <div role="alert" className="p-4 rounded-xl text-center text-sm" style={{ background: "#ffeaea", color: "#b83030", border: "1px solid #f8b8b8" }}>
+            <Alert>
               <p>{error}</p>
-              <button type="button" onClick={() => { void fetchJobs(); }} className="mt-3 rounded-sm border border-[#b83030] px-3 py-1.5 text-xs font-bold uppercase tracking-[0.08em]">Try again</button>
-            </div>
+              <Button variant="outline" onClick={() => { void fetchJobs(); }} className="mt-3">Try again</Button>
+            </Alert>
           ) : !hasSearched ? (
             <div className="py-20 text-center text-sm" style={{ color: PAPER.muted }}>
               Enter a keyword or adjust your filters, then press <span className="font-semibold" style={{ color: PAPER.ink }}>Search</span> to find matching remote jobs.
