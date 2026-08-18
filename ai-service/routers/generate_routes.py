@@ -26,6 +26,20 @@ def require_one_page(pdf_bytes: bytes) -> None:
             detail=f"Generated resume must be exactly one page; the current output is {pages} pages.",
         )
 
+
+def get_profile_or_404(db: Session, email: str) -> db_models.Profile:
+    profile = db.query(db_models.Profile).join(db_models.User).filter(
+        db_models.User.email == email
+    ).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    return profile
+
+
+def require_credits(user: db_models.User, action: str) -> None:
+    if user.credits <= 0:
+        raise HTTPException(status_code=402, detail=f"Out of credits. Please upgrade to generate more {action}.")
+
 @router.get("/templates")
 async def get_templates():
     return [
@@ -50,16 +64,9 @@ class CompileLatexRequest(BaseModel):
 @router.post("/cv")
 @limiter.limit("3/minute")
 async def generate_cv(data: GenerateRequest, request: Request, db: Session = Depends(get_db)):
-    profile = db.query(db_models.Profile).join(db_models.User).filter(
-        db_models.User.email == data.email
-    ).first()
-
-    if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found")
-
+    profile = get_profile_or_404(db, data.email)
     user = profile.owner
-    if user.credits <= 0:
-        raise HTTPException(status_code=402, detail="Out of credits. Please upgrade to generate more CVs.")
+    require_credits(user, "CVs")
 
     latex_code = generate_latex_resume(profile, data.jd, data.template_id, preset_slug=data.preset_slug, db=db)
     
@@ -72,16 +79,9 @@ async def generate_cv(data: GenerateRequest, request: Request, db: Session = Dep
 @router.post("/pdf")
 @limiter.limit("3/minute")
 async def generate_pdf(data: GenerateRequest, request: Request, db: Session = Depends(get_db)):
-    profile = db.query(db_models.Profile).join(db_models.User).filter(
-        db_models.User.email == data.email
-    ).first()
-
-    if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found")
-
+    profile = get_profile_or_404(db, data.email)
     user = profile.owner
-    if user.credits <= 0:
-        raise HTTPException(status_code=402, detail="Out of credits. Please upgrade to generate more PDFs.")
+    require_credits(user, "PDFs")
 
     latex_code = generate_latex_resume(profile, data.jd, data.template_id, preset_slug=data.preset_slug, db=db)
 
@@ -195,14 +195,10 @@ async def compile_latex_preview(data: CompileLatexRequest, request: Request):
 @router.post("/ats-check")
 @limiter.limit("5/minute")
 async def generate_ats_check(data: GenerateRequest, request: Request, db: Session = Depends(get_db)):
-    profile = db.query(db_models.Profile).join(db_models.User).filter(db_models.User.email == data.email).first()
-    if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found")
-        
+    profile = get_profile_or_404(db, data.email)
     user = profile.owner
-    if user.credits <= 0:
-        raise HTTPException(status_code=402, detail="Out of credits. Please upgrade to generate more CVs.")
-        
+    require_credits(user, "CVs")
+
     latex_code = generate_latex_resume(profile, data.jd, data.template_id, data.preset_slug, db)
     
     try:
@@ -232,16 +228,9 @@ async def generate_ats_check(data: GenerateRequest, request: Request, db: Sessio
 @router.post("/cover-letter")
 @limiter.limit("3/minute")
 async def generate_cl(data: GenerateCoverLetterRequest, request: Request, db: Session = Depends(get_db)):
-    profile = db.query(db_models.Profile).join(db_models.User).filter(
-        db_models.User.email == data.email
-    ).first()
-
-    if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found")
-
+    profile = get_profile_or_404(db, data.email)
     user = profile.owner
-    if user.credits <= 0:
-        raise HTTPException(status_code=402, detail="Out of credits. Please upgrade to generate more cover letters.")
+    require_credits(user, "cover letters")
 
     cover_letter_content = generate_cover_letter(profile, data.jd, data.company_name)
     
