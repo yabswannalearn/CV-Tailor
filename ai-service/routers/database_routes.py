@@ -106,95 +106,98 @@ async def auto_fill_resume(request: Request, file: UploadFile = File(...), db: S
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to parse resume: {str(e)}")
 
+def save_profile_data(db: Session, user_id: int, profile_data: UserProfile) -> None:
+    """Replace the user's profile and all nested rows with profile_data, then commit."""
+    existing = db.query(db_models.Profile).filter(
+        db_models.Profile.user_id == user_id
+    ).first()
+    if existing:
+        db.query(db_models.Education).filter(db_models.Education.profile_id == existing.id).delete()
+        db.query(db_models.Experience).filter(db_models.Experience.profile_id == existing.id).delete()
+        db.query(db_models.Project).filter(db_models.Project.profile_id == existing.id).delete()
+        db.query(db_models.Skill).filter(db_models.Skill.profile_id == existing.id).delete()
+        db.query(db_models.Certification).filter(db_models.Certification.profile_id == existing.id).delete()
+        db.query(db_models.Profile).filter(db_models.Profile.id == existing.id).delete()
+        db.flush()
+
+    new_profile = db_models.Profile(
+        user_id=user_id,
+        first_name=profile_data.first_name,
+        last_name=profile_data.last_name,
+        mobile_no=profile_data.mobile_no,
+        email=profile_data.email,
+        linkedin=profile_data.linkedin,
+        github=profile_data.github,
+        portfolio=profile_data.portfolio,
+        preset_slug=profile_data.preset_slug
+    )
+    db.add(new_profile)
+    db.flush()
+
+    for edu in profile_data.education:
+        db.add(db_models.Education(
+            profile_id=new_profile.id,
+            school_name=edu.school_name,
+            course=edu.course,
+            location=edu.location,
+            description=edu.description
+        ))
+
+    for exp in profile_data.experience:
+        db.add(db_models.Experience(
+            profile_id=new_profile.id,
+            job_title=exp.job_title,
+            company=exp.company,
+            location=exp.location,
+            description=exp.description,
+            date_range=exp.date_range
+        ))
+
+    for proj in profile_data.projects:
+        db.add(db_models.Project(
+            profile_id=new_profile.id,
+            name=proj.name,
+            description=proj.description,
+            date_range=proj.date_range
+        ))
+
+    for skill in profile_data.skills:
+        db.add(db_models.Skill(
+            profile_id=new_profile.id,
+            skill_name=skill.skill_name
+        ))
+
+    existing_skills = {s.skill_name.lower() for s in profile_data.skills}
+    preset = resolve_preset(db, profile_data.preset_slug)
+    if preset and preset.core_skills_bank:
+        for p_skill in preset.core_skills_bank:
+            if p_skill.lower() not in existing_skills:
+                db.add(db_models.Skill(
+                    profile_id=new_profile.id,
+                    skill_name=p_skill
+                ))
+
+    for cert in profile_data.certifications:
+        db.add(db_models.Certification(
+            profile_id=new_profile.id,
+            name=cert.name,
+            issuer=cert.issuer,
+            date_issued=cert.date_issued
+        ))
+
+    db.commit()
+
+
 @router.post("/save")
 @limiter.limit("30/minute")
 async def save_profile(profile_data: UserProfile, request: Request, db: Session = Depends(get_db)):
     user_id = get_current_user_id(request)
-
     try:
-        existing = db.query(db_models.Profile).filter(
-            db_models.Profile.user_id == user_id
-        ).first()
-        if existing:
-            db.query(db_models.Education).filter(db_models.Education.profile_id == existing.id).delete()
-            db.query(db_models.Experience).filter(db_models.Experience.profile_id == existing.id).delete()
-            db.query(db_models.Project).filter(db_models.Project.profile_id == existing.id).delete()
-            db.query(db_models.Skill).filter(db_models.Skill.profile_id == existing.id).delete()
-            db.query(db_models.Certification).filter(db_models.Certification.profile_id == existing.id).delete()
-            db.query(db_models.Profile).filter(db_models.Profile.id == existing.id).delete()
-            db.flush()
-
-        new_profile = db_models.Profile(
-            user_id=user_id,
-            first_name=profile_data.first_name,
-            last_name=profile_data.last_name,
-            mobile_no=profile_data.mobile_no,
-            email=profile_data.email,
-            linkedin=profile_data.linkedin,
-            github=profile_data.github,
-            portfolio=profile_data.portfolio,
-            preset_slug=profile_data.preset_slug
-        )
-        db.add(new_profile)
-        db.flush()
-
-        for edu in profile_data.education:
-            db.add(db_models.Education(
-                profile_id=new_profile.id,
-                school_name=edu.school_name,
-                course=edu.course,
-                location=edu.location,
-                description=edu.description
-            ))
-
-        for exp in profile_data.experience:
-            db.add(db_models.Experience(
-                profile_id=new_profile.id,
-                job_title=exp.job_title,
-                company=exp.company,
-                location=exp.location,
-                description=exp.description,
-                date_range=exp.date_range
-            ))
-
-        for proj in profile_data.projects:
-            db.add(db_models.Project(
-                profile_id=new_profile.id,
-                name=proj.name,
-                description=proj.description,
-                date_range=proj.date_range
-            ))
-
-        for skill in profile_data.skills:
-            db.add(db_models.Skill(
-                profile_id=new_profile.id,
-                skill_name=skill.skill_name
-            ))
-            
-        existing_skills = {s.skill_name.lower() for s in profile_data.skills}
-        preset = resolve_preset(db, profile_data.preset_slug)
-        if preset and preset.core_skills_bank:
-            for p_skill in preset.core_skills_bank:
-                if p_skill.lower() not in existing_skills:
-                    db.add(db_models.Skill(
-                        profile_id=new_profile.id,
-                        skill_name=p_skill
-                    ))
-
-        for cert in profile_data.certifications:
-            db.add(db_models.Certification(
-                profile_id=new_profile.id,
-                name=cert.name,
-                issuer=cert.issuer,
-                date_issued=cert.date_issued
-            ))
-
-        db.commit()
-        return {"status": "success", "message": "Profile saved"}
-
+        save_profile_data(db, user_id, profile_data)
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Database Sync Error: {str(e)}")
+    return {"status": "success", "message": "Profile saved"}
 
 
 @router.get("/me")
