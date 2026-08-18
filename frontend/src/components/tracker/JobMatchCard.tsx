@@ -22,8 +22,8 @@ export interface ScrapedJobMatch {
   short_description: string;
   job_type: string;
   source?: string;
-  match_score: number;
-  match_analysis: {
+  match_score?: number;
+  match_analysis?: {
     summary: string;
     pros: string[];
     cons: string[];
@@ -57,7 +57,9 @@ export const JobMatchCard: React.FC<JobMatchCardProps> = ({ job, onImport }) => 
             <h3 className="font-semibold text-lg line-clamp-1" style={{ color: C.ink }}>{job.job_title}</h3>
             <p className="text-sm font-medium" style={{ color: C.sub }}>{job.company_name}</p>
           </div>
-          <JobMatchScoreBadge score={job.match_score} size="md" />
+          {typeof job.match_score === "number" && (
+            <JobMatchScoreBadge score={job.match_score} size="md" />
+          )}
         </div>
 
         {/* Tags */}
