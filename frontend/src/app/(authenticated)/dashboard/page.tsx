@@ -361,7 +361,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Tabs */}
-        <div className="mb-8 hidden gap-1 overflow-x-auto border-b border-[#d4cfc7] md:flex">
+        <div className="mb-8 hidden gap-1 overflow-x-auto overflow-y-hidden border-b border-[#d4cfc7] md:flex">
           {tabs.map((tab) => (
             <button key={tab} onClick={() => setActiveTab(tab)}
               className={`px-4 py-2 text-[10px] tracking-[0.2em] uppercase transition-colors duration-200 border-b-2 -mb-px ${
