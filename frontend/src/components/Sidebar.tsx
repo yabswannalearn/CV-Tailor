@@ -50,6 +50,13 @@ const IconDiscover = () => (
   </svg>
 );
 
+const IconAdmin = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+    <path d="M8 1.5l5 2v3.5c0 3.3-2.1 5.9-5 7-2.9-1.1-5-3.7-5-7V3.5l5-2z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
+    <path d="M5.8 8l1.6 1.6L10.2 6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+
 const IconLogout = () => (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
     <path d="M6 2H3a1 1 0 00-1 1v10a1 1 0 001 1h3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
@@ -110,6 +117,9 @@ export default function Sidebar() {
   const { data: user } = useCurrentUser();
   const { data: trackerJobs = [], isPending: trackerJobsLoading } = useTrackerJobs(trackerOpen);
   const userEmail = user?.email || "";
+  const navItems = user?.is_admin
+    ? [...NAV_ITEMS, { label: "Admin", href: "/admin", icon: <IconAdmin /> }]
+    : NAV_ITEMS;
 
   const closeMobile = () => setMobileOpen(false);
 
@@ -228,7 +238,7 @@ export default function Sidebar() {
 
       {/* ── Nav items ── */}
       <nav className="flex flex-col gap-1.5 px-2 pt-4 flex-1 overflow-y-auto">
-        {NAV_ITEMS.map(item => {
+        {navItems.map(item => {
           const active = isActive(item.href);
           const hovered = hoveredItem === item.href;
           const isTracker = item.href === "/tracker";
