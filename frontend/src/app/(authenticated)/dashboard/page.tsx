@@ -52,6 +52,18 @@ interface Profile {
   preset_slug: string
 }
 
+function extractErrorMessage(err: unknown): string {
+  if (!err || typeof err !== "object" || !("detail" in err)) return "Save failed"
+  const detail = (err as { detail: unknown }).detail
+  if (typeof detail === "string") return detail
+  if (Array.isArray(detail)) {
+    return detail
+      .map((d) => (d && typeof d === "object" && "msg" in d ? String((d as { msg: unknown }).msg) : JSON.stringify(d)))
+      .join("; ")
+  }
+  return "Save failed"
+}
+
 const emptyProfile: Profile = {
   first_name: "", last_name: "", mobile_no: "", email: "",
   linkedin: "", github: "", portfolio: "",
@@ -96,6 +108,7 @@ export default function DashboardPage() {
   const [mobileSectionsOpen, setMobileSectionsOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">("idle")
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [credits, setCredits] = useState(0)
   const [profileHydrated, setProfileHydrated] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -221,6 +234,7 @@ export default function DashboardPage() {
   const handleSave = async () => {
     setSaving(true)
     setSaveStatus("idle")
+    setSaveError(null)
     try {
       const res = await fetch(`${API}/profile/save`, {
         method: "POST",
@@ -228,12 +242,16 @@ export default function DashboardPage() {
         credentials: "include",
         body: JSON.stringify(profile),
       })
-      if (!res.ok) throw new Error()
+      if (!res.ok) {
+        const err = await res.json().catch(() => null)
+        throw new Error(extractErrorMessage(err))
+      }
       setSaveStatus("success")
       setTimeout(() => setSaveStatus("idle"), 3000)
       await queryClient.invalidateQueries({ queryKey: queryKeys.profile })
-    } catch {
+    } catch (error) {
       setSaveStatus("error")
+      setSaveError(error instanceof Error ? error.message : "Save failed")
     } finally {
       setSaving(false)
     }
@@ -387,12 +405,13 @@ export default function DashboardPage() {
           <div className="mb-10">
             <div className="mb-4">
               <label className={labelClass}>Your Role / Niche</label>
-              <input 
+              <input
                 list="role-presets"
-                className={inputClass} 
+                className={inputClass}
                 value={profile.preset_slug === 'blank' ? '' : profile.preset_slug}
                 onChange={(e) => updateField("preset_slug", e.target.value || "blank")}
                 placeholder="e.g. Full Stack Developer, Product Manager..."
+                maxLength={50}
               />
               <datalist id="role-presets">
                 {presets.map(p => (
@@ -406,40 +425,40 @@ export default function DashboardPage() {
             <div className="grid grid-cols-1 gap-4 mb-4 sm:grid-cols-2">
               <div>
                 <label className={labelClass}>First Name</label>
-                <input className={inputClass} value={profile.first_name}
+                <input className={inputClass} value={profile.first_name} maxLength={50}
                   onChange={(e) => updateField("first_name", e.target.value)} placeholder="John" />
               </div>
               <div>
                 <label className={labelClass}>Last Name</label>
-                <input className={inputClass} value={profile.last_name}
+                <input className={inputClass} value={profile.last_name} maxLength={50}
                   onChange={(e) => updateField("last_name", e.target.value)} placeholder="Doe" />
               </div>
             </div>
             <div className="grid grid-cols-1 gap-4 mb-4 sm:grid-cols-2">
               <div>
                 <label className={labelClass}>Mobile No</label>
-                <input className={inputClass} value={profile.mobile_no}
+                <input className={inputClass} value={profile.mobile_no} maxLength={20}
                   onChange={(e) => updateField("mobile_no", e.target.value)} placeholder="+63 912 345 6789" />
               </div>
               <div>
                 <label className={labelClass}>Email</label>
-                <input className={inputClass} value={profile.email}
+                <input className={inputClass} value={profile.email} maxLength={100}
                   onChange={(e) => updateField("email", e.target.value)} placeholder="you@email.com" />
               </div>
             </div>
             <div className="mb-4">
               <label className={labelClass}>LinkedIn</label>
-              <input className={inputClass} value={profile.linkedin}
+              <input className={inputClass} value={profile.linkedin} maxLength={255}
                 onChange={(e) => updateField("linkedin", e.target.value)} placeholder="https://linkedin.com/in/..." />
             </div>
             <div className="mb-4">
               <label className={labelClass}>GitHub</label>
-              <input className={inputClass} value={profile.github}
+              <input className={inputClass} value={profile.github} maxLength={255}
                 onChange={(e) => updateField("github", e.target.value)} placeholder="https://github.com/..." />
             </div>
             <div>
               <label className={labelClass}>Portfolio</label>
-              <input className={inputClass} value={profile.portfolio}
+              <input className={inputClass} value={profile.portfolio} maxLength={255}
                 onChange={(e) => updateField("portfolio", e.target.value)} placeholder="https://yoursite.dev" />
             </div>
           </div>
@@ -454,20 +473,20 @@ export default function DashboardPage() {
                   className="absolute top-3 right-3 text-[#b0aba4] hover:text-[#cc3333] text-xs transition-colors">✕</button>
                 <div className="mb-3">
                   <label className={labelClass}>School Name</label>
-                  <input className={inputClass} value={edu.school_name}
+                  <input className={inputClass} value={edu.school_name} maxLength={150}
                     onChange={(e) => updateListItem("education", i, { ...edu, school_name: e.target.value })}
                     placeholder="University Name" />
                 </div>
                 <div className="grid grid-cols-1 gap-4 mb-3 sm:grid-cols-2">
                   <div>
                     <label className={labelClass}>Course / Degree</label>
-                    <input className={inputClass} value={edu.course}
+                    <input className={inputClass} value={edu.course} maxLength={150}
                       onChange={(e) => updateListItem("education", i, { ...edu, course: e.target.value })}
                       placeholder="BS Computer Engineering" />
                   </div>
                   <div>
                     <label className={labelClass}>Location</label>
-                    <input className={inputClass} value={edu.location}
+                    <input className={inputClass} value={edu.location} maxLength={100}
                       onChange={(e) => updateListItem("education", i, { ...edu, location: e.target.value })}
                       placeholder="City, Country" />
                   </div>
@@ -497,13 +516,13 @@ export default function DashboardPage() {
                 <div className="grid grid-cols-1 gap-4 mb-3 sm:grid-cols-2">
                   <div>
                     <label className={labelClass}>Job Title</label>
-                    <input className={inputClass} value={exp.job_title}
+                    <input className={inputClass} value={exp.job_title} maxLength={100}
                       onChange={(e) => updateListItem("experience", i, { ...exp, job_title: e.target.value })}
                       placeholder="Software Engineer" />
                   </div>
                   <div>
                     <label className={labelClass}>Company</label>
-                    <input className={inputClass} value={exp.company}
+                    <input className={inputClass} value={exp.company} maxLength={100}
                       onChange={(e) => updateListItem("experience", i, { ...exp, company: e.target.value })}
                       placeholder="Company Name" />
                   </div>
@@ -511,13 +530,13 @@ export default function DashboardPage() {
                 <div className="grid grid-cols-1 gap-4 mb-3 sm:grid-cols-2">
                   <div>
                     <label className={labelClass}>Location</label>
-                    <input className={inputClass} value={exp.location}
+                    <input className={inputClass} value={exp.location} maxLength={100}
                       onChange={(e) => updateListItem("experience", i, { ...exp, location: e.target.value })}
                       placeholder="Remote / City" />
                   </div>
                   <div>
                     <label className={labelClass}>Date</label>
-                    <input className={inputClass} value={exp.date_range}
+                    <input className={inputClass} value={exp.date_range} maxLength={50}
                       onChange={(e) => updateListItem("experience", i, { ...exp, date_range: e.target.value })}
                       placeholder="Jan 2024 – Present" />
                   </div>
@@ -547,13 +566,13 @@ export default function DashboardPage() {
                 <div className="grid grid-cols-1 gap-4 mb-3 sm:grid-cols-2">
                   <div>
                     <label className={labelClass}>Project Name</label>
-                    <input className={inputClass} value={proj.name}
+                    <input className={inputClass} value={proj.name} maxLength={100}
                       onChange={(e) => updateListItem("projects", i, { ...proj, name: e.target.value })}
                       placeholder="Project Name" />
                   </div>
                   <div>
                     <label className={labelClass}>Date</label>
-                    <input className={inputClass} value={proj.date_range}
+                    <input className={inputClass} value={proj.date_range} maxLength={50}
                       onChange={(e) => updateListItem("projects", i, { ...proj, date_range: e.target.value })}
                       placeholder="2024" />
                   </div>
@@ -598,20 +617,20 @@ export default function DashboardPage() {
                   className="absolute top-3 right-3 text-[#b0aba4] hover:text-[#cc3333] text-xs transition-colors">✕</button>
                 <div className="mb-3">
                   <label className={labelClass}>Certification Name</label>
-                  <input className={inputClass} value={cert.name}
+                  <input className={inputClass} value={cert.name} maxLength={150}
                     onChange={(e) => updateListItem("certifications", i, { ...cert, name: e.target.value })}
                     placeholder="AWS Certified Solutions Architect" />
                 </div>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
                     <label className={labelClass}>Issuer</label>
-                    <input className={inputClass} value={cert.issuer}
+                    <input className={inputClass} value={cert.issuer} maxLength={150}
                       onChange={(e) => updateListItem("certifications", i, { ...cert, issuer: e.target.value })}
                       placeholder="Amazon Web Services" />
                   </div>
                   <div>
                     <label className={labelClass}>Date Issued</label>
-                    <input className={inputClass} value={cert.date_issued}
+                    <input className={inputClass} value={cert.date_issued} maxLength={50}
                       onChange={(e) => updateListItem("certifications", i, { ...cert, date_issued: e.target.value })}
                       placeholder="March 2026" />
                   </div>
@@ -635,7 +654,7 @@ export default function DashboardPage() {
             {saving ? "Saving..." : "Save Profile"}
           </button>
           {saveStatus === "success" && <span className="text-[#5a8a00] text-xs">✓ Saved successfully</span>}
-          {saveStatus === "error" && <span className="text-[#cc3333] text-xs">✗ Save failed</span>}
+          {saveStatus === "error" && <span className="text-[#cc3333] text-xs">✗ {saveError || "Save failed"}</span>}
         </div>
       </div>
     </main>
@@ -655,6 +674,7 @@ function SkillInput({ onAdd }: { onAdd: (skill: string) => void }) {
       <input
         className="flex-1 bg-[#e8e4dd] text-[#1a1814] text-sm p-3 outline-none border border-[#d4cfc7] focus:border-[#c8f06088] rounded-sm placeholder-[#b0aba4] transition-colors duration-200"
         value={value}
+        maxLength={50}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && handleAdd()}
         placeholder="Type a skill and press Enter..."
