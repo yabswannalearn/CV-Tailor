@@ -9,7 +9,7 @@ import { API_URL } from "@/lib/api";
 import { useResumeUiStore } from "@/lib/uiStore";
 import InlineQueryError from "@/components/InlineQueryError";
 import RouteLoading from "@/components/RouteLoading";
-import { useCurrentUser, usePresets, useProfile, useTrackerDetails } from "@/lib/queries";
+import { ApiQueryError, useCurrentUser, usePresets, useProfile, useTrackerDetails } from "@/lib/queries";
 
 const Document = dynamic(() => import("react-pdf").then(m => m.Document), { ssr: false });
 const Page = dynamic(() => import("react-pdf").then(m => m.Page), { ssr: false });
@@ -727,12 +727,25 @@ function GeneratePageContent() {
   };
 
   // ── Pre-generation ─────────────────────────────────────────────
+  const profileNotFound = profileQuery.error instanceof ApiQueryError && profileQuery.error.status === 404;
   const startupLoading = userQuery.isPending || profileQuery.isPending || presetsQuery.isPending || jobLatexLoading || (Boolean(jobId) && jobDetailsQuery.isPending);
   const startupError = jobLatexError
-    || (profileQuery.error instanceof Error ? profileQuery.error.message : "")
+    || (!profileNotFound && profileQuery.error instanceof Error ? profileQuery.error.message : "")
     || (presetsQuery.error instanceof Error ? presetsQuery.error.message : "")
     || (jobDetailsQuery.error instanceof Error ? jobDetailsQuery.error.message : "");
   if (startupLoading) return <RouteLoading />;
+  if (profileNotFound) {
+    return (
+      <div className="p-6 sm:p-10">
+        <div role="alert" className="rounded-sm border border-[#e8aaaa] bg-[#fff0f0] px-5 py-4 font-mono text-sm text-[#7d2525]">
+          <p>Complete your profile before generating a tailored resume.</p>
+          <Link href="/dashboard" className="mt-3 inline-block rounded-sm border border-[#b83030] px-3 py-1.5 text-xs font-bold uppercase tracking-[0.08em] transition-colors hover:bg-[#ffe1e1]">
+            Complete your profile
+          </Link>
+        </div>
+      </div>
+    );
+  }
   if (startupError) return <div className="p-6 sm:p-10"><InlineQueryError message={startupError} onRetry={() => { void loadJobLatex(); void profileQuery.refetch(); void presetsQuery.refetch(); void jobDetailsQuery.refetch(); }} /></div>;
 
   if (!hasGenerated) {

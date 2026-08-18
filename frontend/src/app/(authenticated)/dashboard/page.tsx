@@ -5,7 +5,7 @@ import Link from "next/link"
 import { toast } from "sonner";
 import { API_URL } from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
-import { queryKeys, useCurrentUser, usePresets, useProfile } from "@/lib/queries";
+import { ApiQueryError, queryKeys, useCurrentUser, usePresets, useProfile } from "@/lib/queries";
 import { motion, AnimatePresence } from "framer-motion";
 import { useDropzone } from "react-dropzone";
 import { UploadCloud } from "lucide-react";
@@ -203,7 +203,9 @@ export default function DashboardPage() {
     return <DashboardSkeleton />
   }
 
-  if ((profileError && !profileData) || (presetsError && presets.length === 0)) {
+  const profileNotFound = profileQueryError instanceof ApiQueryError && profileQueryError.status === 404;
+
+  if ((profileError && !profileData && !profileNotFound) || (presetsError && presets.length === 0)) {
     const message = profileQueryError instanceof Error
       ? profileQueryError.message
       : presetsQueryError instanceof Error
