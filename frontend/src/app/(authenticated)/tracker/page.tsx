@@ -562,6 +562,7 @@ export default function TrackerPage() {
         const details = queryClient.getQueryData<JobDetails>(queryKeys.trackerDetails(job.id));
         if (details) queryClient.setQueryData(queryKeys.trackerDetails(job.id), { ...details, has_pdf: true, pdf_generated_at: pdfGeneratedAt });
         void queryClient.invalidateQueries({ queryKey: queryKeys.trackerJobs });
+        router.push(`/generate?job_id=${job.id}`);
       }
     } catch {
       setGenerateError({ id: job.id, msg: "Connection error" });
@@ -801,80 +802,72 @@ export default function TrackerPage() {
 
                         <div className="hidden h-5 w-px shrink-0 sm:block" style={{ background: "#d4cfc7" }} />
 
-                        {/* Generate CV */}
+                        {/* Generate CV / Open Editor */}
                         <button
-                          onClick={() => handleGeneratePdf(detailJob)}
+                          onClick={() => job.has_pdf ? router.push(`/generate?job_id=${job.id}`) : handleGeneratePdf(detailJob)}
                           disabled={isGenerating}
-                          title={job.job_description ? "Generate tailored CV for this job" : "Add job description first"}
-                          className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold tracking-[0.08em] uppercase rounded-sm transition-all disabled:cursor-not-allowed"
+                          title={job.has_pdf ? "Open CV in editor" : job.job_description ? "Generate tailored CV for this job" : "Add job description first"}
+                          className="group flex min-h-11 items-center gap-2.5 rounded-sm px-4 py-2 text-left transition-all duration-200 hover:-translate-y-0.5 hover:brightness-110 hover:shadow-md active:translate-y-0 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:brightness-100 disabled:hover:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8ab030] focus-visible:ring-offset-2 motion-reduce:transform-none motion-reduce:transition-none"
                           style={{
-                            background: isGenerating ? "#e8e4dd" : job.has_pdf ? "#e8f5c0" : "#f5f2ed",
-                            color: isGenerating ? "#a8a39c" : job.has_pdf ? "#3d6600" : "#4a4540",
-                            border: `1px solid ${isGenerating ? "#d4cfc7" : job.has_pdf ? "#8ab030" : "#d4cfc7"}`,
+                            background: isGenerating ? "#e8e4dd" : "#3d6600",
+                            color: isGenerating ? "#a8a39c" : "#fffdf9",
+                            border: `1px solid ${isGenerating ? "#d4cfc7" : "#315300"}`,
+                            boxShadow: isGenerating ? "none" : "0 2px 0 #274200",
                           }}>
                           {isGenerating ? (
-                            <span className="flex items-center gap-1">
+                            <span className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.1em]">
                               <span className="inline-flex gap-0.5">
                                 {[0,100,200].map(d => <span key={d} className="w-1 h-1 rounded-full animate-bounce" style={{ background: "#a8a39c", animationDelay: `${d}ms` }} />)}
                               </span>
-                              Generating
+                              Tailoring CV
                             </span>
                           ) : (
-                            <span className="flex items-center gap-1">
-                              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                                <path d="M1.5 1H7L9 3V9H1.5V1Z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round"/>
-                                <path d="M3 5.5h4M3 7h2.5" stroke="currentColor" strokeWidth="1"/>
-                                <path d="M7 1v2h2" stroke="currentColor" strokeWidth="1"/>
-                              </svg>
-                              {job.has_pdf ? "Regenerate" : "Generate CV"}
+                            <span className="flex items-center gap-2.5">
+                              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm bg-white/15">
+                                <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true">
+                                  <path d="M2 1.5h6.5l2.5 2.5v7.5H2v-10Z" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round"/>
+                                  <path d="M4 6.5h5M4 8.75h3.25M8.5 1.5V4H11" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+                                </svg>
+                              </span>
+                              <span className="flex flex-col gap-0.5 leading-none">
+                                <span className="text-[11px] font-bold uppercase tracking-[0.1em]">{job.has_pdf ? "Open Editor" : "Generate CV"}</span>
+                                <span className="text-[8px] font-medium normal-case tracking-[0.03em] opacity-75">{job.has_pdf ? "Review your tailored CV" : "Tailored to this role"}</span>
+                              </span>
                             </span>
                           )}
                         </button>
-
-                        {/* View PDF */}
-                        {job.has_pdf && (
-                        <Link
-                            href={`/generate?job_id=${job.id}`}
-                            prefetch
-                            title="Open in editor"
-                            className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold tracking-[0.08em] uppercase rounded-sm transition-all"
-                            style={{ background: "#f5f2ed", color: "#4a4540", border: "1px solid #d4cfc7" }}
-                            onMouseEnter={e => { e.currentTarget.style.background = "#e8f5c0"; e.currentTarget.style.color = "#3d6600"; e.currentTarget.style.borderColor = "#8ab030"; }}
-                            onMouseLeave={e => { e.currentTarget.style.background = "#f5f2ed"; e.currentTarget.style.color = "#4a4540"; e.currentTarget.style.borderColor = "#d4cfc7"; }}>
-                            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                            <path d="M1.5 1H7L9 3V9H1.5V1Z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round"/>
-                            <path d="M3 5.5h4M3 7h2.5" stroke="currentColor" strokeWidth="1"/>
-                            </svg>
-                            Open Editor
-                        </Link>
-                        )}
-
-                        <div className="hidden h-5 w-px shrink-0 sm:block" style={{ background: "#d4cfc7" }} />
 
                         {/* Generate Cover Letter */}
                         <button
                           onClick={() => handleGenerateCoverLetter(detailJob)}
                           disabled={generatingClFor === job.id}
                           title={job.job_description ? "Generate cover letter for this job" : "Add job description first"}
-                          className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold tracking-[0.08em] uppercase rounded-sm transition-all disabled:cursor-not-allowed"
+                          className="group flex min-h-11 items-center gap-2.5 rounded-sm px-4 py-2 text-left transition-all duration-200 hover:-translate-y-0.5 hover:brightness-110 hover:shadow-md active:translate-y-0 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:brightness-100 disabled:hover:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4a4540] focus-visible:ring-offset-2 motion-reduce:transform-none motion-reduce:transition-none"
                           style={{
-                            background: generatingClFor === job.id ? "#e8e4dd" : job.cover_letter ? "#e8f5c0" : "#f5f2ed",
-                            color: generatingClFor === job.id ? "#a8a39c" : job.cover_letter ? "#3d6600" : "#4a4540",
-                            border: `1px solid ${generatingClFor === job.id ? "#d4cfc7" : job.cover_letter ? "#8ab030" : "#d4cfc7"}`,
+                            background: generatingClFor === job.id ? "#e8e4dd" : "#1a1814",
+                            color: generatingClFor === job.id ? "#a8a39c" : "#fffdf9",
+                            border: `1px solid ${generatingClFor === job.id ? "#d4cfc7" : "#090807"}`,
+                            boxShadow: generatingClFor === job.id ? "none" : "0 2px 0 #090807",
                           }}>
                           {generatingClFor === job.id ? (
-                            <span className="flex items-center gap-1">
+                            <span className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.1em]">
                               <span className="inline-flex gap-0.5">
                                 {[0,100,200].map(d => <span key={d} className="w-1 h-1 rounded-full animate-bounce" style={{ background: "#a8a39c", animationDelay: `${d}ms` }} />)}
                               </span>
-                              Generating
+                              Writing letter
                             </span>
                           ) : (
-                            <span className="flex items-center gap-1">
-                              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                                <path d="M1 2v6h8V2H1zm1 1h6v1H2V3zm0 2h6v1H2V5zm0 2h4v1H2V7z" fill="currentColor"/>
-                              </svg>
-                              {job.cover_letter ? "Regenerate CL" : "Generate CL"}
+                            <span className="flex items-center gap-2.5">
+                              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm bg-white/10">
+                                <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true">
+                                  <path d="M1.5 3h10v7.5h-10V3Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
+                                  <path d="m2 3.5 4.5 3.25L11 3.5" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round"/>
+                                </svg>
+                              </span>
+                              <span className="flex flex-col gap-0.5 leading-none">
+                                <span className="text-[11px] font-bold uppercase tracking-[0.1em]">{job.cover_letter ? "Regenerate cover letter" : "Generate cover letter"}</span>
+                                <span className="text-[8px] font-medium normal-case tracking-[0.03em] opacity-70">Matched to this opening</span>
+                              </span>
                             </span>
                           )}
                         </button>

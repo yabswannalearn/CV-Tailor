@@ -1,17 +1,19 @@
 "use client";
 import { Suspense, useState, useCallback, useEffect, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
-import { API_URL } from "@/lib/api";
+import { API_URL, getApiError } from "@/lib/api";
 import { useResumeUiStore } from "@/lib/uiStore";
 import InlineQueryError from "@/components/InlineQueryError";
 import RouteLoading from "@/components/RouteLoading";
 import Alert from "@/components/Alert";
 import { ButtonLink } from "@/components/Button";
-import { ApiQueryError, useCurrentUser, usePresets, useProfile, useTrackerDetails } from "@/lib/queries";
+import { ApiQueryError, queryKeys, type JobDetails, useCurrentUser, usePresets, useProfile, useTrackerDetails } from "@/lib/queries";
+import { formatEducationDetails, parseResumeDraft, replaceCommandArgument, replaceFirst, replaceNthMatch, replaceResumeItem, type ResumeDraft } from "@/lib/resumeDraft";
 
 const Document = dynamic(() => import("react-pdf").then(m => m.Document), { ssr: false });
 const Page = dynamic(() => import("react-pdf").then(m => m.Page), { ssr: false });
@@ -56,178 +58,6 @@ function parseSections(code: string) {
     if (m) acc.push({ name: m[1], line: i + 1 });
     return acc;
   }, []);
-}
-
-type ResumeDraft = {
-  name: string;
-  summary: string;
-  bullets: string[];
-  sections: {
-    name: string;
-    bullets: { index: number; text: string }[];
-    detailType: "skills" | "certifications" | null;
-    details: { label: string; value: string; index: number }[];
-    entries: {
-      command: "resumeSubheading" | "resumeProjectHeading";
-      occurrence: number;
-      title: string;
-      subtitle: string;
-      meta: string;
-      items: { index: number; text: string }[];
-    }[];
-  }[];
-};
-
-function latexText(value: string | undefined | null): string {
-  if (!value) return "";
-  let clean = value.replace(/%.*$/gm, "")
-    .replace(/\\href\{[^{}]*\}\{([^{}]*)\}/g, "$1")
-    .replace(/\$\|\$/g, "|")
-    .replace(/\\vspace\*?\s*\{[^{}]*\}/g, "")
-    .replace(/\\(?:small|Huge|Large|large|color)\s*\{([^{}]*)\}/g, "$1")
-    .replace(/\\(?:small|smallskip|medskip|bigskip|Huge|Large|large|color)\b/g, "");
-  for (let pass = 0; pass < 3; pass += 1) {
-    clean = clean
-      .replace(/\\(?:textbf|textit|emph)\s*\{([^{}]*)\}/g, "$1")
-      .replace(/\\[a-zA-Z]+\*?(?:\[[^]]*\])?\s*(?:\{[^{}]*\})?/g, "");
-  }
-  return clean.replace(/\\\\/g, " ")
-    .replace(/[{}]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function commandArguments(code: string, command: string) {
-  const result: { occurrence: number; args: string[]; start: number; end: number }[] = [];
-  const pattern = new RegExp("\\\\?" + command + "\\s*", "g");
-  let match: RegExpExecArray | null;
-  while ((match = pattern.exec(code))) {
-    const beforeMatch = code.slice(Math.max(0, match.index - 20), match.index);
-    if (/newcommand\s*\{\s*$/.test(beforeMatch)) continue;
-    let cursor = match.index + match[0].length;
-    const args: string[] = [];
-    const commandStart = match.index;
-    while (code[cursor] === "{") {
-      let depth = 0;
-      const start = cursor + 1;
-      for (; cursor < code.length; cursor += 1) {
-        if (code[cursor] === "{") depth += 1;
-        if (code[cursor] === "}") depth -= 1;
-        if (depth === 0) break;
-      }
-      args.push(code.slice(start, cursor));
-      cursor += 1;
-    }
-    result.push({ occurrence: result.length, args, start: commandStart, end: cursor });
-  }
-  return result;
-}
-
-function replaceCommandArgument(code: string, command: string, occurrence: number, argIndex: number, value: string) {
-  const target = commandArguments(code, command)[occurrence];
-  if (!target) return code;
-  const prefix = new RegExp("^\\\\?" + command + "\\s*").exec(code.slice(target.start))?.[0] || "";
-  let cursor = target.start + prefix.length;
-  let start = -1;
-  let end = -1;
-  for (let index = 0; index <= argIndex; index += 1) {
-    while (code[cursor] !== "{" && cursor < code.length) cursor += 1;
-    start = cursor + 1;
-    let depth = 1;
-    cursor += 1;
-    while (depth > 0 && cursor < code.length) {
-      if (code[cursor] === "{") depth += 1;
-      if (code[cursor] === "}") depth -= 1;
-      cursor += 1;
-    }
-    end = cursor - 1;
-  }
-  return start >= 0 ? code.slice(0, start) + value.replace(/[{}]/g, "") + code.slice(end) : code;
-}
-
-function parseResumeDraft(code: string): ResumeDraft {
-  const nameMatch = code.match(/\\textcolor\{[^}]+\}\{([^{}]+)\}/) || code.match(/\\Huge\s*\{?([^{}\\]+)\}?/i);
-  const summaryMatch = code.match(/\\section\*?\{[^{}]*(?:Summary|Profile|Objective)[^{}]*\}([\s\S]*?)(?=\\section|\\end\{document\})/i);
-  const bulletMatches = Array.from(code.matchAll(/\\resumeItem\{([^{}]*)\}/g));
-  const bullets = bulletMatches.map(m => latexText(m[1]));
-  const sections = Array.from(code.matchAll(/\\section\{([^{}]+)\}([\s\S]*?)(?=\\section\{|\\end\{document\})/gi))
-    .map(match => {
-      const start = match.index ?? 0;
-      const end = start + match[0].length;
-      const subheadings = commandArguments(code, "resumeSubheading").filter(entry => entry.start >= start && entry.start <= end);
-      const projectHeadings = commandArguments(code, "resumeProjectHeading").filter(entry => entry.start >= start && entry.start <= end);
-      const rawEntries = [
-        ...subheadings.map(entry => ({
-          command: "resumeSubheading" as const,
-          occurrence: entry.occurrence,
-          title: latexText(entry.args[0] || ""),
-          subtitle: latexText(entry.args[2] || ""),
-          meta: [latexText(entry.args[1] || ""), latexText(entry.args[3] || "")].filter(Boolean).join(" · "),
-          start: entry.start,
-        })),
-        ...projectHeadings.map(entry => ({
-          command: "resumeProjectHeading" as const,
-          occurrence: entry.occurrence,
-          title: latexText((entry.args[0] || "").split("$|$")[0]),
-          subtitle: latexText((entry.args[0] || "").split("$|$")[1] || ""),
-          meta: latexText(entry.args[1] || ""),
-          start: entry.start,
-        })),
-      ].sort((a, b) => a.start - b.start);
-      const normalizedName = match[1].trim().toLowerCase();
-      const detailType = normalizedName === "technical skills" ? "skills" as const : normalizedName === "certifications" ? "certifications" as const : null;
-      const sectionBody = match[2];
-      const details = detailType === "skills"
-        ? Array.from(sectionBody.matchAll(/\\textbf\{([^{}]*)\}\{\s*:\s*([^{}]*)\}/g)).map((skill, index) => ({ label: latexText(skill[1]), value: latexText(skill[2]), index }))
-        : detailType === "certifications"
-          ? Array.from(sectionBody.matchAll(/\\item\{([^{}]*)\}/g)).map((cert, index) => ({ label: "Certifications", value: latexText(cert[1]), index }))
-          : [];
-      return {
-        name: match[1].trim(),
-        detailType,
-        details,
-        bullets: bulletMatches
-          .map((bullet, index) => ({ index, text: latexText(bullet[1]), position: bullet.index ?? 0 }))
-          .filter(bullet => bullet.position >= start && bullet.position <= end)
-          .map(({ index, text }) => ({ index, text })),
-        entries: rawEntries.map((entry, index) => {
-          const nextStart = rawEntries[index + 1]?.start ?? end;
-          return {
-            ...entry,
-            items: bulletMatches
-              .map((bullet, bulletIndex) => ({ index: bulletIndex, text: latexText(bullet[1]), position: bullet.index ?? 0 }))
-              .filter(bullet => bullet.position > entry.start && bullet.position < nextStart)
-              .map(({ index: bulletIndex, text }) => ({ index: bulletIndex, text })),
-          };
-        }),
-      };
-    });
-  return {
-    name: nameMatch?.[1] || "Your name",
-    summary: summaryMatch ? latexText(summaryMatch[1]) : "",
-    bullets,
-    sections,
-  };
-}
-
-function replaceFirst(code: string, pattern: RegExp, replacement: string) {
-  return code.replace(pattern, replacement);
-}
-
-function replaceResumeItem(code: string, index: number, value: string) {
-  let seen = -1;
-  return code.replace(/\\resumeItem\{([^{}]*)\}/g, (full) => {
-    seen += 1;
-    return seen === index ? `\\resumeItem{${value.replace(/[{}]/g, "")}}` : full;
-  });
-}
-
-function replaceNthMatch(code: string, pattern: RegExp, index: number, replacement: string | ((full: string) => string)) {
-  let seen = -1;
-  return code.replace(pattern, (full) => {
-    seen += 1;
-    return seen === index ? (typeof replacement === "function" ? replacement(full) : replacement) : full;
-  });
 }
 
 function scrollToLine(ta: HTMLTextAreaElement, lineNum: number) {
@@ -311,6 +141,124 @@ const SaveToJobButton = ({ savingToJob, savedToJob, onClick }: { savingToJob: bo
   </button>
 );
 
+const CoverLetterActionButton = ({ available, busy, onClick }: { available: boolean; busy: boolean; onClick: () => void }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    disabled={busy}
+    aria-label={available ? "Open saved cover letter" : "Generate a cover letter for this application"}
+    className="flex items-center gap-2 rounded-sm border px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] transition-all hover:-translate-y-px hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8ab030] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 motion-reduce:transform-none motion-reduce:transition-none"
+    style={{ background: C.text, borderColor: C.text, color: "#fffdf9" }}>
+    <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+      <path d="M2 1.5h5.5L10 4v6.5H2v-9Z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round"/>
+      <path d="M7.5 1.5V4H10M4 6h4M4 8h3" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+    </svg>
+    {busy ? "Writing..." : available ? "Open Cover Letter" : "Generate Cover Letter"}
+  </button>
+);
+
+type CoverLetterEditorProps = {
+  companyName: string;
+  jobTitle: string;
+  text: string;
+  error: string;
+  generating: boolean;
+  saving: boolean;
+  onChange: (value: string) => void;
+  onClose: () => void;
+  onGenerate: () => void;
+  onSave: () => void;
+};
+
+const CoverLetterEditor = ({
+  companyName, jobTitle, text, error, generating, saving,
+  onChange, onClose, onGenerate, onSave,
+}: CoverLetterEditorProps) => {
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !generating && !saving) onClose();
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [generating, onClose, saving]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-6"
+      style={{ background: "rgba(26,24,20,0.66)" }}
+      onMouseDown={event => { if (event.target === event.currentTarget && !generating && !saving) onClose(); }}>
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cover-letter-title"
+        className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border shadow-2xl"
+        style={{ background: "#fffdf9", borderColor: C.border }}>
+        <header className="flex shrink-0 items-start justify-between gap-4 border-b px-5 py-4 sm:px-7" style={{ background: C.bgCard, borderColor: C.border }}>
+          <div className="min-w-0">
+            <div className="mb-1 flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full" style={{ background: C.green }} />
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: C.green }}>Application document</p>
+            </div>
+            <h2 id="cover-letter-title" className="truncate text-xl font-semibold" style={{ fontFamily: "Georgia, serif", color: C.text }}>{companyName} cover letter</h2>
+            <p className="mt-1 truncate text-xs" style={{ color: C.textMuted }}>{jobTitle} · saved with this application</p>
+          </div>
+          <button type="button" onClick={onClose} disabled={generating || saving} aria-label="Close cover letter editor"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-lg transition-colors hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8ab030] disabled:opacity-40"
+            style={{ color: C.textMuted }}>×</button>
+        </header>
+
+        <div className="flex min-h-0 flex-1 flex-col gap-3 p-4 sm:p-6">
+          {error && <div role="alert" className="rounded-md border px-3 py-2 text-xs" style={{ background: C.redBg, borderColor: "#ffcccc", color: C.red }}>{error}</div>}
+          <div className="relative min-h-[360px] flex-1">
+            <textarea
+              autoFocus
+              value={text}
+              onChange={event => onChange(event.target.value)}
+              disabled={generating}
+              aria-label="Cover letter"
+              className="h-full min-h-[360px] w-full resize-none rounded-lg border p-4 text-sm leading-7 outline-none transition-colors focus:border-[#8ab030] focus:ring-2 focus:ring-[#e8f5c0] disabled:opacity-40 sm:p-5"
+              style={{ background: C.bgEditor, borderColor: C.border, color: C.text, fontFamily: "Georgia, serif" }}
+            />
+            {generating && (
+              <div className="absolute inset-0 flex items-center justify-center rounded-lg" style={{ background: "rgba(249,247,244,0.9)" }} aria-live="polite">
+                <div className="text-center">
+                  <span className="mb-3 inline-flex gap-1">
+                    {[0, 150, 300].map(delay => <span key={delay} className="h-1.5 w-1.5 animate-bounce rounded-full motion-reduce:animate-none" style={{ background: C.green, animationDelay: `${delay}ms` }} />)}
+                  </span>
+                  <p className="text-sm font-semibold" style={{ color: C.text }}>Writing a tailored draft...</p>
+                  <p className="mt-1 text-xs" style={{ color: C.textMuted }}>Using this role and your profile</p>
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="flex items-center justify-between gap-3 text-[11px]" style={{ color: C.textFaint }}>
+            <span>{text.length.toLocaleString()} characters</span>
+            <span>Changes are saved to this application</span>
+          </div>
+        </div>
+
+        <footer className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t px-4 py-3 sm:px-6" style={{ background: C.bgCard, borderColor: C.border }}>
+          <button type="button" onClick={onGenerate} disabled={generating || saving}
+            className="rounded-sm border px-4 py-2 text-[11px] font-bold uppercase tracking-[0.1em] transition-colors hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8ab030] disabled:opacity-40"
+            style={{ borderColor: C.borderStrong, color: C.textMid }}>
+            {text.trim() ? "Regenerate draft" : "Generate draft"}
+          </button>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={onClose} disabled={generating || saving}
+              className="rounded-sm px-4 py-2 text-[11px] font-bold uppercase tracking-[0.1em] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8ab030] disabled:opacity-40"
+              style={{ color: C.textMuted }}>Cancel</button>
+            <button type="button" onClick={onSave} disabled={generating || saving || !text.trim()}
+              className="rounded-sm px-5 py-2 text-[11px] font-bold uppercase tracking-[0.1em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8ab030] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40"
+              style={{ background: C.green, color: "#fff" }}>
+              {saving ? "Saving..." : "Save Cover Letter"}
+            </button>
+          </div>
+        </footer>
+      </section>
+    </div>
+  );
+};
+
 const RecompileButton = ({ busy, onClick }: { busy: boolean; onClick: () => void }) => (
   <button onClick={onClick} disabled={busy}
     className="flex items-center gap-2 px-4 py-1.5 text-[11px] font-bold tracking-[0.12em] uppercase rounded-sm transition-all disabled:cursor-not-allowed"
@@ -339,37 +287,68 @@ type DownloadMenuProps = {
   onDownloadDocx: () => void;
   onDownloadTex: () => void;
 };
-const DownloadMenu = ({ hasPdf, hasLatex, downloadingDocx, onDownloadPdf, onDownloadDocx, onDownloadTex }: DownloadMenuProps) => (
-  <div className="relative group inline-block text-left">
-    <button
-      disabled={!hasPdf && !hasLatex}
-      className="px-3 py-1.5 text-[11px] font-bold tracking-[0.12em] uppercase rounded-sm transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5"
-      style={{ border: `1px solid ${C.border}`, color: C.textMid, background: C.bgCard }}>
-      <span>Download</span>
-      <svg width="8" height="5" viewBox="0 0 10 6" fill="none">
-        <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-      </svg>
-    </button>
-    <div className="absolute right-0 top-full mt-1 w-44 rounded-md shadow-lg hidden group-hover:block z-50 border py-1"
-         style={{ background: "#fffdf9", borderColor: C.border }}>
-      <button onClick={onDownloadPdf} disabled={!hasPdf}
-        className="w-full text-left px-3 py-2 text-xs font-semibold hover:bg-[#f0ebe3] flex items-center justify-between transition-colors disabled:opacity-30"
-        style={{ color: C.textMid }}>
-        <span>PDF Document</span><span className="text-[10px]" style={{ color: C.textFaint }}>.pdf</span>
+const DownloadMenu = ({ hasPdf, hasLatex, downloadingDocx, onDownloadPdf, onDownloadDocx, onDownloadTex }: DownloadMenuProps) => {
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const disabled = !hasPdf && !hasLatex;
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
+
+  const download = (action: () => void) => {
+    action();
+    setOpen(false);
+  };
+
+  return (
+    <div ref={menuRef} className="relative inline-block text-left">
+      <button
+        type="button"
+        disabled={disabled}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen(value => !value)}
+        className="px-3 py-1.5 text-[11px] font-bold tracking-[0.12em] uppercase rounded-sm transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5"
+        style={{ border: `1px solid ${open ? C.text : C.border}`, color: C.textMid, background: open ? "#fffdf9" : C.bgCard }}>
+        <span>Download</span>
+        <svg width="8" height="5" viewBox="0 0 10 6" fill="none" aria-hidden="true" className="transition-transform" style={{ transform: open ? "rotate(180deg)" : "none" }}>
+          <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
       </button>
-      <button onClick={onDownloadDocx} disabled={downloadingDocx || !hasLatex}
-        className="w-full text-left px-3 py-2 text-xs font-semibold hover:bg-[#f0ebe3] flex items-center justify-between transition-colors disabled:opacity-30"
-        style={{ color: C.textMid }}>
-        <span>{downloadingDocx ? "Generating..." : "Word Document"}</span><span className="text-[10px]" style={{ color: C.textFaint }}>.docx</span>
-      </button>
-      <button onClick={onDownloadTex} disabled={!hasLatex}
-        className="w-full text-left px-3 py-2 text-xs font-semibold hover:bg-[#f0ebe3] flex items-center justify-between transition-colors disabled:opacity-30"
-        style={{ color: C.textMid }}>
-        <span>LaTeX Source</span><span className="text-[10px]" style={{ color: C.textFaint }}>.tex</span>
-      </button>
+      {open && <div role="menu" className="absolute right-0 top-full mt-1 w-44 rounded-md shadow-lg z-50 border py-1"
+           style={{ background: "#fffdf9", borderColor: C.border }}>
+        <button type="button" role="menuitem" onClick={() => download(onDownloadPdf)} disabled={!hasPdf}
+          className="w-full text-left px-3 py-2 text-xs font-semibold hover:bg-[#f0ebe3] flex items-center justify-between transition-colors disabled:opacity-30"
+          style={{ color: C.textMid }}>
+          <span>PDF Document</span><span className="text-[10px]" style={{ color: C.textFaint }}>.pdf</span>
+        </button>
+        <button type="button" role="menuitem" onClick={() => download(onDownloadDocx)} disabled={downloadingDocx || !hasLatex}
+          className="w-full text-left px-3 py-2 text-xs font-semibold hover:bg-[#f0ebe3] flex items-center justify-between transition-colors disabled:opacity-30"
+          style={{ color: C.textMid }}>
+          <span>{downloadingDocx ? "Generating..." : "Word Document"}</span><span className="text-[10px]" style={{ color: C.textFaint }}>.docx</span>
+        </button>
+        <button type="button" role="menuitem" onClick={() => download(onDownloadTex)} disabled={!hasLatex}
+          className="w-full text-left px-3 py-2 text-xs font-semibold hover:bg-[#f0ebe3] flex items-center justify-between transition-colors disabled:opacity-30"
+          style={{ color: C.textMid }}>
+          <span>LaTeX Source</span><span className="text-[10px]" style={{ color: C.textFaint }}>.tex</span>
+        </button>
+      </div>}
     </div>
-  </div>
-);
+  );
+};
 
 const IconMore = () => (
   <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -390,6 +369,9 @@ type EditorHeaderProps = {
   savingToJob: boolean;
   savedToJob: boolean;
   onSaveToJob: () => void;
+  coverLetterAvailable: boolean;
+  coverLetterBusy: boolean;
+  onCoverLetter: () => void;
   busy: boolean;
   onRecompile: () => void;
   hasPdf: boolean;
@@ -406,6 +388,7 @@ type EditorHeaderProps = {
 const EditorHeader = ({
   eyebrow, title, backHref, backLabel, jobId,
   copied, onCopy, savingToJob, savedToJob, onSaveToJob,
+  coverLetterAvailable, coverLetterBusy, onCoverLetter,
   busy, onRecompile, hasPdf, hasLatex, downloadingDocx,
   onDownloadPdf, onDownloadDocx, onDownloadTex,
   mode, onModeChange, extra,
@@ -428,6 +411,7 @@ const EditorHeader = ({
           <CopyLatexButton copied={copied} onClick={onCopy} />
           <DownloadMenu hasPdf={hasPdf} hasLatex={hasLatex} downloadingDocx={downloadingDocx} onDownloadPdf={onDownloadPdf} onDownloadDocx={onDownloadDocx} onDownloadTex={onDownloadTex} />
           {jobId && <SaveToJobButton savingToJob={savingToJob} savedToJob={savedToJob} onClick={onSaveToJob} />}
+          {jobId && <CoverLetterActionButton available={coverLetterAvailable} busy={coverLetterBusy} onClick={onCoverLetter} />}
         </div>
 
         <RecompileButton busy={busy} onClick={onRecompile} />
@@ -448,10 +432,16 @@ const EditorHeader = ({
                   {copied ? "Copied!" : "Copy LaTeX"}
                 </button>
                 {jobId && (
-                  <button onClick={() => { onSaveToJob(); setMoreOpen(false); }} disabled={savingToJob}
-                    className="w-full text-left px-3 py-2 text-xs font-semibold hover:bg-[#f0ebe3] transition-colors disabled:opacity-40" style={{ color: C.textMid }}>
-                    {savedToJob ? "Saved!" : savingToJob ? "Saving..." : "Save to Job"}
-                  </button>
+                  <>
+                    <button onClick={() => { onSaveToJob(); setMoreOpen(false); }} disabled={savingToJob}
+                      className="w-full text-left px-3 py-2 text-xs font-semibold hover:bg-[#f0ebe3] transition-colors disabled:opacity-40" style={{ color: C.textMid }}>
+                      {savedToJob ? "Saved!" : savingToJob ? "Saving..." : "Save to Job"}
+                    </button>
+                    <button onClick={() => { onCoverLetter(); setMoreOpen(false); }} disabled={coverLetterBusy}
+                      className="w-full text-left px-3 py-2 text-xs font-semibold hover:bg-[#f0ebe3] transition-colors disabled:opacity-40" style={{ color: C.green }}>
+                      {coverLetterBusy ? "Writing cover letter..." : coverLetterAvailable ? "Open Cover Letter" : "Generate Cover Letter"}
+                    </button>
+                  </>
                 )}
                 <div className="my-1 border-t" style={{ borderColor: C.border }} />
                 <button onClick={() => { onDownloadPdf(); setMoreOpen(false); }} disabled={!hasPdf}
@@ -479,6 +469,7 @@ const EditorHeader = ({
 
 function GeneratePageContent() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const jobId = searchParams.get("job_id");
   const userQuery = useCurrentUser();
@@ -524,6 +515,11 @@ function GeneratePageContent() {
   const [downloadingDocx, setDownloadingDocx] = useState(false);
   const [jobLatexLoading, setJobLatexLoading] = useState(Boolean(jobId));
   const [jobLatexError, setJobLatexError] = useState("");
+  const [coverLetter, setCoverLetter] = useState("");
+  const [coverLetterOpen, setCoverLetterOpen] = useState(false);
+  const [coverLetterGenerating, setCoverLetterGenerating] = useState(false);
+  const [coverLetterSaving, setCoverLetterSaving] = useState(false);
+  const [coverLetterError, setCoverLetterError] = useState("");
 
   const handleDownloadTex = () => {
     if (!latex) return;
@@ -697,7 +693,10 @@ function GeneratePageContent() {
   }, [presetsQuery.data]);
 
   useEffect(() => {
-    if (jobDetailsQuery.data) setJobLabel(`${jobDetailsQuery.data.company_name} — ${jobDetailsQuery.data.job_title}`);
+    if (jobDetailsQuery.data) {
+      setJobLabel(`${jobDetailsQuery.data.company_name} — ${jobDetailsQuery.data.job_title}`);
+      setCoverLetter(jobDetailsQuery.data.cover_letter || "");
+    }
   }, [jobDetailsQuery.data]);
 
   useEffect(() => { 
@@ -865,10 +864,75 @@ function GeneratePageContent() {
     setSavingToJob(false);
   }
   };
+
+  const generateCoverLetter = async () => {
+    if (!jobId) return;
+    setCoverLetterOpen(true);
+    setCoverLetterGenerating(true);
+    setCoverLetterError("");
+    try {
+      const response = await fetch(`${API_URL}/tracker/${jobId}/generate-cover-letter`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error(await getApiError(response, "Unable to generate a cover letter."));
+      const data = await response.json() as { cover_letter: string };
+      setCoverLetter(data.cover_letter);
+      const numericJobId = Number(jobId);
+      queryClient.setQueryData<JobDetails>(queryKeys.trackerDetails(numericJobId), current => current ? { ...current, cover_letter: data.cover_letter } : current);
+    } catch (error) {
+      setCoverLetterError(error instanceof Error ? error.message : "Unable to generate a cover letter.");
+    } finally {
+      setCoverLetterGenerating(false);
+    }
+  };
+
+  const handleCoverLetterAction = () => {
+    setCoverLetterError("");
+    if (coverLetter.trim()) setCoverLetterOpen(true);
+    else void generateCoverLetter();
+  };
+
+  const handleSaveCoverLetter = async () => {
+    if (!jobId || !coverLetter.trim()) return;
+    setCoverLetterSaving(true);
+    setCoverLetterError("");
+    try {
+      const response = await fetch(`${API_URL}/tracker/${jobId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ cover_letter: coverLetter }),
+      });
+      if (!response.ok) throw new Error(await getApiError(response, "Unable to save the cover letter."));
+      const updatedJob = await response.json() as JobDetails;
+      setCoverLetter(updatedJob.cover_letter || coverLetter);
+      queryClient.setQueryData(queryKeys.trackerDetails(Number(jobId)), updatedJob);
+      setCoverLetterOpen(false);
+    } catch (error) {
+      setCoverLetterError(error instanceof Error ? error.message : "Unable to save the cover letter.");
+    } finally {
+      setCoverLetterSaving(false);
+    }
+  };
   
   const onDocumentLoadSuccess = useCallback(({ numPages }: { numPages: number }) => setNumPages(numPages), []);
   const isBusy = appState === "generating" || appState === "compiling";
   const lineCount = latex.split("\n").length;
+  const coverLetterEditor = coverLetterOpen && jobId ? (
+    <CoverLetterEditor
+      companyName={jobDetailsQuery.data?.company_name || "Application"}
+      jobTitle={jobDetailsQuery.data?.job_title || "Tailored role"}
+      text={coverLetter}
+      error={coverLetterError}
+      generating={coverLetterGenerating}
+      saving={coverLetterSaving}
+      onChange={setCoverLetter}
+      onClose={() => setCoverLetterOpen(false)}
+      onGenerate={() => { void generateCoverLetter(); }}
+      onSave={() => { void handleSaveCoverLetter(); }}
+    />
+  ) : null;
 
   const updateDraft = (key: "name" | "summary", value: string) => {
     setDraft(d => ({ ...d, [key]: value }));
@@ -899,17 +963,30 @@ function GeneratePageContent() {
     setLatex(current => replaceResumeItem(current, index, value));
   };
 
-  const updateEntry = (entry: ResumeDraft["sections"][number]["entries"][number], field: "title" | "subtitle" | "meta", value: string) => {
+  const updateEntry = (sectionName: string, entry: ResumeDraft["sections"][number]["entries"][number], field: "title" | "subtitle" | "meta" | "description", value: string) => {
+    const isEducation = sectionName.trim().toLowerCase() === "education";
     setDraft(d => ({
       ...d,
-      sections: d.sections.map(section => ({
-        ...section,
-        entries: section.entries.map(item => item === entry ? { ...item, [field]: value } : item),
-      })),
+      sections: d.sections.map(section => section.name === sectionName
+        ? { ...section, entries: section.entries.map(item => item === entry ? { ...item, [field]: value } : item) }
+        : section),
     }));
     if (entry.command === "resumeSubheading") {
-      const fieldIndex = field === "title" ? 0 : field === "subtitle" ? 2 : 1;
-      setLatex(current => replaceCommandArgument(current, entry.command, entry.occurrence, fieldIndex, value));
+      if (isEducation && (field === "subtitle" || field === "description")) {
+        const course = field === "subtitle" ? value : entry.subtitle;
+        const description = field === "description" ? value : entry.description;
+        setLatex(current => replaceCommandArgument(current, entry.command, entry.occurrence, 2, formatEducationDetails(course, description)));
+      } else if (field !== "description") {
+        const fieldIndex = field === "title" ? 0 : field === "subtitle" ? 2 : 1;
+        setLatex(current => {
+          if (field !== "meta" || isEducation) {
+            return replaceCommandArgument(current, entry.command, entry.occurrence, fieldIndex, value);
+          }
+          const [location, ...dateParts] = value.split(" · ");
+          const withLocation = replaceCommandArgument(current, entry.command, entry.occurrence, 1, location);
+          return replaceCommandArgument(withLocation, entry.command, entry.occurrence, 3, dateParts.join(" · "));
+        });
+      }
     } else {
       const fieldIndex = field === "meta" ? 1 : 0;
       setLatex(current => replaceCommandArgument(current, entry.command, entry.occurrence, fieldIndex, value));
@@ -1083,6 +1160,9 @@ function GeneratePageContent() {
             savingToJob={savingToJob}
             savedToJob={savedToJob}
             onSaveToJob={handleSaveToJob}
+            coverLetterAvailable={Boolean(coverLetter.trim())}
+            coverLetterBusy={coverLetterGenerating}
+            onCoverLetter={handleCoverLetterAction}
             busy={isBusy}
             onRecompile={() => compileLatex()}
             hasPdf={!!pdfUrl}
@@ -1094,6 +1174,7 @@ function GeneratePageContent() {
             mode={editorMode}
             onModeChange={setEditorMode}
           />
+          {coverLetterEditor}
 
           <div className="flex min-h-0 flex-1 flex-col overflow-y-auto lg:flex-row lg:overflow-hidden">
             <section className="w-full shrink-0 px-4 py-6 sm:px-5 lg:w-[53%] lg:flex-1 lg:overflow-y-auto lg:px-10 lg:py-7">
@@ -1126,16 +1207,23 @@ function GeneratePageContent() {
                           <div className="space-y-3">
                             {section.detailType === "skills" && section.details.map(detail => <div key={detail.index} className="grid gap-2 sm:grid-cols-[minmax(150px,0.35fr)_1fr]"><label className="text-xs font-semibold">Category<input value={detail.label} readOnly className="mt-1 w-full rounded-md border px-2.5 py-2 text-sm font-normal" style={{ borderColor: C.border, background: "#f2eee8", color: C.textMuted }} /></label><label className="text-xs font-semibold">Skills / tools<textarea value={detail.value} onChange={e => updateSectionDetail(section.name, detail, e.target.value)} rows={Math.max(2, Math.ceil(detail.value.length / 78) + 1)} className="mt-1 w-full resize-y overflow-hidden rounded-md border px-2.5 py-2 text-sm font-normal leading-5 outline-none focus:ring-2" style={{ borderColor: C.border, background: "#faf8f4", color: C.text, outlineColor: C.greenBorder }} /></label></div>)}
                             {section.detailType === "certifications" && section.details.map(detail => <label key={detail.index} className="text-xs font-semibold">Certification list<textarea value={detail.value} onChange={e => updateSectionDetail(section.name, detail, e.target.value)} rows={Math.max(3, Math.ceil(detail.value.length / 78) + 1)} className="mt-1 w-full resize-y overflow-hidden rounded-md border px-2.5 py-2 text-sm font-normal leading-5 outline-none focus:ring-2" style={{ borderColor: C.border, background: "#faf8f4", color: C.text, outlineColor: C.greenBorder }} /></label>)}
-                            {section.entries.map(entry => <div key={entry.command + entry.occurrence} className="rounded-lg border p-4" style={{ background: "#faf8f4", borderColor: C.border }}>
-                              <div className="grid gap-3 sm:grid-cols-2">
-                                <label className="text-xs font-semibold">Title<input value={entry.title} onChange={e => updateEntry(entry, "title", e.target.value)} className="mt-1 w-full rounded-md border px-2.5 py-2 text-sm font-normal outline-none focus:ring-2" style={{ borderColor: C.border, background: "#fffdf9", color: C.text, outlineColor: C.greenBorder }} /></label>
-                                <label className="text-xs font-semibold">{entry.command === "resumeProjectHeading" ? "Tools / stack" : "Role"}<input value={entry.subtitle} onChange={e => updateEntry(entry, "subtitle", e.target.value)} className="mt-1 w-full rounded-md border px-2.5 py-2 text-sm font-normal outline-none focus:ring-2" style={{ borderColor: C.border, background: "#fffdf9", color: C.text, outlineColor: C.greenBorder }} /></label>
-                                <label className="text-xs font-semibold sm:col-span-2">{entry.command === "resumeProjectHeading" ? "Dates" : "Location · dates"}<input value={entry.meta} onChange={e => updateEntry(entry, "meta", e.target.value)} className="mt-1 w-full rounded-md border px-2.5 py-2 text-sm font-normal outline-none focus:ring-2" style={{ borderColor: C.border, background: "#fffdf9", color: C.text, outlineColor: C.greenBorder }} /></label>
-                              </div>
-                              <div className="mt-4 space-y-3">
-                                {entry.items.map((bullet, itemIndex) => <div key={bullet.index} className="flex gap-2"><span className="mt-3 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: C.greenBorder }} /><textarea aria-label={section.name + " description " + (itemIndex + 1)} value={bullet.text} onChange={e => updateBullet(bullet.index, e.target.value)} rows={Math.max(2, Math.ceil(bullet.text.length / 78) + 1)} className="w-full resize-y overflow-hidden rounded-lg border px-3 py-2 text-sm leading-5 outline-none focus:ring-2" style={{ borderColor: C.border, background: "#fffdf9", color: C.text, outlineColor: C.greenBorder }} /></div>)}
-                              </div>
-                            </div>)}
+                            {section.entries.map(entry => {
+                              const isEducation = section.name.trim().toLowerCase() === "education";
+                              const titleLabel = isEducation ? "School" : "Title";
+                              const subtitleLabel = isEducation ? "Course / degree" : entry.command === "resumeProjectHeading" ? "Tools / stack" : "Role";
+                              const metaLabel = isEducation ? "Location" : entry.command === "resumeProjectHeading" ? "Dates" : "Location · dates";
+                              return <div key={entry.command + entry.occurrence} className="rounded-lg border p-4" style={{ background: "#faf8f4", borderColor: C.border }}>
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                  <label className="text-xs font-semibold">{titleLabel}<input value={entry.title} onChange={e => updateEntry(section.name, entry, "title", e.target.value)} className="mt-1 w-full rounded-md border px-2.5 py-2 text-sm font-normal outline-none focus:ring-2" style={{ borderColor: C.border, background: "#fffdf9", color: C.text, outlineColor: C.greenBorder }} /></label>
+                                  <label className="text-xs font-semibold">{subtitleLabel}<input value={entry.subtitle} onChange={e => updateEntry(section.name, entry, "subtitle", e.target.value)} className="mt-1 w-full rounded-md border px-2.5 py-2 text-sm font-normal outline-none focus:ring-2" style={{ borderColor: C.border, background: "#fffdf9", color: C.text, outlineColor: C.greenBorder }} /></label>
+                                  <label className="text-xs font-semibold sm:col-span-2">{metaLabel}<input value={entry.meta} onChange={e => updateEntry(section.name, entry, "meta", e.target.value)} className="mt-1 w-full rounded-md border px-2.5 py-2 text-sm font-normal outline-none focus:ring-2" style={{ borderColor: C.border, background: "#fffdf9", color: C.text, outlineColor: C.greenBorder }} /></label>
+                                  {isEducation && <label className="text-xs font-semibold sm:col-span-2">Description<textarea value={entry.description} onChange={e => updateEntry(section.name, entry, "description", e.target.value)} rows={Math.max(2, Math.ceil(entry.description.length / 78) + 1)} className="mt-1 w-full resize-y overflow-hidden rounded-md border px-2.5 py-2 text-sm font-normal leading-5 outline-none focus:ring-2" style={{ borderColor: C.border, background: "#fffdf9", color: C.text, outlineColor: C.greenBorder }} /></label>}
+                                </div>
+                                {entry.items.length > 0 && <div className="mt-4 space-y-3">
+                                  {entry.items.map((bullet, itemIndex) => <div key={bullet.index} className="flex gap-2"><span className="mt-3 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: C.greenBorder }} /><textarea aria-label={section.name + " description " + (itemIndex + 1)} value={bullet.text} onChange={e => updateBullet(bullet.index, e.target.value)} rows={Math.max(2, Math.ceil(bullet.text.length / 78) + 1)} className="w-full resize-y overflow-hidden rounded-lg border px-3 py-2 text-sm leading-5 outline-none focus:ring-2" style={{ borderColor: C.border, background: "#fffdf9", color: C.text, outlineColor: C.greenBorder }} /></div>)}
+                                </div>}
+                              </div>;
+                            })}
                             {section.entries.length === 0 && section.bullets.map((bullet, itemIndex) => <div key={bullet.index} className="flex gap-2"><span className="mt-3 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: C.greenBorder }} /><textarea aria-label={section.name + " description " + (itemIndex + 1)} value={bullet.text} onChange={e => updateBullet(bullet.index, e.target.value)} rows={Math.max(2, Math.ceil(bullet.text.length / 78) + 1)} className="w-full resize-y overflow-hidden rounded-lg border px-3 py-2 text-sm leading-5 outline-none focus:ring-2" style={{ borderColor: C.border, background: "#faf8f4", color: C.text, outlineColor: C.greenBorder }} /></div>)}
                             {section.entries.length === 0 && section.bullets.length === 0 && section.details.length === 0 && <p className="rounded-lg px-3 py-4 text-sm" style={{ background: "#f5f2ed", color: C.textMuted }}>This section has no editable descriptions yet. Its existing layout stays preserved.</p>}
                           </div>
@@ -1195,6 +1283,9 @@ function GeneratePageContent() {
             savingToJob={savingToJob}
             savedToJob={savedToJob}
             onSaveToJob={handleSaveToJob}
+            coverLetterAvailable={Boolean(coverLetter.trim())}
+            coverLetterBusy={coverLetterGenerating}
+            onCoverLetter={handleCoverLetterAction}
             busy={isBusy}
             onRecompile={() => compileLatex()}
             hasPdf={!!pdfUrl}
@@ -1206,6 +1297,7 @@ function GeneratePageContent() {
             mode={editorMode}
             onModeChange={setEditorMode}
           />
+          {coverLetterEditor}
           <div className="flex flex-1 items-start justify-center overflow-auto p-8">
             {isBusy && <div className="absolute mt-10 rounded-lg bg-white/80 px-4 py-3 text-xs shadow-sm" style={{ color: C.textMuted }}>Updating your preview…</div>}
             {pdfUrl && <div style={{ filter: "drop-shadow(0 8px 24px rgba(0,0,0,0.18))" }}><Document file={pdfUrl} onLoadSuccess={onDocumentLoadSuccess} loading={<div className="p-10 text-xs" style={{ color: C.textMuted }}>Loading preview…</div>} error={<div className="p-10 text-xs" style={{ color: C.red }}>Preview unavailable</div>}><Page pageNumber={currentPage} renderTextLayer={true} renderAnnotationLayer={false} width={Math.min(760, window.innerWidth - 120)} /></Document></div>}
@@ -1230,6 +1322,9 @@ function GeneratePageContent() {
           savingToJob={savingToJob}
           savedToJob={savedToJob}
           onSaveToJob={handleSaveToJob}
+          coverLetterAvailable={Boolean(coverLetter.trim())}
+          coverLetterBusy={coverLetterGenerating}
+          onCoverLetter={handleCoverLetterAction}
           busy={isBusy}
           onRecompile={() => compileLatex()}
           hasPdf={!!pdfUrl}
@@ -1277,6 +1372,7 @@ function GeneratePageContent() {
             </>
           }
         />
+        {coverLetterEditor}
 
         {/* Compile status */}
         {(appState === "error" || appState === "editing" || numPages > 1) && (
