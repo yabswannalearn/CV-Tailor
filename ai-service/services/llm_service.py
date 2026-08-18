@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from models.schemas import UserProfile, Education, Experience, Project, Certification, SkillItem
 from models import database_models as db_models
 from services.templates import TEMPLATES
+from services.preset_service import resolve_preset
 from google import genai
 
 load_dotenv()
@@ -262,7 +263,7 @@ def clean_json_response(raw: str) -> str:
 
 def build_heading(profile: UserProfile) -> str:
     name = f"{profile.first_name} {profile.last_name}".upper()
-    
+
     contact_parts = []
     if profile.mobile_no:
         contact_parts.append(r"\faPhone\ " + profile.mobile_no)
@@ -276,7 +277,7 @@ def build_heading(profile: UserProfile) -> str:
         contact_parts.append(r"\href{" + profile.github + r"}{\faGithub\ \underline{" + display + r"}}")
 
     contact_line = " $|$ ".join(contact_parts)
-    
+
     portfolio_line = ""
     if profile.portfolio:
         display = profile.portfolio.replace("https://", "").replace("http://", "")
@@ -353,7 +354,7 @@ def build_certifications(cert_line: str) -> str:
 
 def assemble_latex(profile: UserProfile, ai_content: dict, template_id: str = "classic") -> str:
     doc = TEMPLATES.get(template_id, TEMPLATES["classic"])
-    
+
     # Relax vertical spacing in LaTeX template if the profile is short to naturally fill the page
     num_exp = len(ai_content.get("experience", []))
     num_proj = len(ai_content.get("projects", []))
@@ -364,7 +365,7 @@ def assemble_latex(profile: UserProfile, ai_content: dict, template_id: str = "c
         doc = doc.replace(r"\vspace{-2pt}", r"\vspace{1pt}")
         doc = doc.replace(r"\vspace{-16pt}", r"\vspace{-4pt}")
         doc = doc.replace(r"\vspace{-13pt}", r"\vspace{-2pt}")
-    
+
     # Modern template heading overrides
     heading = build_heading(profile)
     if template_id == "modern":
@@ -380,13 +381,13 @@ def assemble_latex(profile: UserProfile, ai_content: dict, template_id: str = "c
         if profile.github:
             display = profile.github.replace("https://", "").replace("http://", "")
             contact_parts.append(r"\href{" + profile.github + r"}{\faGithub\ \underline{" + display + r"}}")
-        
+
         contact_line = " $|$ ".join(contact_parts)
         portfolio_line = ""
         if profile.portfolio:
             display = profile.portfolio.replace("https://", "").replace("http://", "")
             portfolio_line = r"\\ \href{" + profile.portfolio + r"}{\faGlobe\ \underline{" + display + r"}}"
-            
+
         heading = (
             r"\begin{center}" + "\n"
             r"    {\Huge \textbf{\textcolor{primaryColor}{" + name + r"}}} \\ \vspace{4pt}" + "\n"
@@ -410,14 +411,12 @@ def generate_latex_resume(db_profile: db_models.Profile, jd: str, template_id: s
     profile = db_profile_to_schema(db_profile)
     
     preset_dict = None
-    if preset_slug and preset_slug != "blank" and db:
-        preset = db.query(db_models.ResumePreset).filter(
-            (db_models.ResumePreset.slug == preset_slug) |
-            (db_models.ResumePreset.display_name.ilike(preset_slug))
-        ).first()
+    if db:
+        preset = resolve_preset(db, preset_slug)
         if preset:
             preset_dict = preset.__dict__
-            
+
+
     historical_evidence = retrieve_successful_evidence(db_profile, jd, db)
     prompt = build_prompt(profile, jd, preset_dict, custom_role=preset_slug, historical_evidence=historical_evidence)
 

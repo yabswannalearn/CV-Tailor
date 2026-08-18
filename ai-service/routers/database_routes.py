@@ -7,6 +7,7 @@ from models.schemas import UserProfile
 import io
 from pypdf import PdfReader
 from services.llm_service import extract_profile_from_resume
+from services.preset_service import resolve_preset
 from limiter import limiter
 
 router = APIRouter(
@@ -170,20 +171,15 @@ async def save_profile(profile_data: UserProfile, request: Request, db: Session 
                 skill_name=skill.skill_name
             ))
             
-        preset_slug = profile_data.preset_slug
         existing_skills = {s.skill_name.lower() for s in profile_data.skills}
-        if preset_slug and preset_slug != "blank":
-            preset = db.query(db_models.ResumePreset).filter(
-                (db_models.ResumePreset.slug == preset_slug) |
-                (db_models.ResumePreset.display_name.ilike(preset_slug))
-            ).first()
-            if preset and preset.core_skills_bank:
-                for p_skill in preset.core_skills_bank:
-                    if p_skill.lower() not in existing_skills:
-                        db.add(db_models.Skill(
-                            profile_id=new_profile.id,
-                            skill_name=p_skill
-                        ))
+        preset = resolve_preset(db, profile_data.preset_slug)
+        if preset and preset.core_skills_bank:
+            for p_skill in preset.core_skills_bank:
+                if p_skill.lower() not in existing_skills:
+                    db.add(db_models.Skill(
+                        profile_id=new_profile.id,
+                        skill_name=p_skill
+                    ))
 
         for cert in profile_data.certifications:
             db.add(db_models.Certification(

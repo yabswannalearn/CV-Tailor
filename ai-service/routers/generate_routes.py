@@ -8,6 +8,7 @@ from models import database_models as db_models
 from models.schemas import GenerateRequest, GenerateCoverLetterRequest
 from services.llm_service import generate_latex_resume, generate_cover_letter
 from services.pdf_service import PDFCompilationError, compile_latex_to_pdf, pdf_page_count, apply_single_page_autofit
+from services.preset_service import resolve_preset
 from limiter import limiter
 from fastapi import Request
 
@@ -210,14 +211,8 @@ async def generate_ats_check(data: GenerateRequest, request: Request, db: Sessio
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     require_one_page(pdf_bytes)
         
-    preset_section_order = None
-    if data.preset_slug and data.preset_slug != "blank":
-        preset = db.query(db_models.ResumePreset).filter(
-            (db_models.ResumePreset.slug == data.preset_slug) |
-            (db_models.ResumePreset.display_name.ilike(data.preset_slug))
-        ).first()
-        if preset:
-            preset_section_order = preset.section_order
+    preset = resolve_preset(db, data.preset_slug)
+    preset_section_order = preset.section_order if preset else None
             
     from services.ats_check import ats_check
     import base64
