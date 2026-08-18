@@ -1,48 +1,48 @@
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional, Literal
 from datetime import date as DateType, datetime
 from typing import Optional
 
 class Education(BaseModel):
-    school_name: str
-    course: str
-    location: str
+    school_name: str = Field(max_length=150)
+    course: str = Field(max_length=150)
+    location: str = Field(max_length=100)
     description: Optional[str] = None
 
 class Experience(BaseModel):
-    job_title: str
-    company: str
-    location: str
+    job_title: str = Field(max_length=100)
+    company: str = Field(max_length=100)
+    location: str = Field(max_length=100)
     description: str
-    date_range: str
+    date_range: str = Field(max_length=50)
 
 class Project(BaseModel):
-    name: str
+    name: str = Field(max_length=100)
     description: str
-    date_range: str
+    date_range: str = Field(max_length=50)
 
 class Certification(BaseModel):
-    name: str
-    issuer: Optional[str] = None
-    date_issued: Optional[str] = None
+    name: str = Field(max_length=150)
+    issuer: Optional[str] = Field(default=None, max_length=150)
+    date_issued: Optional[str] = Field(default=None, max_length=50)
 
 class SkillItem(BaseModel):
-    skill_name: str
+    skill_name: str = Field(max_length=50)
 
 class UserProfile(BaseModel):
-    first_name: str
-    last_name: str
-    mobile_no: str
-    email: str
-    linkedin: Optional[str] = None
-    github: Optional[str] = None
-    portfolio: Optional[str] = None
+    first_name: str = Field(max_length=50)
+    last_name: str = Field(max_length=50)
+    mobile_no: str = Field(max_length=20)
+    email: str = Field(max_length=100)
+    linkedin: Optional[str] = Field(default=None, max_length=255)
+    github: Optional[str] = Field(default=None, max_length=255)
+    portfolio: Optional[str] = Field(default=None, max_length=255)
     education: List[Education]
     experience: List[Experience]
     projects: List[Project]
     skills: List[SkillItem]
     certifications: List[Certification] = []
-    preset_slug: Optional[str] = "blank"
+    preset_slug: Optional[str] = Field(default="blank", max_length=50)
 
 class GenerateRequest(BaseModel):
     email: str
