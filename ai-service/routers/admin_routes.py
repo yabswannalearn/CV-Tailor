@@ -3,6 +3,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from database import get_db
+from dependencies import get_current_user_id
 from models import database_models as db_models
 from models.schemas import AdminCreditsUpdateRequest
 
@@ -10,9 +11,7 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 
 def require_admin(request: Request, db: Session = Depends(get_db)) -> db_models.User:
-    user_id = request.session.get("user_id")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+    user_id = get_current_user_id(request)
     user = db.query(db_models.User).filter(db_models.User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")

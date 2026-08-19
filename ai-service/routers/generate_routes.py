@@ -8,6 +8,7 @@ from models import database_models as db_models
 from models.schemas import GenerateRequest, GenerateCoverLetterRequest
 from services.llm_service import generate_latex_resume, generate_cover_letter
 from services.pdf_service import PDFCompilationError, compile_latex_to_pdf, pdf_page_count, apply_single_page_autofit
+from services.preset_service import resolve_preset
 from limiter import limiter
 from fastapi import Request
 
@@ -24,6 +25,20 @@ def require_one_page(pdf_bytes: bytes) -> None:
             status_code=422,
             detail=f"Generated resume must be exactly one page; the current output is {pages} pages.",
         )
+
+
+def get_profile_or_404(db: Session, email: str) -> db_models.Profile:
+    profile = db.query(db_models.Profile).join(db_models.User).filter(
+        db_models.User.email == email
+    ).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    return profile
+
+
+def require_credits(user: db_models.User, action: str) -> None:
+    if user.credits <= 0:
+        raise HTTPException(status_code=402, detail=f"Out of credits. Please upgrade to generate more {action}.")
 
 @router.get("/templates")
 async def get_templates():
@@ -49,16 +64,9 @@ class CompileLatexRequest(BaseModel):
 @router.post("/cv")
 @limiter.limit("3/minute")
 async def generate_cv(data: GenerateRequest, request: Request, db: Session = Depends(get_db)):
-    profile = db.query(db_models.Profile).join(db_models.User).filter(
-        db_models.User.email == data.email
-    ).first()
-
-    if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found")
-
+    profile = get_profile_or_404(db, data.email)
     user = profile.owner
-    if user.credits <= 0:
-        raise HTTPException(status_code=402, detail="Out of credits. Please upgrade to generate more CVs.")
+    require_credits(user, "CVs")
 
     latex_code = generate_latex_resume(profile, data.jd, data.template_id, preset_slug=data.preset_slug, db=db)
     
@@ -71,16 +79,9 @@ async def generate_cv(data: GenerateRequest, request: Request, db: Session = Dep
 @router.post("/pdf")
 @limiter.limit("3/minute")
 async def generate_pdf(data: GenerateRequest, request: Request, db: Session = Depends(get_db)):
-    profile = db.query(db_models.Profile).join(db_models.User).filter(
-        db_models.User.email == data.email
-    ).first()
-
-    if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found")
-
+    profile = get_profile_or_404(db, data.email)
     user = profile.owner
-    if user.credits <= 0:
-        raise HTTPException(status_code=402, detail="Out of credits. Please upgrade to generate more PDFs.")
+    require_credits(user, "PDFs")
 
     latex_code = generate_latex_resume(profile, data.jd, data.template_id, preset_slug=data.preset_slug, db=db)
 
@@ -194,14 +195,10 @@ async def compile_latex_preview(data: CompileLatexRequest, request: Request):
 @router.post("/ats-check")
 @limiter.limit("5/minute")
 async def generate_ats_check(data: GenerateRequest, request: Request, db: Session = Depends(get_db)):
-    profile = db.query(db_models.Profile).join(db_models.User).filter(db_models.User.email == data.email).first()
-    if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found")
-        
+    profile = get_profile_or_404(db, data.email)
     user = profile.owner
-    if user.credits <= 0:
-        raise HTTPException(status_code=402, detail="Out of credits. Please upgrade to generate more CVs.")
-        
+    require_credits(user, "CVs")
+
     latex_code = generate_latex_resume(profile, data.jd, data.template_id, data.preset_slug, db)
     
     try:
@@ -210,14 +207,8 @@ async def generate_ats_check(data: GenerateRequest, request: Request, db: Sessio
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     require_one_page(pdf_bytes)
         
-    preset_section_order = None
-    if data.preset_slug and data.preset_slug != "blank":
-        preset = db.query(db_models.ResumePreset).filter(
-            (db_models.ResumePreset.slug == data.preset_slug) |
-            (db_models.ResumePreset.display_name.ilike(data.preset_slug))
-        ).first()
-        if preset:
-            preset_section_order = preset.section_order
+    preset = resolve_preset(db, data.preset_slug)
+    preset_section_order = preset.section_order if preset else None
             
     from services.ats_check import ats_check
     import base64
@@ -237,16 +228,9 @@ async def generate_ats_check(data: GenerateRequest, request: Request, db: Sessio
 @router.post("/cover-letter")
 @limiter.limit("3/minute")
 async def generate_cl(data: GenerateCoverLetterRequest, request: Request, db: Session = Depends(get_db)):
-    profile = db.query(db_models.Profile).join(db_models.User).filter(
-        db_models.User.email == data.email
-    ).first()
-
-    if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found")
-
+    profile = get_profile_or_404(db, data.email)
     user = profile.owner
-    if user.credits <= 0:
-        raise HTTPException(status_code=402, detail="Out of credits. Please upgrade to generate more cover letters.")
+    require_credits(user, "cover letters")
 
     cover_letter_content = generate_cover_letter(profile, data.jd, data.company_name)
     

@@ -71,7 +71,7 @@ app.add_middleware(
     SessionMiddleware,
     secret_key=os.getenv("SESSION_SECRET", "change-this-secret"),
     session_cookie="cv_tailor_session",
-    max_age=86400,  # 1 day
+    max_age=604800,  # 7 days
     https_only=parse_bool(os.getenv("SESSION_COOKIE_HTTPS_ONLY"), is_production),
     same_site=os.getenv("SESSION_COOKIE_SAMESITE", "none" if is_production else "lax")
 )
