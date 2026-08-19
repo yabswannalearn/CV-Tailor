@@ -103,6 +103,7 @@ async def login(data: LoginRequest, request: Request, db: Session = Depends(get_
 
     request.session["user_id"] = user.id
     request.session["email"] = user.email
+    request.session["remember_me"] = data.remember_me
 
     return {"status": "success", "user_id": user.id, "email": user.email}
 

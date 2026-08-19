@@ -3,12 +3,12 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from starlette.middleware.sessions import SessionMiddleware
 from routers import database_routes, generate_routes, auth_routes, tracker_routes, interview_routes, code_routes, presets_routes, scraper_routes, admin_routes
 import logging
 import os
 from dotenv import load_dotenv
 from database import init_db, reset_request_path, set_request_path
+from remember_me_session import RememberMeSessionMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from limiter import limiter
@@ -68,10 +68,10 @@ environment = os.getenv("ENVIRONMENT", "development").lower()
 is_production = environment == "production"
 
 app.add_middleware(
-    SessionMiddleware,
+    RememberMeSessionMiddleware,
     secret_key=os.getenv("SESSION_SECRET", "change-this-secret"),
     session_cookie="cv_tailor_session",
-    max_age=604800,  # 7 days
+    remembered_max_age=30 * 24 * 60 * 60,
     https_only=parse_bool(os.getenv("SESSION_COOKIE_HTTPS_ONLY"), is_production),
     same_site=os.getenv("SESSION_COOKIE_SAMESITE", "none" if is_production else "lax")
 )
