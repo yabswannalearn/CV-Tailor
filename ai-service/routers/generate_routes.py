@@ -5,8 +5,9 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from database import get_db
 from models import database_models as db_models
-from models.schemas import GenerateRequest, GenerateCoverLetterRequest
+from models.schemas import GenerateRequest, GenerateCoverLetterRequest, SpotEditRequest
 from services.llm_service import generate_latex_resume, generate_cover_letter
+from services.spot_edit_service import rewrite_blocks
 from services.pdf_service import PDFCompilationError, compile_latex_to_pdf, pdf_page_count, apply_single_page_autofit
 from services.preset_service import resolve_preset
 from limiter import limiter
@@ -233,9 +234,31 @@ async def generate_cl(data: GenerateCoverLetterRequest, request: Request, db: Se
     require_credits(user, "cover letters")
 
     cover_letter_content = generate_cover_letter(profile, data.jd, data.company_name)
-    
+
     # Deduct credit
     user.credits -= 1
     db.commit()
-    
+
     return {"cover_letter": cover_letter_content}
+
+
+@router.post("/spot-edit")
+@limiter.limit("10/minute")
+async def spot_edit(data: SpotEditRequest, request: Request, db: Session = Depends(get_db)):
+    """Rewrite the selected Blocks only. One Credit per Spot Edit, not per Block."""
+    profile = get_profile_or_404(db, data.email)
+    user = profile.owner
+    require_credits(user, "edits")
+
+    try:
+        blocks = await asyncio.to_thread(rewrite_blocks, profile, data)
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Spot edit failed: {exc}") from exc
+
+    # Deduct credit
+    user.credits -= 1
+    db.commit()
+
+    return {"blocks": blocks}

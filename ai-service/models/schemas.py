@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import List, Optional, Literal
 from datetime import date as DateType, datetime
 from typing import Optional
@@ -73,6 +73,43 @@ class GenerateCoverLetterRequest(BaseModel):
         v = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', v)
         v = v.strip()
         return v
+
+# A Spot Edit covers a contiguous run of Blocks inside one Section. The cap is
+# mirrored in frontend/src/lib/resumeDraft.ts (resolveSelectionToBlocks).
+MAX_SPOT_EDIT_BLOCKS = 6
+
+class SpotEditBlock(BaseModel):
+    id: str = Field(min_length=1, max_length=80)
+    order: int = Field(ge=0)
+    kind: Literal["summary", "bullet", "detail"]
+    section: str = Field(min_length=1, max_length=80)
+    text: str = Field(min_length=1, max_length=2000)
+    label: str = Field(default="", max_length=120)
+    entry_title: Optional[str] = Field(default=None, max_length=150)
+    entry_subtitle: Optional[str] = Field(default=None, max_length=150)
+
+class SpotEditRequest(BaseModel):
+    email: str
+    instruction: str = Field(min_length=1, max_length=500)
+    blocks: List[SpotEditBlock] = Field(min_length=1, max_length=MAX_SPOT_EDIT_BLOCKS)
+    jd: str = ""
+
+    @field_validator("instruction", "jd")
+    @classmethod
+    def sanitize_text(cls, v: str) -> str:
+        import re
+        return re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', v).strip()
+
+    @model_validator(mode="after")
+    def validate_block_run(self):
+        if len({block.id for block in self.blocks}) != len(self.blocks):
+            raise ValueError("A Spot Edit cannot contain duplicate Block addresses.")
+        if len({block.section.strip().casefold() for block in self.blocks}) != 1:
+            raise ValueError("A Spot Edit must stay within one Section.")
+        orders = [block.order for block in self.blocks]
+        if orders != list(range(orders[0], orders[0] + len(orders))):
+            raise ValueError("A Spot Edit must contain one contiguous, document-ordered Block run.")
+        return self
 
 class RegisterRequest(BaseModel):
     email: str

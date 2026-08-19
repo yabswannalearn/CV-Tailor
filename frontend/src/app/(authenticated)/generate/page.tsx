@@ -13,7 +13,7 @@ import RouteLoading from "@/components/RouteLoading";
 import Alert from "@/components/Alert";
 import { ButtonLink } from "@/components/Button";
 import { ApiQueryError, queryKeys, type JobDetails, useCurrentUser, usePresets, useProfile, useTrackerDetails } from "@/lib/queries";
-import { formatEducationDetails, parseResumeDraft, replaceCommandArgument, replaceFirst, replaceNthMatch, replaceResumeItem, type ResumeDraft } from "@/lib/resumeDraft";
+import { applyBlockText, formatEducationDetails, parseResumeBlocks, parseResumeDraft, replaceCommandArgument, replaceResumeItem, replaceResumeName, replaceSectionDetail, replaceSummary, resolveSelectionToBlocks, type ResumeBlock, type ResumeDraft } from "@/lib/resumeDraft";
 
 const Document = dynamic(() => import("react-pdf").then(m => m.Document), { ssr: false });
 const Page = dynamic(() => import("react-pdf").then(m => m.Page), { ssr: false });
@@ -255,6 +255,125 @@ const CoverLetterEditor = ({
           </div>
         </footer>
       </section>
+    </div>
+  );
+};
+
+// ── Spot Edit ────────────────────────────────────────────────────────────────
+// Select text in the PDF, describe the change, rewrite those Blocks only.
+
+type SpotEditProposal = { id: string; text: string; note: string };
+
+type SpotEditSession = {
+  blocks: ResumeBlock[];
+  anchor: { top: number; left: number };
+  instruction: string;
+  busy: boolean;
+  error: string;
+  proposals: SpotEditProposal[] | null;
+};
+
+const truncate = (value: string, limit = 96) => (value.length > limit ? `${value.slice(0, limit).trimEnd()}…` : value);
+
+const SpotEditPopover = ({ session, outOfCredits, onInstructionChange, onSubmit, onAccept, onClose }: {
+  session: SpotEditSession;
+  outOfCredits: boolean;
+  onInstructionChange: (value: string) => void;
+  onSubmit: () => void;
+  onAccept: () => void;
+  onClose: () => void;
+}) => {
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+
+  useEffect(() => { if (!session.proposals) inputRef.current?.focus(); }, [session.proposals]);
+
+  const blockById = (id: string) => session.blocks.find(block => block.id === id);
+
+  return (
+    <div className="absolute z-40 w-[360px] max-w-[calc(100%-2rem)] rounded-lg border shadow-xl"
+      style={{ top: session.anchor.top, left: session.anchor.left, background: "#fffdf9", borderColor: C.borderStrong }}
+      onMouseDown={event => event.stopPropagation()}
+      onMouseUp={event => event.stopPropagation()}>
+      <div className="flex items-center justify-between border-b px-3 py-2" style={{ borderColor: C.border }}>
+        <span className="text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: C.textMid }}>
+          {session.blocks.length
+            ? `Spot Edit · ${session.blocks.length} ${session.blocks.length === 1 ? "Block" : "Blocks"}`
+            : "Nothing to rewrite"}
+        </span>
+        <button onClick={onClose} className="text-[14px] leading-none" style={{ color: C.textFaint }} title="Close">×</button>
+      </div>
+
+      <div className="max-h-[320px] overflow-auto px-3 py-2.5">
+        {!session.proposals && (
+          <ul className="mb-2.5 space-y-1">
+            {session.blocks.map(block => (
+              <li key={block.id} className="rounded px-2 py-1.5 text-[11px] leading-snug"
+                style={{ background: C.bgSnippet, color: C.textMid }}>
+                {truncate(block.label ? `${block.label}: ${block.text}` : block.text)}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {session.proposals?.map(proposal => (
+          <div key={proposal.id} className="mb-2.5">
+            <p className="mb-1 text-[10px] uppercase tracking-[0.12em]" style={{ color: C.textFaint }}>Before</p>
+            <p className="mb-1.5 rounded px-2 py-1.5 text-[11px] leading-snug line-through"
+              style={{ background: C.bgSnippet, color: C.textMuted }}>
+              {truncate(blockById(proposal.id)?.text || "", 140)}
+            </p>
+            <p className="mb-1 text-[10px] uppercase tracking-[0.12em]" style={{ color: C.green }}>After</p>
+            <p className="rounded px-2 py-1.5 text-[11px] leading-snug"
+              style={{ background: C.greenLight, color: C.text, border: `1px solid ${C.greenBorder}` }}>
+              {proposal.text}
+            </p>
+            {proposal.note && (
+              <p className="mt-1 text-[10px] leading-snug" style={{ color: "#b45309" }}>⚠ {proposal.note}</p>
+            )}
+          </div>
+        ))}
+
+        {!session.proposals && session.blocks.length > 0 && (
+          <textarea ref={inputRef} rows={2} value={session.instruction}
+            onChange={event => onInstructionChange(event.target.value)}
+            onKeyDown={event => {
+              if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); onSubmit(); }
+            }}
+            placeholder="How should this change? e.g. make it more metric-heavy"
+            className="w-full resize-none rounded border px-2 py-1.5 text-[12px] outline-none"
+            style={{ borderColor: C.border, background: C.bgEditor, color: C.text }} />
+        )}
+
+        {session.error && <p className="mt-1.5 text-[11px]" style={{ color: C.red }}>{session.error}</p>}
+        {outOfCredits && !session.proposals && (
+          <p className="mt-1.5 text-[11px]" style={{ color: C.red }}>Out of credits.</p>
+        )}
+      </div>
+
+      <div className="flex items-center justify-between border-t px-3 py-2" style={{ borderColor: C.border }}>
+        <span className="text-[10px]" style={{ color: C.textFaint }}>
+          {session.proposals ? "Applies to the selected Blocks only" : "1 credit"}
+        </span>
+        <div className="flex items-center gap-1.5">
+          <button onClick={onClose} className="rounded px-2.5 py-1 text-[11px] font-semibold"
+            style={{ color: C.textMid, border: `1px solid ${C.border}` }}>
+            {session.proposals ? "Discard" : "Cancel"}
+          </button>
+          <button
+            onClick={session.proposals ? onAccept : onSubmit}
+            disabled={session.busy || (!session.proposals && (!session.blocks.length || !session.instruction.trim() || outOfCredits))}
+            className="rounded px-2.5 py-1 text-[11px] font-bold disabled:cursor-not-allowed disabled:opacity-40"
+            style={{ background: C.greenLight, color: C.green, border: `1px solid ${C.greenBorder}` }}>
+            {session.busy ? "Rewriting…" : session.proposals ? "Accept" : "Rewrite"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 };
@@ -520,6 +639,7 @@ function GeneratePageContent() {
   const [coverLetterGenerating, setCoverLetterGenerating] = useState(false);
   const [coverLetterSaving, setCoverLetterSaving] = useState(false);
   const [coverLetterError, setCoverLetterError] = useState("");
+  const [spotEdit, setSpotEdit] = useState<SpotEditSession | null>(null);
 
   const handleDownloadTex = () => {
     if (!latex) return;
@@ -803,6 +923,137 @@ function GeneratePageContent() {
     }
   };
 
+  // ── Spot Edit ──────────────────────────────────────────────────────────────
+  const handlePdfSelection = (event: React.MouseEvent) => {
+    if (event.detail > 1) return;
+    const selection = window.getSelection();
+    const text = selection?.toString().replace(/\s+/g, " ").trim() || "";
+    if (!text || text.length < 8 || !latex || !selection?.rangeCount) return;
+
+    const container = event.currentTarget as HTMLElement;
+    const pageEl = container.querySelector(".react-pdf__Page");
+    if (!pageEl) return;
+
+    const rect = selection.getRangeAt(0).getBoundingClientRect();
+    if (!rect.width && !rect.height) return;
+
+    // Blocks have no PDF coordinates, so pass how far down the page the selection
+    // sits and let resolveSelectionToBlocks use it to break ties. See docs/adr/0001.
+    const pageRect = pageEl.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    const pageRatio = pageRect.height > 0
+      ? Math.min(1, Math.max(0, (rect.top + rect.height / 2 - pageRect.top) / pageRect.height))
+      : undefined;
+    const hintRatio = pageRatio === undefined
+      ? undefined
+      : ((Math.max(1, currentPage) - 1) + pageRatio) / Math.max(1, numPages);
+
+    const resolved = resolveSelectionToBlocks(parseResumeBlocks(latex), text, hintRatio);
+    const includesHeading = resolved.some(block => !block.editable);
+    const editable = includesHeading ? [] : resolved;
+
+    setSpotEdit({
+      blocks: editable,
+      anchor: {
+        top: rect.bottom - containerRect.top + container.scrollTop + 8,
+        left: Math.min(
+          Math.max(8, rect.left - containerRect.left + container.scrollLeft),
+          Math.max(8, container.scrollLeft + container.clientWidth - 376),
+        ),
+      },
+      instruction: "",
+      busy: false,
+      error: editable.length
+        ? ""
+        : includesHeading
+          ? "That selection includes an entry heading — company, title and dates are facts. Edit it in the Edit view."
+          : "Couldn't match that selection. Try selecting a whole sentence.",
+      proposals: null,
+    });
+  };
+
+  const runSpotEdit = async () => {
+    if (!spotEdit?.blocks.length || !spotEdit.instruction.trim() || !userEmail) return;
+    setSpotEdit(session => session && { ...session, busy: true, error: "" });
+    try {
+      const res = await fetch(`${API_URL}/generate/spot-edit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          email: userEmail,
+          instruction: spotEdit.instruction,
+          jd: jd.trim() || jobDetailsQuery.data?.job_description || "",
+          blocks: spotEdit.blocks.map(block => ({
+            id: block.id,
+            order: block.order,
+            kind: block.kind,
+            section: block.sectionName,
+            text: block.text,
+            label: block.label,
+            entry_title: block.entryTitle ?? null,
+            entry_subtitle: block.entrySubtitle ?? null,
+          })),
+        }),
+      });
+      if (res.status === 402) {
+        setCredits(0);
+        throw new Error("Out of credits. Please upgrade to continue.");
+      }
+      if (!res.ok) throw new Error(await getApiError(res, "Rewrite failed."));
+      const data = await res.json() as { blocks?: unknown };
+      if (!Array.isArray(data.blocks)
+        || data.blocks.length !== spotEdit.blocks.length
+        || data.blocks.some((proposal): boolean => (
+          !proposal
+          || typeof proposal !== "object"
+          || typeof (proposal as SpotEditProposal).id !== "string"
+          || typeof (proposal as SpotEditProposal).text !== "string"
+          || typeof (proposal as SpotEditProposal).note !== "string"
+        ))) {
+        throw new Error("Rewrite returned an invalid response.");
+      }
+      const proposals = data.blocks as SpotEditProposal[];
+      const expectedIds = new Set(spotEdit.blocks.map(block => block.id));
+      if (new Set(proposals.map(proposal => proposal.id)).size !== proposals.length
+        || proposals.some(proposal => !expectedIds.has(proposal.id) || !proposal.text.trim())) {
+        throw new Error("Rewrite returned the wrong Blocks.");
+      }
+      setCredits(c => Math.max(0, c - 1));
+      setSpotEdit(session => session && { ...session, busy: false, proposals });
+    } catch (error) {
+      setSpotEdit(session => session && {
+        ...session,
+        busy: false,
+        error: error instanceof Error ? error.message : "Rewrite failed.",
+      });
+    }
+  };
+
+  const acceptSpotEdit = () => {
+    if (!spotEdit?.proposals) return;
+    const { blocks, proposals } = spotEdit;
+    // Block addresses are occurrence-based, so applying them in any order is safe.
+    setLatex(current => proposals.reduce((code, proposal) => {
+      const block = blocks.find(item => item.id === proposal.id);
+      return block ? applyBlockText(code, block, proposal.text) : code;
+    }, current));
+    setDraftReady(false);
+    setSpotEdit(null);
+    window.getSelection()?.removeAllRanges();
+  };
+
+  const spotEditLayer = spotEdit && (
+    <SpotEditPopover
+      session={spotEdit}
+      outOfCredits={credits <= 0}
+      onInstructionChange={value => setSpotEdit(session => session && { ...session, instruction: value })}
+      onSubmit={() => { void runSpotEdit(); }}
+      onAccept={acceptSpotEdit}
+      onClose={() => setSpotEdit(null)}
+    />
+  );
+
   const handleGenerate = async () => {
     if (!jd.trim() || !userEmail) return;
     if (pdfUrl) { window.URL.revokeObjectURL(pdfUrl); setPdfUrl(null); }
@@ -937,24 +1188,9 @@ function GeneratePageContent() {
   const updateDraft = (key: "name" | "summary", value: string) => {
     setDraft(d => ({ ...d, [key]: value }));
     if (key === "name") {
-      setLatex(current => {
-        if (/\\textcolor\{[^}]+\}\{([^{}]+)\}/.test(current)) {
-          return replaceFirst(current, /\\textcolor\{[^}]+\}\{([^{}]+)\}/, `\\textcolor{NavyBlue}{${value}}`);
-        }
-        return replaceFirst(current, /(\\Huge\s*\{?)[^{}\\]+(\}?)/, `$1${value}$2`);
-      });
+      setLatex(current => replaceResumeName(current, value));
     } else {
-      setLatex(current => {
-        const pattern = /(\\section\*?\{[^{}]*(?:Summary|Profile|Objective)[^{}]*\}[\s\S]*?)(?=\\section|\\end\{document\})/i;
-        if (pattern.test(current)) {
-          return current.replace(pattern, (match) => {
-            const headerMatch = match.match(/\\section\*?\{[^{}]*\}/i);
-            const header = headerMatch ? headerMatch[0] : "\\section{Summary}";
-            return `${header}\n{\\small ${value}\\par}\n`;
-          });
-        }
-        return current;
-      });
+      setLatex(current => replaceSummary(current, value));
     }
   };
 
@@ -1002,16 +1238,7 @@ function GeneratePageContent() {
     }));
     setLatex(current => {
       const section = draft.sections.find(item => item.name === sectionName);
-      if (section?.detailType === "skills") {
-        return replaceNthMatch(current, /\\textbf\{([^{}]*)\}\{\s*:\s*([^{}]*)\}/g, detail.index, (full: string) => {
-          const label = full.match(/\\textbf\{([^{}]*)\}/)?.[1] || detail.label;
-          return "\\textbf{" + label + "}{: " + value.replace(/[{}]/g, "") + "}";
-        });
-      }
-      if (section?.detailType === "certifications") {
-        return replaceNthMatch(current, /\\item\{([^{}]*)\}/g, detail.index, "\\item{" + value.replace(/[{}]/g, "") + "}");
-      }
-      return current;
+      return section?.detailType ? replaceSectionDetail(current, section.detailType, detail.index, value) : current;
     });
   };
 
@@ -1632,7 +1859,8 @@ function GeneratePageContent() {
             </div>
 
             <div className="relative flex-1 overflow-auto flex items-start justify-center py-8 px-6"
-              style={{ background: "#e8e4dd" }} onDoubleClick={handlePdfDoubleClick}>
+              style={{ background: "#e8e4dd" }} onDoubleClick={handlePdfDoubleClick} onMouseUp={handlePdfSelection}>
+              {spotEditLayer}
               {appState === "compiling" && !pdfUrl && (
                 <div className="flex flex-col items-center justify-center h-full gap-4">
                   <div className="flex gap-2">{[0,150,300].map(d => <span key={d} className="w-2 h-2 rounded-full animate-bounce" style={{ background: C.green, animationDelay: `${d}ms` }} />)}</div>

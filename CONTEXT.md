@@ -43,10 +43,22 @@ _Avoid_: role, permission level, superuser.
 A per-user integer balance (`User.credits`, default 5) that gates AI-driven generation actions (CV generation, PDF generation, cover letter generation, auto-fill) — each action decrements it by 1, and the action is blocked once it hits 0. Adjusted directly by an Admin via `/admin`.
 _Avoid_: tokens, balance, quota.
 
+**Block**:
+The smallest independently regenerable piece of a resume: one summary, one bullet, one entry heading, one skills row, one certifications line. Blocks are derived from the generated LaTeX, each has a stable address, and they have a single document order. Distinct from **Section** (`\section{...}` — Summary, Education, Experience, Projects, Technical Skills, Certifications), which *contains* Blocks.
+_Avoid_: node, element, region, chunk, segment.
+
+**Spot Edit**:
+A user-initiated rewrite of one or more Blocks driven by a free-text instruction ("make this more metric-heavy"). The user selects text in the PDF preview, the selection resolves to Blocks, the instruction applies to those Blocks only, and every other Block is left byte-identical. A Spot Edit spans a contiguous run of Blocks within one Section — never across Sections. Costs 1 Credit per Spot Edit regardless of how many Blocks it covers.
+_Avoid_: annotation, markup, comment, highlight, patch, inline edit.
+
+**No-invention rule**:
+A Spot Edit may reframe, re-emphasise, re-order or re-word what the user's profile already contains, but must never introduce a fact — above all a number — that is absent from the profile. When an instruction asks for data the profile does not hold, the rewrite proceeds on intent alone and reports that the data was unavailable. Placeholder markers such as `[X]` never reach a Block, consistent with **Metric Prompts**.
+
 ## Architectural constraints
 
 - **PDF compilation is Python + Tectonic** (`ai-service/services/pdf_service.py`), invoked directly from FastAPI. The `pdf-service/` Go/Gin app is dead code (nothing calls port 8081) and is not used. ATS validation is Python (`ai-service/services/ats_check.py`), not Go.
-- **The resume editor is a single raw LaTeX `<textarea>`** (`frontend/src/app/generate/page.tsx`). There is no structured bullet-field form. Preset prefill happens at the profile + prompt level, never as UI placeholder fields.
+- **The resume editor has three modes over one source of truth** (`frontend/src/app/(authenticated)/generate/page.tsx`): a structured field form ("Edit"), a PDF preview, and a raw LaTeX editor ("LaTeX"). The LaTeX string is the single source of truth; the structured form is a parsed projection of it (`frontend/src/lib/resumeDraft.ts`) that writes edits back into the LaTeX surgically. Preset prefill happens at the profile + prompt level, never as UI placeholder fields.
+- **The AI never emits LaTeX.** Gemini returns plain-text JSON; `services/latex_assembly.py` builds every LaTeX construct. This holds for Spot Edits too — a Spot Edit returns replacement plain text for a Block, never markup. It is what makes an AI rewrite structurally incapable of breaking compilation.
 - **Routes mount at the FastAPI root — no `/api/` prefix.** The spec's `/api/presets` is `/presets` in this codebase. Existing routers: `/generate`, `/profile`, `/auth`, `/tracker`, `/code`, `/interview`.
 - **Migrations are a standalone script** (`ai-service/migration.py`, run with `python migration.py`) using ad-hoc `ALTER TABLE` / `CREATE TABLE` statements — not Alembic.
 
@@ -54,6 +66,7 @@ _Avoid_: tokens, balance, quota.
 
 - **"Template"** is overloaded in the broader LaTeX world (a `.tex` file is a "template"). In CV Tailor, **Template = Visual Template** (classic/modern skin). The `.tex` skeleton strings are the implementation of a Template, not a separate concept. When you mean the content/role configuration, say **Preset**.
 - **"Role" vs "Preset"** — same thing. Do not model them as separate fields; both map to `Profile.preset_slug`.
+- **"Annotation"** is already taken by the PDF specification — react-pdf's `renderAnnotationLayer` means embedded PDF objects such as hyperlinks, and the generate page disables it. The user-facing act of selecting resume text and asking for a rewrite is a **Spot Edit**, never an annotation.
 
 ## Example dialogue
 
