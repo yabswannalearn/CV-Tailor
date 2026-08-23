@@ -3,11 +3,11 @@ import time
 import os
 import re
 import json
-from google import genai
 from dotenv import load_dotenv
 
 load_dotenv()
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+
+from services.llm_service import complete
 
 TIMEOUT_SECONDS = 10
 
@@ -63,8 +63,7 @@ Current code:
 
 Keep your hint to 2-4 sentences max. Do not write any code.
 """
-    response = client.models.generate_content(model="gemini-3.1-flash-lite-preview", contents=prompt)
-    return response.text.strip()
+    return complete(prompt).strip()
 
 # ── Code review ───────────────────────────────────────────────────
 def review_code(problem_title: str, problem_description: str, code: str, output: str = "") -> dict:
@@ -93,8 +92,7 @@ Review this solution and return ONLY valid JSON — no markdown, no explanation.
 }}
 """
     try:
-        response = client.models.generate_content(model="gemini-3.1-flash-lite-preview", contents=prompt)
-        raw = response.text
+        raw = complete(prompt)
         raw = re.sub(r"```(?:json)?\s*", "", raw).replace("```", "").strip()
         start = raw.find("{"); end = raw.rfind("}") + 1
         return json.loads(raw[start:end])
@@ -121,8 +119,7 @@ Explain in plain language:
 
 Keep it concise — 3-5 sentences. No code unless absolutely necessary.
 """
-    response = client.models.generate_content(model="gemini-3.1-flash-lite-preview", contents=prompt)
-    return response.text.strip()
+    return complete(prompt).strip()
 
 # ── Generate problems from JD ─────────────────────────────────────
 def generate_problems_from_jd(job_title: str, jd: str, difficulty: str, count: int) -> list:
@@ -151,12 +148,10 @@ Return ONLY valid JSON — no markdown, no explanation:
 ]
 """
     try:
-        response = client.models.generate_content(model="gemini-3.1-flash-lite-preview", contents=prompt)
-        raw = response.text
+        raw = complete(prompt)
         raw = re.sub(r"```(?:json)?\s*", "", raw).replace("```", "").strip()
         start = raw.find("["); end = raw.rfind("]") + 1
-        problems = json.loads(raw[start:end])
-        # Assign temporary IDs starting from 1000 to avoid collision with hardcoded
+        problems = json.loads(raw[start:end])        # Assign temporary IDs starting from 1000 to avoid collision with hardcoded
         for i, p in enumerate(problems):
             p["id"] = 1000 + i
         return problems

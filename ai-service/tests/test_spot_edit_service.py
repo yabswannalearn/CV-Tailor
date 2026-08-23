@@ -51,7 +51,7 @@ def make_request(**overrides):
 
 
 def fake_response(payload):
-    return SimpleNamespace(text=json.dumps(payload))
+    return json.dumps(payload)
 
 
 class BuildSpotEditPromptTests(unittest.TestCase):
@@ -140,8 +140,7 @@ class RewriteBlocksTests(unittest.TestCase):
             {"id": "bullet:0", "text": "First rewritten.", "note": "no figure available"},
         ]}
 
-        with patch("services.spot_edit_service.client") as client:
-            client.models.generate_content.return_value = fake_response(payload)
+        with patch("services.spot_edit_service.complete", return_value=fake_response(payload)):
             result = rewrite_blocks(make_profile(), request)
 
         self.assertEqual([item["id"] for item in result], ["bullet:0", "bullet:1"])
@@ -154,8 +153,7 @@ class RewriteBlocksTests(unittest.TestCase):
             {"id": "bullet:1", "kind": "bullet", "section": "Experience", "text": "Second bullet."},
         ])
 
-        with patch("services.spot_edit_service.client") as client:
-            client.models.generate_content.return_value = fake_response({"blocks": [{"id": "bullet:0", "text": "Only one."}]})
+        with patch("services.spot_edit_service.complete", return_value=fake_response({"blocks": [{"id": "bullet:0", "text": "Only one."}]})):
             with self.assertRaises(ValueError):
                 rewrite_blocks(make_profile(), request)
 
@@ -164,15 +162,13 @@ class RewriteBlocksTests(unittest.TestCase):
             {"id": "bullet:0", "text": "Rewritten."},
             {"id": "bullet:0", "text": "Rewritten twice."},
         ]}
-        with patch("services.spot_edit_service.client") as client:
-            client.models.generate_content.return_value = fake_response(payload)
+        with patch("services.spot_edit_service.complete", return_value=fake_response(payload)):
             with self.assertRaises(ValueError):
                 rewrite_blocks(make_profile(), make_request())
 
     def test_rejects_a_number_that_is_absent_from_the_current_block_and_profile(self):
         payload = {"blocks": [{"id": "bullet:0", "text": "Cut processing time by 40%."}]}
-        with patch("services.spot_edit_service.client") as client:
-            client.models.generate_content.return_value = fake_response(payload)
+        with patch("services.spot_edit_service.complete", return_value=fake_response(payload)):
             with self.assertRaisesRegex(ValueError, "unsupported number"):
                 rewrite_blocks(make_profile(), make_request())
 
@@ -180,35 +176,30 @@ class RewriteBlocksTests(unittest.TestCase):
         profile = make_profile()
         profile.experience[0].description = "Cut processing time by 40% using n8n automation."
         payload = {"blocks": [{"id": "bullet:0", "text": "Cut processing time by 40% using n8n."}]}
-        with patch("services.spot_edit_service.client") as client:
-            client.models.generate_content.return_value = fake_response(payload)
+        with patch("services.spot_edit_service.complete", return_value=fake_response(payload)):
             result = rewrite_blocks(profile, make_request())
         self.assertEqual(result[0]["text"], "Cut processing time by 40% using n8n.")
 
     def test_rejects_placeholders_even_if_the_model_ignores_the_prompt(self):
         payload = {"blocks": [{"id": "bullet:0", "text": "Improved throughput by [X]%."}]}
-        with patch("services.spot_edit_service.client") as client:
-            client.models.generate_content.return_value = fake_response(payload)
+        with patch("services.spot_edit_service.complete", return_value=fake_response(payload)):
             with self.assertRaisesRegex(ValueError, "plain resume text"):
                 rewrite_blocks(make_profile(), make_request())
 
     def test_rejects_an_empty_rewrite(self):
-        with patch("services.spot_edit_service.client") as client:
-            client.models.generate_content.return_value = fake_response({"blocks": [{"id": "bullet:0", "text": "   "}]})
+        with patch("services.spot_edit_service.complete", return_value=fake_response({"blocks": [{"id": "bullet:0", "text": "   "}]})):
             with self.assertRaises(ValueError):
                 rewrite_blocks(make_profile(), make_request())
 
     def test_rejects_unparseable_json(self):
-        with patch("services.spot_edit_service.client") as client:
-            client.models.generate_content.return_value = SimpleNamespace(text="I cannot help with that.")
+        with patch("services.spot_edit_service.complete", return_value="I cannot help with that."):
             with self.assertRaises(ValueError):
                 rewrite_blocks(make_profile(), make_request())
 
     def test_tolerates_code_fences_around_the_json(self):
         fenced = "```json\n" + json.dumps({"blocks": [{"id": "bullet:0", "text": "Rewritten."}]}) + "\n```"
 
-        with patch("services.spot_edit_service.client") as client:
-            client.models.generate_content.return_value = SimpleNamespace(text=fenced)
+        with patch("services.spot_edit_service.complete", return_value=fenced):
             result = rewrite_blocks(make_profile(), make_request(instruction="Make this concise."))
 
         self.assertEqual(result[0]["text"], "Rewritten.")
@@ -216,8 +207,7 @@ class RewriteBlocksTests(unittest.TestCase):
 
     def test_requires_a_note_when_metric_data_was_requested_but_unavailable(self):
         payload = {"blocks": [{"id": "bullet:0", "text": "Streamlined AI agent delivery for SMB clients.", "note": ""}]}
-        with patch("services.spot_edit_service.client") as client:
-            client.models.generate_content.return_value = fake_response(payload)
+        with patch("services.spot_edit_service.complete", return_value=fake_response(payload)):
             with self.assertRaisesRegex(ValueError, "numeric data was unavailable"):
                 rewrite_blocks(make_profile(), make_request())
 

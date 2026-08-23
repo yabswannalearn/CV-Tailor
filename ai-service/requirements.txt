@@ -1,4 +1,5 @@
 fastapi[standard]
+openai
 google-genai
 itsdangerous
 psycopg2-binary

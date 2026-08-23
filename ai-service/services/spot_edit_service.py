@@ -10,9 +10,7 @@ import re
 
 from models import database_models as db_models
 from models.schemas import SpotEditBlock, SpotEditRequest
-from services.llm_service import clean_json_response, client, truncate_jd
-
-MODEL = "gemini-3.1-flash-lite-preview"
+from services.llm_service import clean_json_response, complete, truncate_jd
 
 # A rewrite that grows unchecked breaks the one-page rule. Give the model a hard
 # per-Block ceiling rather than trying to repair overflow after the fact.
@@ -133,9 +131,8 @@ Return ONLY this JSON — no code fences, no commentary:
 def rewrite_blocks(profile: db_models.Profile, data: SpotEditRequest) -> list[dict]:
     prompt = build_spot_edit_prompt(profile, data)
 
-    response = client.models.generate_content(model=MODEL, contents=prompt)
     try:
-        payload = json.loads(clean_json_response(response.text))
+        payload = json.loads(clean_json_response(complete(prompt)))
     except json.JSONDecodeError as exc:
         raise ValueError(f"AI returned invalid JSON: {exc}") from exc
 

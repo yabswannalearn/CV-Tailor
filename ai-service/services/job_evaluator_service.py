@@ -2,11 +2,8 @@ import asyncio
 import json
 import os
 from typing import Dict, Any
-from google import genai
 from models import database_models as db_models
-from services.llm_service import db_profile_to_schema
-
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+from services.llm_service import db_profile_to_schema, complete
 
 async def evaluate_job_match(profile: db_models.Profile, job: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -52,16 +49,12 @@ async def evaluate_job_match(profile: db_models.Profile, job: Dict[str, Any]) ->
     - Output ONLY valid JSON.
     """
     
-    def _call_gemini():
-        return client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
-            config={"response_mime_type": "application/json"}
-        )
+    def _call_llm():
+        return complete(prompt)
 
     try:
-        response = await asyncio.to_thread(_call_gemini)
-        data = json.loads(response.text)
+        response = await asyncio.to_thread(_call_llm)
+        data = json.loads(response)
         score = int(data.get("score", 70))
         score = max(0, min(100, score))
         analysis = {

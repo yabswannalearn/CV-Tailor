@@ -1,11 +1,11 @@
 import os
 import json
 import re
-from google import genai
 from dotenv import load_dotenv
 
 load_dotenv()
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+
+from services.llm_service import complete
 
 BEHAVIORAL_QUESTIONS = [
     "Tell me about yourself.",
@@ -108,11 +108,7 @@ Return this exact JSON structure:
 """
 
     try:
-        response = client.models.generate_content(
-            model="gemini-3.1-flash-lite-preview",
-            contents=prompt,
-        )
-        raw = response.text
+        raw = complete(prompt)
         raw = re.sub(r"```(?:json)?\s*", "", raw)
         raw = re.sub(r"```", "", raw)
         start = raw.find("{")

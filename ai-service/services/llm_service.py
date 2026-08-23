@@ -7,10 +7,45 @@ from models.schemas import UserProfile, Education, Experience, Project, Certific
 from models import database_models as db_models
 from services.latex_assembly import assemble_latex
 from services.preset_service import resolve_preset
-from google import genai
+# AI_PROVIDER selects the backend: "openai" or "gemini". Both stay wired so
+# they can be swapped by changing this env var alone.
+AI_PROVIDER = os.getenv("AI_PROVIDER", "openai").strip().lower()
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite-preview")
 
-load_dotenv()
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+_clients: dict[str, object] = {}
+
+
+def _get_client(provider: str):
+    # ponytail: lazy singletons — the OpenAI SDK raises on init without a key,
+    # so clients are built on first call, not at import time.
+    if provider not in _clients:
+        if provider == "openai":
+            from openai import OpenAI
+            _clients[provider] = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        elif provider == "gemini":
+            from google import genai
+            _clients[provider] = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+        else:
+            raise ValueError(f"Unknown AI_PROVIDER '{provider}'. Use 'openai' or 'gemini'.")
+    return _clients[provider]
+
+
+def complete(prompt: str) -> str:
+    """Send one prompt to the configured provider and return its text reply."""
+    provider = AI_PROVIDER
+    client = _get_client(provider)
+    if provider == "gemini":
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt,
+        )
+        return response.text or ""
+    response = client.chat.completions.create(
+        model=OPENAI_MODEL,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return response.choices[0].message.content or ""
 
 def db_profile_to_schema(db_profile: db_models.Profile) -> UserProfile:
     return UserProfile(
@@ -275,12 +310,7 @@ def generate_latex_resume(db_profile: db_models.Profile, jd: str, template_id: s
     prompt = build_prompt(profile, jd, preset_dict, custom_role=preset_slug, historical_evidence=historical_evidence)
 
     try:
-        response = client.models.generate_content(
-            model="gemini-3.1-flash-lite-preview",
-            contents=prompt,
-        )
-
-        raw = clean_json_response(response.text)
+        raw = clean_json_response(complete(prompt))
         ai_content = json.loads(raw)
         full_latex = assemble_latex(profile, ai_content, template_id)
         return full_latex
@@ -324,16 +354,12 @@ def generate_cover_letter(db_profile: db_models.Profile, jd: str, company_name: 
     prompt = build_cover_letter_prompt(profile, jd, company_name)
 
     try:
-        response = client.models.generate_content(
-            model="gemini-3.1-flash-lite-preview",
-            contents=prompt,
-        )
-        return response.text.strip()
+        return complete(prompt).strip()
     except Exception as e:
         raise Exception(f"SERVICE ERROR: {str(e)}")
 
 def build_job_extraction_prompt(html: str) -> str:
-    # Gemini 3.1 Flash has a 1M token context window. We can pass much larger HTML chunks securely.
+    # Modern chat models handle large contexts. Pass big HTML chunks securely.
     if len(html) > 800000:
         html = html[:800000]
         
@@ -363,11 +389,7 @@ OUTPUT RULES:
 def extract_job_details(html: str) -> dict:
     prompt = build_job_extraction_prompt(html)
     try:
-        response = client.models.generate_content(
-            model="gemini-3.1-flash-lite-preview",
-            contents=prompt,
-        )
-        raw = clean_json_response(response.text)
+        raw = clean_json_response(complete(prompt))
         return json.loads(raw)
     except Exception as e:
         raise Exception(f"Failed to extract job details: {str(e)}")
@@ -410,11 +432,7 @@ OUTPUT RULES:
 4. Extract everything you can find. Make sure descriptions contain the bullet points combined.
 """
     try:
-        response = client.models.generate_content(
-            model="gemini-3.1-flash-lite-preview",
-            contents=prompt,
-        )
-        raw = clean_json_response(response.text)
+        raw = clean_json_response(complete(prompt))
         return json.loads(raw)
     except Exception as e:
         raise Exception(f"Failed to parse resume: {str(e)}")
