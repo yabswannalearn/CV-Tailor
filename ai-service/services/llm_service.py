@@ -9,7 +9,7 @@ from services.latex_assembly import assemble_latex
 from services.preset_service import resolve_preset
 # AI_PROVIDER selects the backend: "openai" or "gemini". Both stay wired so
 # they can be swapped by changing this env var alone.
-AI_PROVIDER = os.getenv("AI_PROVIDER", "openai").strip().lower()
+AI_PROVIDER = os.getenv("AI_PROVIDER", "gemini").strip().lower()
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite-preview")
 

@@ -6,7 +6,7 @@ A free, open-source CV tailoring app. Paste your profile and a job description, 
 
 ## How it works
 
-- **AI tailoring via the ChatGPT API** — the backend sends your profile + job description to OpenAI's models, which select, rewrite, and keyword-align your bullets. Gemini is supported as a drop-in alternative provider (`AI_PROVIDER=openai|gemini`).
+- **AI-powered tailoring** — the backend sends your profile + job description to Google's Gemini models (with OpenAI as a one-line backup via `AI_PROVIDER`), which select, rewrite, and keyword-align your bullets.
 - **LaTeX-quality PDFs** — the AI returns plain text only; a deterministic LaTeX assembler builds every document, so an AI rewrite can never break compilation. Compiled with Tectonic.
 - **ATS Check** — every generated PDF is validated post-compile: section order, selectable text, ATS-conventional headings.
 - **Spot Edit** — select any text in the PDF preview and describe a change ("make this more metric-heavy"). Only those lines are rewritten; a grounding pass blocks invented facts and numbers.
@@ -19,7 +19,7 @@ A free, open-source CV tailoring app. Paste your profile and a job description, 
 |---|---|
 | Frontend | Next.js (TypeScript), react-pdf preview |
 | Backend | FastAPI (Python) |
-| AI | OpenAI Chat Completions API (default) · Google Gemini (switchable) |
+| AI | Google Gemini API (default) · OpenAI Chat Completions (backup) |
 | Database | PostgreSQL |
 | PDF | Tectonic (LaTeX), pypdf-based ATS validation |
 
@@ -29,7 +29,7 @@ A free, open-source CV tailoring app. Paste your profile and a job description, 
 # 1. Backend
 cd ai-service
 pip install -r requirements.txt
-cp .env.example .env        # set DATABASE_URL, OPENAI_API_KEY (or GEMINI_API_KEY)
+cp .env.example .env        # set DATABASE_URL, GEMINI_API_KEY (or OPENAI_API_KEY)
 python migration.py         # create tables
 uvicorn main:app --reload
 
@@ -44,9 +44,9 @@ npm run dev
 All AI traffic goes through one dispatcher (`ai-service/services/llm_service.py`). Switch providers with env vars:
 
 ```env
-AI_PROVIDER=openai          # or "gemini"
-OPENAI_API_KEY=sk-...
-OPENAI_MODEL=gpt-4o-mini
-GEMINI_API_KEY=...          # only needed if AI_PROVIDER=gemini
+AI_PROVIDER=gemini          # or "openai"
+GEMINI_API_KEY=...          # required for the default provider
 GEMINI_MODEL=gemini-3.1-flash-lite-preview
+OPENAI_API_KEY=sk-...       # only needed if AI_PROVIDER=openai
+OPENAI_MODEL=gpt-4o-mini
 ```
