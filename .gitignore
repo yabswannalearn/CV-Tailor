@@ -6,6 +6,11 @@
 # --- Python / FastAPI (ai-service) ---
 ai-service/venv/
 # --- Python ---
+.venv/
+*.sqlite3
+*.sqlite3-journal
+*.sqlite3-wal
+*.sqlite3-shm
 __pycache__/
 *.py[cod]
 *$py.class

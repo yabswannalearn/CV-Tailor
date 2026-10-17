@@ -2,6 +2,18 @@
 
 A full-stack career platform: Next.js frontend, FastAPI backend (Gemini API), Postgres, and Tectonic-based LaTeX PDF compilation. Generates ATS-safe tailored resumes from a user profile + job description.
 
+## Product direction
+
+On 2026-10-09, the user selected **local first** for the planned freelancer opportunity CRM revamp. The first version serves their personal workflow as a local browser app, with CRM data stored locally and OnlineJobs.ph as the first source. Scraping and remote AI inference still require internet access. This is the target direction, not a description of an already implemented CRM migration.
+
+The isolated AI experiment now uses SQLite for opportunity source data and completed assessment/input snapshots; see [ADR-0003](docs/adr/0003-sqlite-for-local-experiment.md). SQLite is the preferred starting point for the new local CRM. The legacy backend still uses PostgreSQL and has not been migrated.
+
+The first local inbox slice lives in `experiments/chatgpt_plan`: `/` searches OnlineJobs directly into SQLite and supports optional JSON imports, date filters, queue search, paging, shortlist/skip, notes, a saved professional profile, and qualification of a selected posting. Shortlisted leads with full descriptions can generate a client-needs brief and an editable cover letter or freelancer proposal through the same Agents SDK runtime. Each generation appends a saved version with its exact source/profile snapshot; human edits use revision checks and can be reviewed and exported as text. Optional original CV text enables suggestions quoting its existing content; complete CV/PDF generation is still separate. `scrapers/onlinejobs_scraper.py` is adapted from the user's Job Scraper project; a single local background worker reports progress, cancellation, and partial failures without blocking lead review. `/ai` manages the ChatGPT connection and retains the separate synthetic proof. Runtime schema version 3 preserves prior records and adds application drafts. This early app remains separate from legacy generation and PostgreSQL data.
+
+See [ADR-0002](docs/adr/0002-local-first-freelancer-opportunity-crm.md) for the decision and [the proposed implementation sequence](docs/plans/05_local_first_freelancer_opportunity_crm.md) for the first end-to-end milestone. The existing language and constraints below describe the current application until explicitly superseded.
+
+On 2026-10-11 the user requested Tavily discovery and a fresh local-first application, with both job opportunities and direct business prospects in its first working version. [ADR-0004](docs/adr/0004-fresh-crm-for-jobs-and-business-prospects.md) updates the product scope, and [the fresh CRM plan](docs/plans/06_fresh_local_crm_tavily_discovery.md) proposes the new layout and implementation sequence. A business prospect is not evidence of an advertised job or confirmed buying intent. The rebuild and Tavily integration are not yet implemented; the running experiment remains the current application.
+
 ## Language
 
 **Preset**:
