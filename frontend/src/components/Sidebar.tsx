@@ -50,6 +50,14 @@ const IconDiscover = () => (
   </svg>
 );
 
+const IconChat = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+    <path d="M2 3h12v8H6l-4 3V3z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
+    <line x1="5" y1="6" x2="11" y2="6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+    <line x1="5" y1="8.5" x2="9" y2="8.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+  </svg>
+);
+
 const IconAdmin = () => (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
     <path d="M8 1.5l5 2v3.5c0 3.3-2.1 5.9-5 7-2.9-1.1-5-3.7-5-7V3.5l5-2z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
@@ -92,6 +100,7 @@ const NAV_ITEMS = [
   { label: "Dashboard",   href: "/dashboard",   icon: <IconDashboard /> },
   { label: "Generate CV", href: "/generate",    icon: <IconGenerate /> },
   { label: "Discover",    href: "/discover",    icon: <IconDiscover /> },
+  { label: "Copilot Chat", href: "/chat",      icon: <IconChat /> },
   { label: "Job Tracker", href: "/tracker",     icon: <IconTracker /> },
 ];
 

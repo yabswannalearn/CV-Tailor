@@ -1,0 +1,27 @@
+{
+  "fixture_notice": "Synthetic example for testing. This is not a real person or live job posting.",
+  "profile": {
+    "name": "Demo freelancer",
+    "services": ["Workflow automation", "Python API development"],
+    "skills": ["Python", "FastAPI", "PostgreSQL", "React"],
+    "availability": "15 hours per week",
+    "preferred_contract_types": ["Part Time", "Gig"],
+    "experience": [
+      "Built a FastAPI application backed by PostgreSQL.",
+      "Implemented a public job-listing scraper with requests and Beautiful Soup."
+    ],
+    "unknowns": ["Minimum rate has not been provided.", "No n8n experience has been documented."]
+  },
+  "opportunity": {
+    "jobUrl": "https://example.com/sample-opportunity",
+    "jobTitle": "Part-time automation contractor",
+    "employerName": "Example Studio",
+    "employmentType": "Part Time",
+    "salary": null,
+    "datePosted": null,
+    "dateUpdated": null,
+    "descriptionSnippet": "Build Python integrations and automate internal workflows.",
+    "fullDescription": "We need a remote contractor for 10 to 15 hours per week to build Python API integrations and automate internal workflows. Experience with FastAPI is required. Familiarity with n8n is preferred. Please include relevant work examples and your hourly rate. Budget is negotiable.",
+    "skills": ["Python", "FastAPI", "n8n"]
+  }
+}

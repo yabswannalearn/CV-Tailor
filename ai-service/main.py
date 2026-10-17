@@ -4,6 +4,8 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from routers import database_routes, generate_routes, auth_routes, tracker_routes, interview_routes, code_routes, presets_routes, scraper_routes, admin_routes
+from crm.api import chat_routes
+from crm.channels import telegram
 import logging
 import os
 from dotenv import load_dotenv
@@ -93,6 +95,8 @@ app.include_router(code_routes.router)
 app.include_router(presets_routes.router)
 app.include_router(scraper_routes.router)
 app.include_router(admin_routes.router)
+app.include_router(chat_routes.router)
+app.include_router(telegram.router)
 
 @app.get("/")
 def root():
