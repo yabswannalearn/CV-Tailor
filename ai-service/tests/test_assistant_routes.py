@@ -57,6 +57,26 @@ class AssistantTests(unittest.TestCase):
         self.db.expire_all()
         self.assertEqual(len(routes.get_conversation(conversation["id"], self.request, self.db)["messages"]), 2)
 
+    def test_chat_attaches_only_cv_drafts_created_by_that_reply(self):
+        cid = self.create(None)["id"]
+        async def fake_agent(ctx, transcript):
+            def failed_action():
+                ctx.save_draft("resume", "rolled back cv")
+                return {"error": "failed"}
+            ctx.run_action(failed_action)
+            ctx.save_draft("resume", "first cv")
+            return "Your CV is ready."
+        with patch.object(routes, "run_career_agent", side_effect=fake_agent):
+            first = asyncio.run(routes.send_message.__wrapped__(cid, routes.SendMessage(content="Make a CV"), self.request, self.db))
+        message = first["messages"][-1]
+        self.assertEqual(first["drafts"][0]["metadata"]["assistant_message_id"], message["id"])
+        with patch.object(routes, "run_career_agent", return_value="Hello"):
+            second = asyncio.run(routes.send_message.__wrapped__(cid, routes.SendMessage(content="Hi"), self.request, self.db))
+        self.assertNotEqual(second["messages"][-1]["id"], first["drafts"][0]["metadata"]["assistant_message_id"])
+        self.assertEqual(routes.get_conversation(cid, self.request, self.db)["drafts"][0]["metadata"]["assistant_message_id"], message["id"])
+        revision = routes.revise_draft(cid, first["drafts"][0]["id"], routes.ReviseDraft(content="changed cv"), self.request, self.db)
+        self.assertNotIn("assistant_message_id", revision["metadata"])
+
     def test_tool_runs_with_zero_legacy_balance_and_rolls_back_failures(self):
         conversation = self.db.get(models.AssistantConversation, self.create()["id"])
         ctx = CareerToolContext(self.db, 1, conversation, None, None, "")
@@ -150,13 +170,13 @@ class AssistantTests(unittest.TestCase):
 
         async def fake_model(model, request, stream=False):
             yield LlmResponse(content=types.Content(role="model", parts=[types.Part(
-                text="I have created a tailored version of your resume. You can now review this tailored version.")]))
+                text="I apologize for the oversight. I have now generated the tailored resume for you.")]))
 
         cid = self.create(None)["id"]
         ctx = CareerToolContext(self.db, 1, self.db.get(models.AssistantConversation, cid), None, None, "where is the cv")
         with patch.dict("os.environ", {"GEMINI_API_KEY": "test"}), patch.object(Gemini, "generate_content_async", fake_model):
             reply = asyncio.run(run_career_agent(ctx, [{"role": "user", "content": "where is the cv"}]))
-        self.assertNotIn("I have created", reply)
+        self.assertNotIn("I have now generated", reply)
         self.assertIn("no CV draft", reply)
 
     def test_deleting_application_removes_conversation_and_drafts(self):

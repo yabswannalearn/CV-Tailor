@@ -144,8 +144,13 @@ def write_fontconfig(cache_dir: Path) -> Path:
     return fonts_conf
 
 def compile_latex_to_pdf(latex: str, fast_preview: bool = False) -> bytes:
-    compiler = get_tectonic_command()
+    engine = os.getenv("PDF_LATEX_ENGINE", "tectonic").strip().lower()
+    if engine not in {"tectonic", "xelatex"}:
+        raise PDFCompilationError("PDF_LATEX_ENGINE must be tectonic or xelatex.")
+    compiler = which("xelatex") if engine == "xelatex" else get_tectonic_command()
     if not compiler:
+        if engine == "xelatex":
+            raise PDFCompilationError("XeLaTeX is not installed or is not available on PATH.")
         raise PDFCompilationError(
             "Tectonic is not installed and failed to download the static fallback binary."
         )
@@ -166,27 +171,31 @@ def compile_latex_to_pdf(latex: str, fast_preview: bool = False) -> bytes:
         fonts_conf = write_fontconfig(cache_dir)
 
         try:
-            command = [compiler]
-            if fast_preview:
-                command.extend(["--only-cached", "--reruns", "0"])
-            command.extend(["--outdir", str(work_dir), str(tex_file)])
+            if engine == "xelatex":
+                command = [compiler, "-no-shell-escape", "-interaction=nonstopmode", "-halt-on-error",
+                           "-output-directory", str(work_dir), str(tex_file)]
+                if os.name == "nt" and "miktex" in compiler.lower():
+                    command.insert(1, "--disable-installer")
+                env = os.environ.copy()
+            else:
+                command = [compiler]
+                if fast_preview:
+                    command.extend(["--only-cached", "--reruns", "0"])
+                command.extend(["--outdir", str(work_dir), str(tex_file)])
+                env = {**os.environ, "TECTONIC_CACHE_DIR": str(cache_dir), "FONTCONFIG_FILE": str(fonts_conf)}
             result = subprocess.run(
                 command,
                 cwd=work_dir,
                 capture_output=True,
                 text=True,
                 timeout=120,
-                env={
-                    **os.environ,
-                    "TECTONIC_CACHE_DIR": str(cache_dir),
-                    "FONTCONFIG_FILE": str(fonts_conf),
-                },
+                env=env,
             )
         except subprocess.TimeoutExpired as exc:
-            logger.error("Tectonic compilation timed out after 120 seconds.")
+            logger.error("%s compilation timed out after 120 seconds.", engine)
             raise PDFCompilationError("LaTeX compilation timed out after 120 seconds.") from exc
 
-        logger.info(f"Tectonic return code: {result.returncode}")
+        logger.info("%s return code: %s", engine, result.returncode)
 
         pdf_file = work_dir / "resume.pdf"
         if not pdf_file.exists():
@@ -195,12 +204,12 @@ def compile_latex_to_pdf(latex: str, fast_preview: bool = False) -> bytes:
                 pdf_file = generated_pdfs[0]
 
         if result.returncode != 0 and not pdf_file.exists():
-            if fast_preview:
+            if fast_preview and engine == "tectonic":
                 logger.info("Fast preview cache miss; retrying with a full Tectonic compile.")
                 return compile_latex_to_pdf(latex)
 
             details = "\n".join(part for part in [result.stdout, result.stderr] if part)
-            logger.error(f"Tectonic compilation failed:\n{details}")
+            logger.error("%s compilation failed:\n%s", engine, details)
             
             # Save failed LaTeX for debugging
             try:
