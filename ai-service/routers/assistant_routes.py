@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import inspect
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -176,7 +177,12 @@ async def send_message(conversation_id: int, data: SendMessage, request: Request
         # constraint makes concurrent retries wait for the first transaction.
         db.flush()
         reply = await run_career_agent(ctx, transcript)
-        db.add(models.AssistantMessage(conversation_id=conversation.id, role="assistant", content=reply))
+        assistant_message = models.AssistantMessage(conversation_id=conversation.id, role="assistant", content=reply)
+        db.add(assistant_message)
+        db.flush()
+        for draft in ctx.created_drafts:
+            if inspect(draft).persistent:
+                draft.details = {**(draft.details or {}), "assistant_message_id": assistant_message.id}
         conversation.updated_at = datetime.now(timezone.utc)
         db.commit()
     except IntegrityError as exc:
@@ -197,8 +203,9 @@ async def send_message(conversation_id: int, data: SendMessage, request: Request
 def revise_draft(conversation_id: int, draft_id: int, data: ReviseDraft, request: Request, db: Session = Depends(get_db)):
     conversation = _conversation(db, get_current_user_id(request), conversation_id)
     original = _draft(db, conversation.id, draft_id)
+    details = {key: value for key, value in (original.details or {}).items() if key != "assistant_message_id"}
     draft = models.AssistantDraft(conversation_id=conversation.id, type=original.type,
-                                  content=data.content, details=original.details or {})
+                                  content=data.content, details=details)
     db.add(draft)
     conversation.updated_at = datetime.now(timezone.utc)
     db.commit()
@@ -248,8 +255,15 @@ def _snapshot_current(db, conversation, draft_type, content):
 def download_draft_pdf(conversation_id: int, draft_id: int, request: Request, db: Session = Depends(get_db)):
     conversation = _conversation(db, get_current_user_id(request), conversation_id)
     draft = _draft(db, conversation.id, draft_id)
+    if draft.type == "resume":
+        try:
+            pdf = compile_latex_to_pdf(draft.content)
+        except PDFCompilationError as exc:
+            raise HTTPException(status_code=422, detail=f"Could not compile this CV: {exc}") from exc
+        return Response(content=pdf, media_type="application/pdf",
+                        headers={"Content-Disposition": "inline; filename=cv-draft.pdf", "Cache-Control": "no-store"})
     if draft.type != "cheat_sheet":
-        raise HTTPException(status_code=422, detail="PDF export is available for cheat sheets.")
+        raise HTTPException(status_code=422, detail="PDF export is available for CVs and cheat sheets.")
     from services.career_documents import cheat_sheet_pdf
     try:
         pdf = cheat_sheet_pdf(draft.content)
