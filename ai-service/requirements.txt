@@ -18,3 +18,4 @@ argon2-cffi
 slowapi
 python-docx
 beautifulsoup4
+psycopg[binary]
