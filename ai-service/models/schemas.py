@@ -20,6 +20,7 @@ class Project(BaseModel):
     name: str = Field(max_length=100)
     description: str
     date_range: str = Field(max_length=50)
+    link: Optional[str] = Field(default=None, max_length=2048)
 
 class Certification(BaseModel):
     name: str = Field(max_length=150)
@@ -28,6 +29,8 @@ class Certification(BaseModel):
 
 class SkillItem(BaseModel):
     skill_name: str = Field(max_length=50)
+    # None means an older client did not provide a review decision.
+    is_confirmed: Optional[bool] = None
 
 class UserProfile(BaseModel):
     first_name: str = Field(max_length=50)

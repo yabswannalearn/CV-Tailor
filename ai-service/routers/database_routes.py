@@ -60,10 +60,11 @@ def serialize_profile(profile: db_models.Profile) -> dict:
                 "name": item.name,
                 "description": item.description,
                 "date_range": item.date_range,
+                "link": item.link,
             }
             for item in profile.projects
         ],
-        "skills": [{"skill_name": item.skill_name} for item in profile.skills],
+        "skills": [{"skill_name": item.skill_name, "is_confirmed": bool(item.is_confirmed)} for item in profile.skills],
         "certifications": [
             {
                 "name": item.name,
@@ -78,7 +79,6 @@ def serialize_profile(profile: db_models.Profile) -> dict:
 @limiter.limit("3/minute")
 async def auto_fill_resume(request: Request, file: UploadFile = File(...), db: Session = Depends(get_db)):
     user_id = get_current_user_id(request)
-    
     user = db.query(db_models.User).filter(db_models.User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
@@ -107,6 +107,12 @@ def save_profile_data(db: Session, user_id: int, profile_data: UserProfile) -> N
     existing = db.query(db_models.Profile).filter(
         db_models.Profile.user_id == user_id
     ).first()
+    # Saving another profile field must never silently confirm old suggestions.
+    previous_confirmations = {
+        skill.skill_name.strip().casefold(): bool(skill.is_confirmed)
+        for skill in existing.skills
+    } if existing else {}
+    previous_project_links = {project.name.strip().casefold(): project.link for project in existing.projects if project.name} if existing else {}
     if existing:
         db.query(db_models.Education).filter(db_models.Education.profile_id == existing.id).delete()
         db.query(db_models.Experience).filter(db_models.Experience.profile_id == existing.id).delete()
@@ -154,13 +160,19 @@ def save_profile_data(db: Session, user_id: int, profile_data: UserProfile) -> N
             profile_id=new_profile.id,
             name=proj.name,
             description=proj.description,
-            date_range=proj.date_range
+            date_range=proj.date_range,
+            link=proj.link if proj.link is not None else previous_project_links.get(proj.name.strip().casefold()),
         ))
 
     for skill in profile_data.skills:
+        key = skill.skill_name.strip().casefold()
+        confirmed = skill.is_confirmed
+        if confirmed is None:
+            confirmed = previous_confirmations.get(key, True)
         db.add(db_models.Skill(
             profile_id=new_profile.id,
-            skill_name=skill.skill_name
+            skill_name=skill.skill_name,
+            is_confirmed=confirmed,
         ))
 
     existing_skills = {s.skill_name.lower() for s in profile_data.skills}
@@ -170,7 +182,8 @@ def save_profile_data(db: Session, user_id: int, profile_data: UserProfile) -> N
             if p_skill.lower() not in existing_skills:
                 db.add(db_models.Skill(
                     profile_id=new_profile.id,
-                    skill_name=p_skill
+                    skill_name=p_skill,
+                    is_confirmed=False,
                 ))
 
     for cert in profile_data.certifications:

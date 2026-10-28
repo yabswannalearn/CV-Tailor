@@ -90,6 +90,7 @@ const IconClose = () => (
 // ── Nav items ─────────────────────────────────────────────────────
 const NAV_ITEMS = [
   { label: "Dashboard",   href: "/dashboard",   icon: <IconDashboard /> },
+  { label: "Career Agent", href: "/assistant", icon: <IconDiscover /> },
   { label: "Generate CV", href: "/generate",    icon: <IconGenerate /> },
   { label: "Discover",    href: "/discover",    icon: <IconDiscover /> },
   { label: "Job Tracker", href: "/tracker",     icon: <IconTracker /> },

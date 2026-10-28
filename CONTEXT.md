@@ -4,6 +4,30 @@ A full-stack career platform: Next.js frontend, FastAPI backend (Gemini API), Po
 
 ## Language
 
+**Application Conversation**:
+A conversation with the Career Agent focused on one tracked application, bringing together its job context, research, document drafts, and interview preparation. Each application has one ongoing conversation, which the user can delete independently of the application.
+
+**General Conversation**:
+A conversation with the Career Agent that is not tied to a tracked application. A job description supplied there can be used before the user saves it as a tracked application.
+
+**Confirmed Skill**:
+A skill the user has affirmed they possess. A preset's suggested skill is not a Confirmed Skill until the user confirms it, and existing skills of unknown origin require user review.
+
+**Conversation Evidence**:
+A personal fact the user provides in a conversation for use in that conversation. It does not become part of the saved profile unless the user chooses to add it.
+
+**Tailored Cover Letter**:
+A cover letter that relates a user's actual experience and confirmed skills to a specific job description without inventing personal facts, achievements, or stories. It may use the saved profile and Conversation Evidence.
+
+**Application Draft**:
+A reviewable version of a CV, cover letter, interview preparation plan, or interview cheat sheet associated with an Application Conversation. Earlier versions remain available; applying a CV or cover letter draft makes it the current application document without discarding earlier versions.
+
+**Personal Evidence**:
+Personal facts supported by the user's saved profile or Conversation Evidence. Earlier resumes may inform context or phrasing but do not independently establish Personal Evidence.
+
+**Company Research**:
+Findings about a company or role gathered for the user's job search, with sources and a clear distinction between supported facts and inference.
+
 **Preset**:
 A content/role configuration that steers resume generation for a specific niche — summary prompt, skills bank, metric prompts, section order, lever guidance. Stored as a row in `resume_presets`. Identified by `slug` (e.g. `virtual-assistant`).
 _Avoid_: template (when talking about content), role config, profile type.
@@ -33,22 +57,18 @@ Post-compile validation (`ai-service/services/ats_check.py`) that extracts text 
 _Avoid_: ATS score, resume grader (use ATS Check).
 
 **One-page rule**:
-Every generated resume must fit on exactly one page. A resume that spills onto a second page is not a valid generated result.
+Every generated resume must fit on exactly one page, including a resume revised through the Career Agent. A resume that spills onto a second page is not a valid generated result; the user is shown the overflow and can resolve it.
 
 **Admin**:
-A User with `is_admin = true` on the `users` row — a single boolean flag, not a role table. Admins can access `/admin`, which lists every user (name, falling back to email if no Profile exists yet; credits; aggregate tracked-job counts by status) and can set any user's Credits to an exact value. Seeded idempotently in `migration.py`: flips `is_admin` to true for a known email once that user has registered normally through `/auth/register` — the seed never creates the account itself.
+A User with `is_admin = true` on the `users` row — a single boolean flag, not a role table. Admins can access `/admin`, which lists users and aggregate tracked-job counts by status.
 _Avoid_: role, permission level, superuser.
-
-**Credits**:
-A per-user integer balance (`User.credits`, default 5) that gates AI-driven generation actions (CV generation, PDF generation, cover letter generation, auto-fill) — each action decrements it by 1, and the action is blocked once it hits 0. Adjusted directly by an Admin via `/admin`.
-_Avoid_: tokens, balance, quota.
 
 **Block**:
 The smallest independently regenerable piece of a resume: one summary, one bullet, one entry heading, one skills row, one certifications line. Blocks are derived from the generated LaTeX, each has a stable address, and they have a single document order. Distinct from **Section** (`\section{...}` — Summary, Education, Experience, Projects, Technical Skills, Certifications), which *contains* Blocks.
 _Avoid_: node, element, region, chunk, segment.
 
 **Spot Edit**:
-A user-initiated rewrite of one or more Blocks driven by a free-text instruction ("make this more metric-heavy"). The user selects text in the PDF preview, the selection resolves to Blocks, the instruction applies to those Blocks only, and every other Block is left byte-identical. A Spot Edit spans a contiguous run of Blocks within one Section — never across Sections. Costs 1 Credit per Spot Edit regardless of how many Blocks it covers.
+A user-initiated rewrite of one or more Blocks driven by a free-text instruction ("make this more metric-heavy"). The user selects text in the PDF preview, the selection resolves to Blocks, the instruction applies to those Blocks only, and every other Block is left byte-identical. A Spot Edit spans a contiguous run of Blocks within one Section — never across Sections.
 _Avoid_: annotation, markup, comment, highlight, patch, inline edit.
 
 **No-invention rule**:
@@ -67,6 +87,7 @@ A Spot Edit may reframe, re-emphasise, re-order or re-word what the user's profi
 - **"Template"** is overloaded in the broader LaTeX world (a `.tex` file is a "template"). In CV Tailor, **Template = Visual Template** (classic/modern skin). The `.tex` skeleton strings are the implementation of a Template, not a separate concept. When you mean the content/role configuration, say **Preset**.
 - **"Role" vs "Preset"** — same thing. Do not model them as separate fields; both map to `Profile.preset_slug`.
 - **"Annotation"** is already taken by the PDF specification — react-pdf's `renderAnnotationLayer` means embedded PDF objects such as hyperlinks, and the generate page disables it. The user-facing act of selecting resume text and asking for a rewrite is a **Spot Edit**, never an annotation.
+- Existing profile skills do not record whether they were entered by the user or suggested by a preset. They need user review before being treated as **Confirmed Skills** for the Career Agent.
 
 ## Example dialogue
 
@@ -78,3 +99,6 @@ A Spot Edit may reframe, re-emphasise, re-order or re-word what the user's profi
 
 **Dev**: "The metric prompt has `[X]` — does that show in the resume?"
 **Domain expert**: "Never. Metric Prompts only steer Gemini. They're injected into the prompt as templates-to-emulate; Gemini replaces `[X]` with real numbers or drops it. They never reach the LaTeX."
+
+**Dev**: "The user mentions managing five people in an Application Conversation. Can the cover letter use that?"
+**Domain expert**: "Yes, as Conversation Evidence. Ask before adding it to their saved profile."
