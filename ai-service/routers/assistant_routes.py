@@ -248,8 +248,15 @@ def _snapshot_current(db, conversation, draft_type, content):
 def download_draft_pdf(conversation_id: int, draft_id: int, request: Request, db: Session = Depends(get_db)):
     conversation = _conversation(db, get_current_user_id(request), conversation_id)
     draft = _draft(db, conversation.id, draft_id)
+    if draft.type == "resume":
+        try:
+            pdf = compile_latex_to_pdf(draft.content)
+        except PDFCompilationError as exc:
+            raise HTTPException(status_code=422, detail=f"Could not compile this CV: {exc}") from exc
+        return Response(content=pdf, media_type="application/pdf",
+                        headers={"Content-Disposition": "inline; filename=cv-draft.pdf", "Cache-Control": "no-store"})
     if draft.type != "cheat_sheet":
-        raise HTTPException(status_code=422, detail="PDF export is available for cheat sheets.")
+        raise HTTPException(status_code=422, detail="PDF export is available for CVs and cheat sheets.")
     from services.career_documents import cheat_sheet_pdf
     try:
         pdf = cheat_sheet_pdf(draft.content)

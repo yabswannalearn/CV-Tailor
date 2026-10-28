@@ -128,6 +128,37 @@ class AssistantTests(unittest.TestCase):
         self.assertEqual(error.exception.status_code, 422)
         self.assertIsNone(self.db.get(models.JobApplication, 7).latex_source)
 
+    def test_resume_pdf_preview_is_private_and_available_even_when_overflowing(self):
+        cid = self.create()["id"]
+        ctx = CareerToolContext(self.db, 1, self.db.get(models.AssistantConversation, cid), None, None, "")
+        draft = ctx.save_draft("resume", "latex", {"one_page": False})
+        self.db.commit()
+        with patch.object(routes, "compile_latex_to_pdf", return_value=b"%PDF-preview") as compile_pdf:
+            response = routes.download_draft_pdf(cid, draft["id"], self.request, self.db)
+            self.assertEqual(response.body, b"%PDF-preview")
+            self.assertEqual(response.media_type, "application/pdf")
+            self.assertIn("inline", response.headers["content-disposition"])
+            compile_pdf.assert_called_once_with("latex")
+            with self.assertRaises(HTTPException) as denied:
+                routes.download_draft_pdf(cid, draft["id"], SimpleNamespace(session={"user_id": 2}), self.db)
+            self.assertEqual(denied.exception.status_code, 404)
+
+    def test_agent_does_not_claim_a_cv_exists_when_no_draft_was_saved(self):
+        from google.adk.models.google_llm import Gemini
+        from google.adk.models.llm_response import LlmResponse
+        from google.genai import types
+
+        async def fake_model(model, request, stream=False):
+            yield LlmResponse(content=types.Content(role="model", parts=[types.Part(
+                text="I have created a tailored version of your resume. You can now review this tailored version.")]))
+
+        cid = self.create(None)["id"]
+        ctx = CareerToolContext(self.db, 1, self.db.get(models.AssistantConversation, cid), None, None, "where is the cv")
+        with patch.dict("os.environ", {"GEMINI_API_KEY": "test"}), patch.object(Gemini, "generate_content_async", fake_model):
+            reply = asyncio.run(run_career_agent(ctx, [{"role": "user", "content": "where is the cv"}]))
+        self.assertNotIn("I have created", reply)
+        self.assertIn("no CV draft", reply)
+
     def test_deleting_application_removes_conversation_and_drafts(self):
         cid = self.create()["id"]
         ctx = CareerToolContext(self.db, 1, self.db.get(models.AssistantConversation, cid), None, None, "")
