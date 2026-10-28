@@ -33,7 +33,7 @@ type Experience = {
   description: string
   date_range: string
 }
-type Project = { name: string; description: string; date_range: string }
+type Project = { name: string; description: string; date_range: string; link: string }
 type Certification = { name: string; issuer: string; date_issued: string }
 
 interface Profile {
@@ -47,7 +47,7 @@ interface Profile {
   education: Education[]
   experience: Experience[]
   projects: Project[]
-  skills: { skill_name: string }[]
+  skills: { skill_name: string; is_confirmed?: boolean }[]
   certifications: Certification[]
   preset_slug: string
 }
@@ -148,7 +148,7 @@ export default function DashboardPage() {
           education: parsed.education?.length ? parsed.education : prev.education,
           experience: parsed.experience?.length ? parsed.experience : prev.experience,
           projects: parsed.projects?.length ? parsed.projects : prev.projects,
-          skills: parsed.skills?.length ? parsed.skills : prev.skills,
+          skills: parsed.skills?.length ? parsed.skills.map((skill: { skill_name: string }) => ({ ...skill, is_confirmed: false })) : prev.skills,
           certifications: parsed.certifications?.length ? parsed.certifications : prev.certifications,
         }));
         toast.success("Profile successfully auto-filled! Please review and click 'Save Profile'.");
@@ -199,8 +199,8 @@ export default function DashboardPage() {
       preset_slug: data.preset_slug || "blank",
       education: (data.education || []).map((e) => ({ school_name: e.school_name, course: e.course, location: e.location, description: e.description || "" })),
       experience: (data.experience || []).map((e) => ({ job_title: e.job_title, company: e.company, location: e.location, description: e.description || "", date_range: e.date_range || "" })),
-      projects: (data.projects || []).map((p) => ({ name: p.name, description: p.description || "", date_range: p.date_range || "" })),
-      skills: (data.skills || []).map((s) => ({ skill_name: s.skill_name })),
+      projects: (data.projects || []).map((p) => ({ name: p.name, description: p.description || "", date_range: p.date_range || "", link: p.link || "" })),
+      skills: (data.skills || []).map((s) => ({ skill_name: s.skill_name, is_confirmed: s.is_confirmed === true })),
       certifications: (data.certifications || []).map((c) => ({ name: c.name || "", issuer: c.issuer || "", date_issued: c.date_issued || "" })),
     })
     setProfileHydrated(true)
@@ -569,6 +569,12 @@ export default function DashboardPage() {
                       placeholder="2024" />
                   </div>
                 </div>
+                <div className="mb-3">
+                  <label className={labelClass}>Project Link</label>
+                  <input className={inputClass} type="url" value={proj.link} maxLength={2048}
+                    onChange={(e) => updateListItem("projects", i, { ...proj, link: e.target.value })}
+                    placeholder="https://example.com/project" />
+                </div>
                 <div>
                   <label className={labelClass}>Description</label>
                   <textarea className={`${inputClass} resize-none h-24`} value={proj.description}
@@ -577,7 +583,7 @@ export default function DashboardPage() {
                 </div>
               </div>
             ))}
-            <button onClick={() => addListItem("projects", { name: "", description: "", date_range: "" })}
+            <button onClick={() => addListItem("projects", { name: "", description: "", date_range: "", link: "" })}
               className="w-full py-3 border border-dashed border-[#d4cfc7] text-[#b0aba4] text-xs tracking-widest uppercase hover:border-[#5a8a0044] hover:text-[#5a8a00] transition-colors rounded-sm">
               + Add Project
             </button>
@@ -587,16 +593,27 @@ export default function DashboardPage() {
         {/* Skills Tab */}
         {activeTab === "skills" && (
           <div className="mb-10">
+            {profile.skills.some(skill => !skill.is_confirmed) && (
+              <div className="mb-4 rounded-sm border border-[#d5c78d] bg-[#faf3d8] p-4 text-xs leading-5 text-[#5f542e]">
+                Review your skills below. Confirm only skills you have, then save your profile. Unconfirmed skills will not be used as evidence by the career assistant.
+              </div>
+            )}
             <div className="flex flex-wrap gap-2 mb-4">
               {profile.skills.map((skill, i) => (
                 <div key={i} className="flex items-center gap-2 px-3 py-1.5 bg-[#eeebe5] border border-[#d4cfc7] rounded-sm">
                   <span className="text-xs text-[#1a1814]">{skill.skill_name}</span>
+                  <button type="button" onClick={() => updateListItem("skills", i, { ...skill, is_confirmed: !skill.is_confirmed })}
+                    aria-pressed={Boolean(skill.is_confirmed)}
+                    aria-label={`${skill.is_confirmed ? "Unconfirm" : "Confirm"} ${skill.skill_name}`}
+                    className={`rounded-sm border px-2 py-1 text-[10px] font-semibold ${skill.is_confirmed ? "border-[#a4bf78] text-[#436d00]" : "border-[#d5c78d] text-[#6a5622]"}`}>
+                    {skill.is_confirmed ? "Confirmed ✓" : "Confirm"}
+                  </button>
                   <button onClick={() => removeListItem("skills", i)}
-                    className="text-[#b0aba4] hover:text-[#cc3333] text-xs transition-colors">✕</button>
+                    aria-label={`Remove ${skill.skill_name}`} className="text-[#b0aba4] hover:text-[#cc3333] text-xs transition-colors">✕</button>
                 </div>
               ))}
             </div>
-            <SkillInput onAdd={(skill) => updateField("skills", [...profile.skills, { skill_name: skill }])} />
+            <SkillInput onAdd={(skill) => updateField("skills", [...profile.skills, { skill_name: skill, is_confirmed: true }])} />
           </div>
         )}
 

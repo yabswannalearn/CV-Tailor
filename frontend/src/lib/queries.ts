@@ -16,7 +16,7 @@ export type ResumeTemplate = "classic" | "modern";
 
 export type Education = { school_name: string; course: string; location: string; description?: string };
 export type Experience = { job_title: string; company: string; location: string; description?: string; date_range?: string };
-export type Project = { name: string; description?: string; date_range?: string };
+export type Project = { name: string; description?: string; date_range?: string; link?: string | null };
 export type Certification = { name: string; issuer?: string; date_issued?: string };
 export type Profile = {
   first_name: string;
@@ -29,7 +29,7 @@ export type Profile = {
   education: Education[];
   experience: Experience[];
   projects: Project[];
-  skills: { skill_name: string }[];
+  skills: { skill_name: string; is_confirmed?: boolean }[];
   certifications: Certification[];
   preset_slug?: string;
 };

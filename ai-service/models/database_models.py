@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Date, LargeBinary, JSON, Boolean, Index
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Date, LargeBinary, JSON, Boolean, Index, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from database import Base
@@ -20,6 +20,7 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     job_applications = relationship("JobApplication", back_populates="owner", cascade="all, delete")
     profile = relationship("Profile", back_populates="owner", uselist=False, cascade="all, delete")
+    assistant_conversations = relationship("AssistantConversation", cascade="all, delete-orphan")
 
 class Profile(Base):
     __tablename__ = "profiles"
@@ -71,6 +72,7 @@ class Project(Base):
     name = Column(String(100))
     description = Column(Text)
     date_range = Column(String(50))
+    link = Column(Text, nullable=True)
     owner = relationship("Profile", back_populates="projects")
 
 class Skill(Base):
@@ -78,6 +80,7 @@ class Skill(Base):
     id = Column(Integer, primary_key=True)
     profile_id = Column(Integer, ForeignKey("profiles.id"), index=True)
     skill_name = Column(String(50))
+    is_confirmed = Column(Boolean, nullable=False, default=False, server_default="false")
     owner = relationship("Profile", back_populates="skills")
 
 class Certification(Base):
@@ -121,6 +124,41 @@ class JobApplication(Base):
     match_analysis = Column(JSON, nullable=True)
 
     owner = relationship("User", back_populates="job_applications")
+    assistant_conversations = relationship("AssistantConversation", cascade="all, delete-orphan")
+
+
+class AssistantConversation(Base):
+    __tablename__ = "assistant_conversations"
+    __table_args__ = (UniqueConstraint("user_id", "job_id", name="uq_assistant_user_job"),)
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    job_id = Column(Integer, ForeignKey("job_applications.id", ondelete="CASCADE"), nullable=True)
+    title = Column(String(200), nullable=False, default="General conversation")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    messages = relationship("AssistantMessage", cascade="all, delete-orphan", order_by="AssistantMessage.id")
+    drafts = relationship("AssistantDraft", cascade="all, delete-orphan", order_by="AssistantDraft.id")
+
+
+class AssistantMessage(Base):
+    __tablename__ = "assistant_messages"
+    __table_args__ = (UniqueConstraint("conversation_id", "request_key", name="uq_assistant_message_request"),)
+    id = Column(Integer, primary_key=True)
+    conversation_id = Column(Integer, ForeignKey("assistant_conversations.id", ondelete="CASCADE"), nullable=False, index=True)
+    role = Column(String(20), nullable=False)
+    content = Column(Text, nullable=False)
+    request_key = Column(String(80), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class AssistantDraft(Base):
+    __tablename__ = "assistant_drafts"
+    id = Column(Integer, primary_key=True)
+    conversation_id = Column(Integer, ForeignKey("assistant_conversations.id", ondelete="CASCADE"), nullable=False, index=True)
+    type = Column(String(40), nullable=False)
+    content = Column(Text, nullable=False)
+    details = Column("metadata", JSON, nullable=False, default=dict)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 class ResumePreset(Base):
     __tablename__ = "resume_presets"

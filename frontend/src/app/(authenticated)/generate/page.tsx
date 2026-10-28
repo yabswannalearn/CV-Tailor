@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
+import { toast } from "sonner";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 import { API_URL, getApiError } from "@/lib/api";
@@ -106,7 +107,7 @@ const CopyLatexButton = ({ copied, onClick }: { copied: boolean; onClick: () => 
   </button>
 );
 
-const SaveToJobButton = ({ savingToJob, savedToJob, onClick }: { savingToJob: boolean; savedToJob: boolean; onClick: () => void }) => (
+const SaveToJobButton = ({ savingToJob, savedToJob, onClick, draftOnly = false }: { savingToJob: boolean; savedToJob: boolean; onClick: () => void; draftOnly?: boolean }) => (
   <button onClick={onClick} disabled={savingToJob}
     className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold tracking-[0.12em] uppercase rounded-sm transition-all disabled:cursor-not-allowed"
     style={{
@@ -135,7 +136,7 @@ const SaveToJobButton = ({ savingToJob, savedToJob, onClick }: { savingToJob: bo
           <rect x="3" y="2" width="3" height="2.5" stroke="currentColor" strokeWidth="1"/>
           <rect x="2" y="6" width="5" height="2.5" stroke="currentColor" strokeWidth="1"/>
         </svg>
-        Save to Job
+        {draftOnly ? "Save draft" : "Save to Job"}
       </span>
     )}
   </button>
@@ -479,6 +480,7 @@ type EditorHeaderProps = {
   backHref: string;
   backLabel: string;
   jobId: string | null;
+  draftOnly?: boolean;
   copied: boolean;
   onCopy: () => void;
   savingToJob: boolean;
@@ -501,7 +503,7 @@ type EditorHeaderProps = {
 };
 
 const EditorHeader = ({
-  eyebrow, title, backHref, backLabel, jobId,
+  eyebrow, title, backHref, backLabel, jobId, draftOnly = false,
   copied, onCopy, savingToJob, savedToJob, onSaveToJob,
   coverLetterAvailable, coverLetterBusy, onCoverLetter,
   busy, onRecompile, hasPdf, hasLatex, downloadingDocx,
@@ -525,7 +527,7 @@ const EditorHeader = ({
           {extra}
           <CopyLatexButton copied={copied} onClick={onCopy} />
           <DownloadMenu hasPdf={hasPdf} hasLatex={hasLatex} downloadingDocx={downloadingDocx} onDownloadPdf={onDownloadPdf} onDownloadDocx={onDownloadDocx} onDownloadTex={onDownloadTex} />
-          {jobId && <SaveToJobButton savingToJob={savingToJob} savedToJob={savedToJob} onClick={onSaveToJob} />}
+          {(jobId || draftOnly) && <SaveToJobButton draftOnly={draftOnly} savingToJob={savingToJob} savedToJob={savedToJob} onClick={onSaveToJob} />}
           {jobId && <CoverLetterActionButton available={coverLetterAvailable} busy={coverLetterBusy} onClick={onCoverLetter} />}
         </div>
 
@@ -546,16 +548,16 @@ const EditorHeader = ({
                   className="w-full text-left px-3 py-2 text-xs font-semibold hover:bg-[#f0ebe3] transition-colors" style={{ color: C.textMid }}>
                   {copied ? "Copied!" : "Copy LaTeX"}
                 </button>
-                {jobId && (
+                {(jobId || draftOnly) && (
                   <>
                     <button onClick={() => { onSaveToJob(); setMoreOpen(false); }} disabled={savingToJob}
                       className="w-full text-left px-3 py-2 text-xs font-semibold hover:bg-[#f0ebe3] transition-colors disabled:opacity-40" style={{ color: C.textMid }}>
-                      {savedToJob ? "Saved!" : savingToJob ? "Saving..." : "Save to Job"}
+                      {savedToJob ? "Saved!" : savingToJob ? "Saving..." : draftOnly ? "Save draft" : "Save to Job"}
                     </button>
-                    <button onClick={() => { onCoverLetter(); setMoreOpen(false); }} disabled={coverLetterBusy}
+                    {jobId && <button onClick={() => { onCoverLetter(); setMoreOpen(false); }} disabled={coverLetterBusy}
                       className="w-full text-left px-3 py-2 text-xs font-semibold hover:bg-[#f0ebe3] transition-colors disabled:opacity-40" style={{ color: C.green }}>
                       {coverLetterBusy ? "Writing cover letter..." : coverLetterAvailable ? "Open Cover Letter" : "Generate Cover Letter"}
-                    </button>
+                    </button>}
                   </>
                 )}
                 <div className="my-1 border-t" style={{ borderColor: C.border }} />
@@ -587,6 +589,7 @@ function GeneratePageContent() {
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const jobId = searchParams.get("job_id");
+  const assistantDraftOnly = searchParams.get("assistant_draft") === "1" && !jobId;
   const userQuery = useCurrentUser();
   const profileQuery = useProfile();
   const presetsQuery = usePresets();
@@ -602,6 +605,7 @@ function GeneratePageContent() {
   const [errorMsg, setErrorMsg] = useState("");
   const [userEmail, setUserEmail] = useState("");
   const [hasGenerated, setHasGenerated] = useState(false);
+  const [assistantDraftActive, setAssistantDraftActive] = useState(false);
   const [scrollTop, setScrollTop] = useState(0);
   const [cursorPos, setCursorPos] = useState({ line: 1, col: 1 });
   const [zoom, setZoom] = useState(100);
@@ -672,6 +676,7 @@ function GeneratePageContent() {
   };
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const assistantDraftRef = useRef<{ jobId: number | null; latex: string; conversationId?: number; draftId?: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef(false);
   const lastCompiledLatexRef = useRef<string>("");
@@ -758,13 +763,31 @@ function GeneratePageContent() {
   }, [latex, autoCompile]);
 
   const loadJobLatex = useCallback(async () => {
-    if (!jobId) {
+    if (!jobId && !assistantDraftOnly) {
       setJobLatexLoading(false);
       return;
     }
     setJobLatexLoading(true);
     setJobLatexError("");
     try {
+      const pending = sessionStorage.getItem("career-assistant-resume");
+      if (pending) {
+        const draft = JSON.parse(pending) as { jobId: number | null; latex: string; conversationId?: number; draftId?: number };
+        if ((String(draft.jobId) === jobId || (assistantDraftOnly && draft.jobId === null)) && typeof draft.latex === "string") {
+          sessionStorage.removeItem("career-assistant-resume");
+          assistantDraftRef.current = draft;
+        }
+      }
+      if (assistantDraftRef.current && (String(assistantDraftRef.current.jobId) === jobId || (assistantDraftOnly && assistantDraftRef.current.jobId === null))) {
+        const draft = assistantDraftRef.current!;
+        setLatex(draft.latex);
+        setAssistantDraftActive(true);
+        setDraftReady(false);
+        setHasGenerated(true);
+        window.setTimeout(() => { void compileLatexRef.current(draft.latex); }, 100);
+        return;
+      }
+      if (!jobId) return;
       const response = await fetch(`${API_URL}/tracker/${jobId}/latex`, { credentials: "include" });
       if (!response.ok) {
         if (response.status === 404) return;
@@ -781,7 +804,7 @@ function GeneratePageContent() {
     } finally {
       setJobLatexLoading(false);
     }
-  }, [jobId]);
+  }, [jobId, assistantDraftOnly]);
 
   useEffect(() => {
     void loadJobLatex();
@@ -1080,20 +1103,36 @@ function GeneratePageContent() {
   };
 
   const handleSaveToJob = async () => {
-  if (!jobId || !latex.trim()) return;
+  if ((!jobId && !assistantDraftOnly) || !latex.trim()) return;
   setSavingToJob(true);
   setSavedToJob(false);
   try {
-    const res = await fetch(`${API_URL}/tracker/${jobId}/latex`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ latex }),
-    });
-    if (res.ok) {
-      setSavedToJob(true);
-      setTimeout(() => setSavedToJob(false), 3000);
+    const assistantDraft = assistantDraftRef.current;
+    if (assistantDraft?.conversationId && assistantDraft.draftId && (String(assistantDraft.jobId) === jobId || (assistantDraftOnly && assistantDraft.jobId === null))) {
+      let draftId = assistantDraft.draftId;
+      if (latex !== assistantDraft.latex) {
+        const revision = await fetch(`${API_URL}/assistant/conversations/${assistantDraft.conversationId}/drafts/${draftId}/revise`, {
+          method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ content: latex }),
+        });
+        if (!revision.ok) throw new Error(await getApiError(revision, "Unable to save the edited draft."));
+        const saved = await revision.json() as { id: number };
+        draftId = saved.id;
+        assistantDraftRef.current = { ...assistantDraft, draftId, latex };
+      }
+      if (jobId) {
+        const applied = await fetch(`${API_URL}/assistant/conversations/${assistantDraft.conversationId}/drafts/${draftId}/apply`, { method: "POST", credentials: "include" });
+        if (!applied.ok) throw new Error(await getApiError(applied, "Unable to apply the draft."));
+      }
+    } else {
+      const res = await fetch(`${API_URL}/tracker/${jobId}/latex`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ latex }),
+      });
+      if (!res.ok) throw new Error(await getApiError(res, "Unable to save the CV."));
     }
+    setSavedToJob(true);
+    setTimeout(() => setSavedToJob(false), 3000);
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : "Unable to save the CV.");
   } finally {
     setSavingToJob(false);
   }
@@ -1358,9 +1397,10 @@ function GeneratePageContent() {
           <EditorHeader
             eyebrow="Resume editor"
             title={jobLabel || "Tailored resume"}
-            backHref={jobId ? "/tracker" : "/dashboard"}
-            backLabel={jobId ? "← tracker" : "← dashboard"}
+            backHref={assistantDraftActive ? "/assistant" : jobId ? "/tracker" : "/dashboard"}
+            backLabel={assistantDraftActive ? "← agent" : jobId ? "← tracker" : "← dashboard"}
             jobId={jobId}
+            draftOnly={assistantDraftOnly && assistantDraftActive}
             copied={copied}
             onCopy={handleCopy}
             savingToJob={savingToJob}
@@ -1481,9 +1521,10 @@ function GeneratePageContent() {
           <EditorHeader
             eyebrow="Resume preview"
             title={jobLabel || "Tailored resume"}
-            backHref={jobId ? "/tracker" : "/dashboard"}
-            backLabel={jobId ? "← tracker" : "← dashboard"}
+            backHref={assistantDraftActive ? "/assistant" : jobId ? "/tracker" : "/dashboard"}
+            backLabel={assistantDraftActive ? "← agent" : jobId ? "← tracker" : "← dashboard"}
             jobId={jobId}
+            draftOnly={assistantDraftOnly && assistantDraftActive}
             copied={copied}
             onCopy={handleCopy}
             savingToJob={savingToJob}
@@ -1520,9 +1561,10 @@ function GeneratePageContent() {
         <EditorHeader
           eyebrow="LaTeX source"
           title={jobLabel || "Tailored resume"}
-          backHref={jobId ? "/tracker" : "/dashboard"}
-          backLabel={jobId ? "← tracker" : "← dashboard"}
+          backHref={assistantDraftActive ? "/assistant" : jobId ? "/tracker" : "/dashboard"}
+          backLabel={assistantDraftActive ? "← agent" : jobId ? "← tracker" : "← dashboard"}
           jobId={jobId}
+            draftOnly={assistantDraftOnly && assistantDraftActive}
           copied={copied}
           onCopy={handleCopy}
           savingToJob={savingToJob}

@@ -1,8 +1,13 @@
 import json
 from sqlalchemy import create_engine, text
 from database import DATABASE_URL
+from models.database_models import AssistantConversation, AssistantMessage, AssistantDraft
 
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+
+# New assistant tables can be created independently of the existing tables.
+for table in (AssistantConversation.__table__, AssistantMessage.__table__, AssistantDraft.__table__):
+    table.create(bind=engine, checkfirst=True)
 
 with engine.connect() as conn:
     conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS credits INTEGER NOT NULL DEFAULT 5;"))
@@ -14,6 +19,10 @@ with engine.connect() as conn:
     conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;"))
     conn.execute(text("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS preferred_template VARCHAR(50) DEFAULT 'classic';"))
     conn.execute(text("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS preset_slug VARCHAR(50) DEFAULT 'blank';"))
+    conn.execute(text("ALTER TABLE skills ADD COLUMN IF NOT EXISTS is_confirmed BOOLEAN NOT NULL DEFAULT FALSE;"))
+    conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS link TEXT;"))
+    conn.execute(text("ALTER TABLE assistant_messages ADD COLUMN IF NOT EXISTS request_key VARCHAR(80);"))
+    conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_assistant_message_request_idx ON assistant_messages (conversation_id, request_key);"))
     conn.execute(text("ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS cover_letter TEXT;"))
     conn.execute(text("ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS template_id VARCHAR(50) NOT NULL DEFAULT 'classic';"))
     conn.execute(text("ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS match_score INTEGER;"))
