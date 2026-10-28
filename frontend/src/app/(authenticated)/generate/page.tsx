@@ -275,9 +275,8 @@ type SpotEditSession = {
 
 const truncate = (value: string, limit = 96) => (value.length > limit ? `${value.slice(0, limit).trimEnd()}…` : value);
 
-const SpotEditPopover = ({ session, outOfCredits, onInstructionChange, onSubmit, onAccept, onClose }: {
+const SpotEditPopover = ({ session, onInstructionChange, onSubmit, onAccept, onClose }: {
   session: SpotEditSession;
-  outOfCredits: boolean;
   onInstructionChange: (value: string) => void;
   onSubmit: () => void;
   onAccept: () => void;
@@ -351,14 +350,11 @@ const SpotEditPopover = ({ session, outOfCredits, onInstructionChange, onSubmit,
         )}
 
         {session.error && <p className="mt-1.5 text-[11px]" style={{ color: C.red }}>{session.error}</p>}
-        {outOfCredits && !session.proposals && (
-          <p className="mt-1.5 text-[11px]" style={{ color: C.red }}>Out of credits.</p>
-        )}
       </div>
 
       <div className="flex items-center justify-between border-t px-3 py-2" style={{ borderColor: C.border }}>
         <span className="text-[10px]" style={{ color: C.textFaint }}>
-          {session.proposals ? "Applies to the selected Blocks only" : "1 credit"}
+          Applies to the selected Blocks only
         </span>
         <div className="flex items-center gap-1.5">
           <button onClick={onClose} className="rounded px-2.5 py-1 text-[11px] font-semibold"
@@ -367,7 +363,7 @@ const SpotEditPopover = ({ session, outOfCredits, onInstructionChange, onSubmit,
           </button>
           <button
             onClick={session.proposals ? onAccept : onSubmit}
-            disabled={session.busy || (!session.proposals && (!session.blocks.length || !session.instruction.trim() || outOfCredits))}
+            disabled={session.busy || (!session.proposals && (!session.blocks.length || !session.instruction.trim()))}
             className="rounded px-2.5 py-1 text-[11px] font-bold disabled:cursor-not-allowed disabled:opacity-40"
             style={{ background: C.greenLight, color: C.green, border: `1px solid ${C.greenBorder}` }}>
             {session.busy ? "Rewriting…" : session.proposals ? "Accept" : "Rewrite"}
@@ -605,7 +601,6 @@ function GeneratePageContent() {
   const [appState, setAppState] = useState<AppState>("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const [userEmail, setUserEmail] = useState("");
-  const [credits, setCredits] = useState(0);
   const [hasGenerated, setHasGenerated] = useState(false);
   const [scrollTop, setScrollTop] = useState(0);
   const [cursorPos, setCursorPos] = useState({ line: 1, col: 1 });
@@ -796,7 +791,6 @@ function GeneratePageContent() {
     if (userQuery.isError) router.replace("/login");
     if (userQuery.data) {
       setUserEmail(userQuery.data.email);
-      setCredits(userQuery.data.credits);
     }
   }, [router, userQuery.data, userQuery.isError]);
 
@@ -996,10 +990,6 @@ function GeneratePageContent() {
           })),
         }),
       });
-      if (res.status === 402) {
-        setCredits(0);
-        throw new Error("Out of credits. Please upgrade to continue.");
-      }
       if (!res.ok) throw new Error(await getApiError(res, "Rewrite failed."));
       const data = await res.json() as { blocks?: unknown };
       if (!Array.isArray(data.blocks)
@@ -1019,7 +1009,6 @@ function GeneratePageContent() {
         || proposals.some(proposal => !expectedIds.has(proposal.id) || !proposal.text.trim())) {
         throw new Error("Rewrite returned the wrong Blocks.");
       }
-      setCredits(c => Math.max(0, c - 1));
       setSpotEdit(session => session && { ...session, busy: false, proposals });
     } catch (error) {
       setSpotEdit(session => session && {
@@ -1046,7 +1035,6 @@ function GeneratePageContent() {
   const spotEditLayer = spotEdit && (
     <SpotEditPopover
       session={spotEdit}
-      outOfCredits={credits <= 0}
       onInstructionChange={value => setSpotEdit(session => session && { ...session, instruction: value })}
       onSubmit={() => { void runSpotEdit(); }}
       onAccept={acceptSpotEdit}
@@ -1064,10 +1052,6 @@ function GeneratePageContent() {
         credentials: "include", body: JSON.stringify({ email: userEmail, jd, template_id: selectedTemplate, preset_slug: presetSlug }),
       });
       if (!res.ok) { 
-        if (res.status === 402) {
-          setCredits(0);
-          throw new Error("Out of credits! Please upgrade to continue.");
-        }
         const err = await res.json(); 
         throw new Error(err.detail || "Generation failed"); 
       }
@@ -1075,7 +1059,6 @@ function GeneratePageContent() {
       lastCompiledLatexRef.current = gen;
       setLatex(gen);
       setDraftReady(false);
-      setCredits(c => Math.max(0, c - 1));
       
       const byteCharacters = atob(pdf_b64);
       const byteNumbers = new Array(byteCharacters.length);
@@ -1286,10 +1269,6 @@ function GeneratePageContent() {
               {userEmail && (
                 <div className="flex items-center gap-3 mt-4">
                   <p className="text-xs" style={{ color: C.textFaint }}>Signed in as {userEmail}</p>
-                  <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm" style={{ background: C.bgCard, border: `1px solid ${C.border}` }}>
-                    <span style={{ color: C.green, fontSize: "10px" }}>⚡</span>
-                    <span style={{ color: C.text, fontSize: "10px", fontWeight: "bold", letterSpacing: "0.1em", textTransform: "uppercase" }}>{credits} Credits</span>
-                  </div>
                 </div>
               )}
             </div>

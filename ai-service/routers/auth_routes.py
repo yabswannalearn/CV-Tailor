@@ -126,7 +126,6 @@ async def me(request: Request, db: Session = Depends(get_db)):
     return {
         "user_id": user.id,
         "email": user.email,
-        "credits": user.credits,
         "is_admin": user.is_admin
     }
 

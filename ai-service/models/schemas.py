@@ -270,9 +270,6 @@ class CodeGenerateRequest(BaseModel):
     difficulty: str = "Medium"           # Easy / Medium / Hard
     count: int = 3
 
-class AdminCreditsUpdateRequest(BaseModel):
-    credits: int = Field(ge=0)
-
 class PresetListItem(BaseModel):
     slug: str
     display_name: str

@@ -109,7 +109,6 @@ export default function DashboardPage() {
   const [saving, setSaving] = useState(false)
   const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">("idle")
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [credits, setCredits] = useState(0)
   const [profileHydrated, setProfileHydrated] = useState(false)
   const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -131,7 +130,6 @@ export default function DashboardPage() {
         body: formData
       });
       if (!res.ok) {
-        if (res.status === 402) throw new Error("Out of credits! Please upgrade to continue.");
         const err = await res.json();
         throw new Error(err.detail || "Upload failed");
       }
@@ -153,7 +151,6 @@ export default function DashboardPage() {
           skills: parsed.skills?.length ? parsed.skills : prev.skills,
           certifications: parsed.certifications?.length ? parsed.certifications : prev.certifications,
         }));
-        setCredits((c) => Math.max(0, c - 1));
         toast.success("Profile successfully auto-filled! Please review and click 'Save Profile'.");
       }
     } catch (error: unknown) {
@@ -185,7 +182,6 @@ export default function DashboardPage() {
   });
 
   useEffect(() => {
-    if (user) setCredits(user.credits)
     if (userError) router.push("/login")
   }, [user, userError, router])
 
@@ -316,10 +312,6 @@ export default function DashboardPage() {
             </h1>
             <div className="flex items-center gap-3 mt-2">
               <p className="text-[#b0aba4] text-xs">{userEmail}</p>
-              <div className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-[#eeebe5] rounded-sm border border-[#d4cfc7]">
-                <span className="text-[#5a8a00] text-[10px]">⚡</span>
-                <span className="text-[#1a1814] text-[10px] font-bold tracking-[0.1em] uppercase">{credits} Credits</span>
-              </div>
             </div>
           </div>
           <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:gap-3">

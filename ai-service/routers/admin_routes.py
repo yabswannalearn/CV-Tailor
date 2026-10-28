@@ -5,7 +5,6 @@ from sqlalchemy.orm import Session
 from database import get_db
 from dependencies import get_current_user_id
 from models import database_models as db_models
-from models.schemas import AdminCreditsUpdateRequest
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -52,7 +51,6 @@ async def list_users(db: Session = Depends(get_db), _admin: db_models.User = Dep
             "id": user.id,
             "email": user.email,
             "name": full_name or user.email,
-            "credits": user.credits,
             "is_admin": user.is_admin,
             "tracker": {
                 "total": sum(by_status.values()),
@@ -60,19 +58,3 @@ async def list_users(db: Session = Depends(get_db), _admin: db_models.User = Dep
             },
         })
     return result
-
-
-@router.patch("/users/{user_id}/credits")
-async def update_user_credits(
-    user_id: int,
-    data: AdminCreditsUpdateRequest,
-    db: Session = Depends(get_db),
-    _admin: db_models.User = Depends(require_admin),
-):
-    user = db.query(db_models.User).filter(db_models.User.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    user.credits = data.credits
-    db.commit()
-    return {"id": user.id, "credits": user.credits}

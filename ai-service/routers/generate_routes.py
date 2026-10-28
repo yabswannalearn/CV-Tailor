@@ -37,10 +37,6 @@ def get_profile_or_404(db: Session, email: str) -> db_models.Profile:
     return profile
 
 
-def require_credits(user: db_models.User, action: str) -> None:
-    if user.credits <= 0:
-        raise HTTPException(status_code=402, detail=f"Out of credits. Please upgrade to generate more {action}.")
-
 @router.get("/templates")
 async def get_templates():
     return [
@@ -66,14 +62,7 @@ class CompileLatexRequest(BaseModel):
 @limiter.limit("3/minute")
 async def generate_cv(data: GenerateRequest, request: Request, db: Session = Depends(get_db)):
     profile = get_profile_or_404(db, data.email)
-    user = profile.owner
-    require_credits(user, "CVs")
-
     latex_code = generate_latex_resume(profile, data.jd, data.template_id, preset_slug=data.preset_slug, db=db)
-    
-    # Deduct credit
-    user.credits -= 1
-    db.commit()
     
     return {"latex": latex_code}
 
@@ -81,9 +70,6 @@ async def generate_cv(data: GenerateRequest, request: Request, db: Session = Dep
 @limiter.limit("3/minute")
 async def generate_pdf(data: GenerateRequest, request: Request, db: Session = Depends(get_db)):
     profile = get_profile_or_404(db, data.email)
-    user = profile.owner
-    require_credits(user, "PDFs")
-
     latex_code = generate_latex_resume(profile, data.jd, data.template_id, preset_slug=data.preset_slug, db=db)
 
     try:
@@ -91,10 +77,6 @@ async def generate_pdf(data: GenerateRequest, request: Request, db: Session = De
     except PDFCompilationError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     require_one_page(pdf_bytes)
-
-    # Deduct credit
-    user.credits -= 1
-    db.commit()
 
     return Response(
         content=pdf_bytes,
@@ -197,9 +179,6 @@ async def compile_latex_preview(data: CompileLatexRequest, request: Request):
 @limiter.limit("5/minute")
 async def generate_ats_check(data: GenerateRequest, request: Request, db: Session = Depends(get_db)):
     profile = get_profile_or_404(db, data.email)
-    user = profile.owner
-    require_credits(user, "CVs")
-
     latex_code = generate_latex_resume(profile, data.jd, data.template_id, data.preset_slug, db)
     
     try:
@@ -215,10 +194,6 @@ async def generate_ats_check(data: GenerateRequest, request: Request, db: Sessio
     import base64
     ats_result = await asyncio.to_thread(ats_check, pdf_bytes, preset_section_order)
     
-    # Deduct credit
-    user.credits -= 1
-    db.commit()
-    
     return {
         "latex": latex_code,
         "pdf_b64": base64.b64encode(pdf_bytes).decode("utf-8"),
@@ -230,14 +205,7 @@ async def generate_ats_check(data: GenerateRequest, request: Request, db: Sessio
 @limiter.limit("3/minute")
 async def generate_cl(data: GenerateCoverLetterRequest, request: Request, db: Session = Depends(get_db)):
     profile = get_profile_or_404(db, data.email)
-    user = profile.owner
-    require_credits(user, "cover letters")
-
     cover_letter_content = generate_cover_letter(profile, data.jd, data.company_name)
-
-    # Deduct credit
-    user.credits -= 1
-    db.commit()
 
     return {"cover_letter": cover_letter_content}
 
@@ -245,20 +213,13 @@ async def generate_cl(data: GenerateCoverLetterRequest, request: Request, db: Se
 @router.post("/spot-edit")
 @limiter.limit("10/minute")
 async def spot_edit(data: SpotEditRequest, request: Request, db: Session = Depends(get_db)):
-    """Rewrite the selected Blocks only. One Credit per Spot Edit, not per Block."""
+    """Rewrite the selected Blocks only."""
     profile = get_profile_or_404(db, data.email)
-    user = profile.owner
-    require_credits(user, "edits")
-
     try:
         blocks = await asyncio.to_thread(rewrite_blocks, profile, data)
     except ValueError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Spot edit failed: {exc}") from exc
-
-    # Deduct credit
-    user.credits -= 1
-    db.commit()
 
     return {"blocks": blocks}

@@ -1,13 +1,12 @@
 import { queryOptions, useQuery, type QueryClient } from "@tanstack/react-query";
 import { API_URL, getApiError } from "@/lib/api";
 
-export type CurrentUser = { user_id: number; email: string; credits: number; is_admin: boolean };
+export type CurrentUser = { user_id: number; email: string; is_admin: boolean };
 
 export type AdminUser = {
   id: number;
   email: string;
   name: string;
-  credits: number;
   is_admin: boolean;
   tracker: { total: number; by_status: Partial<Record<ApplicationStatus, number>> };
 };
