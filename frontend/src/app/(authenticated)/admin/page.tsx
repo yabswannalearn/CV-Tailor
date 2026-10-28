@@ -1,14 +1,8 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { API_URL, getApiError } from "@/lib/api";
-import { queryKeys, useAdminUsers, useCurrentUser, type AdminUser } from "@/lib/queries";
+import { useAdminUsers, useCurrentUser, type AdminUser } from "@/lib/queries";
 import InlineQueryError from "@/components/InlineQueryError";
-import Button from "@/components/Button";
-
-const API = API_URL;
 
 const STATUS_ORDER = ["Saved", "Applied", "Interview", "Tech Test", "Offer", "Rejected", "Ghosted"] as const;
 
@@ -27,41 +21,6 @@ function AdminSkeleton() {
 }
 
 function UserRow({ user }: { user: AdminUser }) {
-  const queryClient = useQueryClient();
-  const [credits, setCredits] = useState(String(user.credits));
-
-  const dirty = credits !== "" && Number(credits) !== user.credits;
-
-  const mutation = useMutation({
-    mutationFn: async (value: number) => {
-      const response = await fetch(`${API}/admin/users/${user.id}/credits`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ credits: value }),
-      });
-      if (!response.ok) throw new Error(await getApiError(response, "Unable to update credits."));
-      return response.json();
-    },
-    onSuccess: () => {
-      toast.success(`Updated credits for ${user.email}.`);
-      void queryClient.invalidateQueries({ queryKey: queryKeys.adminUsers });
-    },
-    onError: (error: Error) => {
-      toast.error(error.message);
-      setCredits(String(user.credits));
-    },
-  });
-
-  const handleSave = () => {
-    const value = Number(credits);
-    if (!Number.isInteger(value) || value < 0) {
-      toast.error("Credits must be a whole number of 0 or more.");
-      return;
-    }
-    mutation.mutate(value);
-  };
-
   return (
     <tr className="border-b border-[#e1ddd6] last:border-0">
       <td className="px-4 py-3 align-top">
@@ -80,21 +39,6 @@ function UserRow({ user }: { user: AdminUser }) {
             <span key={status}>{status}: {user.tracker.by_status[status]}</span>
           ))}
           {user.tracker.total === 0 && <span>No applications yet</span>}
-        </div>
-      </td>
-      <td className="px-4 py-3 align-top">
-        <div className="flex items-center gap-2">
-          <input
-            type="number"
-            min={0}
-            step={1}
-            value={credits}
-            onChange={e => setCredits(e.target.value)}
-            className="w-20 rounded-sm border border-[#d4cfc7] bg-[#e8e4dd] px-2 py-1 text-sm outline-none focus:border-[#8ab030]"
-          />
-          <Button onClick={handleSave} disabled={!dirty || mutation.isPending}>
-            {mutation.isPending ? "Saving…" : "Save"}
-          </Button>
         </div>
       </td>
     </tr>
@@ -144,7 +88,6 @@ export default function AdminPage() {
                 <tr className="border-b border-[#d4cfc7] text-[10px] uppercase tracking-[0.15em] text-[#7a7570]">
                   <th className="px-4 py-3 font-medium">User</th>
                   <th className="px-4 py-3 font-medium">Tracked jobs</th>
-                  <th className="px-4 py-3 font-medium">Credits</th>
                 </tr>
               </thead>
               <tbody>

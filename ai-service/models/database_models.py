@@ -8,7 +8,9 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String(100), unique=True, index=True, nullable=False)
     hashed_password = Column(String(255), nullable=True) # nullable for backwards compatibility
-    credits = Column(Integer, default=5, nullable=False)
+    # Existing databases may have a non-null credits column without a server default.
+    # Keep it populated for compatibility; balances are no longer used by the app.
+    _legacy_credits = Column("credits", Integer, default=5, nullable=False)
     is_admin = Column(Boolean, default=False, nullable=False)
     is_verified = Column(Boolean, default=False, nullable=False)
     verification_token_hash = Column(String(64), nullable=True)

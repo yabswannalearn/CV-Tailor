@@ -80,8 +80,8 @@ async def auto_fill_resume(request: Request, file: UploadFile = File(...), db: S
     user_id = get_current_user_id(request)
     
     user = db.query(db_models.User).filter(db_models.User.id == user_id).first()
-    if not user or user.credits <= 0:
-        raise HTTPException(status_code=402, detail="Out of credits. Please upgrade to auto-fill resumes.")
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
         
     if not file.filename.endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
@@ -97,10 +97,6 @@ async def auto_fill_resume(request: Request, file: UploadFile = File(...), db: S
             raise HTTPException(status_code=400, detail="Could not extract text from PDF")
             
         profile_data = extract_profile_from_resume(text)
-        
-        # Deduct credit
-        user.credits -= 1
-        db.commit()
         
         return {"status": "success", "data": profile_data}
     except Exception as e:

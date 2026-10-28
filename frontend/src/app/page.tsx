@@ -240,7 +240,7 @@ export default function LandingPage() {
             className="mt-5 text-[11px] tracking-wide"
             style={{ color: C.faint }}
           >
-            No credit card required
+            Free and open source
           </motion.p>
         </div>
 
