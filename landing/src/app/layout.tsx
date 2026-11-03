@@ -1,16 +1,18 @@
 import type { Metadata } from "next";
+import { pageMetadata, SITE_DESCRIPTION, SITE_TITLE, SITE_URL } from "../lib/site";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "CV Tailor — Your open-source career workspace",
-  description: "An MIT-licensed, open-source career workspace. Tailor CVs, track applications, and prepare for interviews with your AI agent, a local CLI, and an optional dashboard.",
-  metadataBase: new URL("https://cvtailor.me"),
-  alternates: { canonical: "/" },
-  openGraph: {
-    title: "CV Tailor — Your open-source career workspace",
-    description: "Open source. Your agent. Your applications. One local career workspace, with an optional visual dashboard.",
-    url: "https://cvtailor.me", type: "website", siteName: "CV Tailor",
+  ...pageMetadata(SITE_TITLE, SITE_DESCRIPTION, "/"),
+  metadataBase: new URL(SITE_URL),
+  applicationName: "CV Tailor",
+  verification: { google: "fwuUWkVD7RmvFVXU3Ryx1NMWyk6W6LckEYT56wKgF4A" },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: { index: true, follow: true, "max-image-preview": "large", "max-snippet": -1, "max-video-preview": -1 },
   },
+  icons: { icon: [{ url: "/icon.svg", type: "image/svg+xml" }] },
 };
 
 export default function Layout({ children }: { children: React.ReactNode }) {
