@@ -27,11 +27,12 @@ export async function scaffoldPortfolio({ stack = "nextjs", target, config, prov
   if (!designs.includes(config?.design) || !config.profile?.fullName?.trim() || !config.profile?.headline?.trim()) {
     throw new Error("Supply a reviewed public Portfolio Config JSON with a Portfolio Design, full name and headline.");
   }
-  if (typeof target !== "string" || !isAbsolute(target) || target.startsWith("\\\\")) {
+  if (typeof target !== "string" || !isAbsolute(target) || (process.platform === "win32" && !/^[a-z]:[\\/]/i.test(target))) {
     throw new Error("Choose an absolute local path for a new portfolio directory.");
   }
   const repo = await realpath(resolve(import.meta.dirname, "../../../.."));
   const project = await physicalPath(resolve(target));
+  if (project.startsWith("\\\\")) throw new Error("Choose a local portfolio directory outside network shares.");
   const fromRepo = relative(repo, project);
   if (!fromRepo || (!isAbsolute(fromRepo) && fromRepo !== ".." && !fromRepo.startsWith(`..${sep}`))) {
     throw new Error("Choose a directory outside the CV Tailor checkout.");

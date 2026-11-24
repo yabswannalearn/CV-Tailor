@@ -28,7 +28,7 @@
 }
 
 @media print {
-  .portfolio[data-design="executive"] { color-scheme: light; --section-space: 1.4rem; --gutter: 0rem; background: white; }
+  .portfolio[data-design="executive"][data-mode] { color-scheme: light; --section-space: 1.4rem; --gutter: 0rem; background: white; }
   .p-executive-nav { display: none; }
   .p-executive-header { border-inline: 0; }
   .portfolio[data-design="executive"] .p-entries, .portfolio[data-design="executive"] .p-projects { gap: 1rem; }

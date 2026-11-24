@@ -38,4 +38,15 @@ export const PORTFOLIO_DESIGNS = [
   }
 ] as const;
 
+export const PORTFOLIO_PREVIEW_SIZES = {
+  "desktop": {
+    "width": 1280,
+    "height": 800
+  },
+  "mobile": {
+    "width": 390,
+    "height": 844
+  }
+} as const;
+
 export type PortfolioDesign = (typeof PORTFOLIO_DESIGNS)[number];

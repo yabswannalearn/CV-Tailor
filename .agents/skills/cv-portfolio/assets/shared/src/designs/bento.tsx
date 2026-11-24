@@ -14,6 +14,6 @@ export function Bento({ profile, sections, toggle }: DesignProps) {
         <SectionNav sections={sections} />
       </div>
     </header>
-    <Sections sections={sections} />
+    <div className="p-bento-sections"><Sections sections={sections} /></div>
   </main>;
 }

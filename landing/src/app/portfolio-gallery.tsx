@@ -3,12 +3,12 @@
 import Image from "next/image";
 import { Expand, Monitor, Smartphone, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { PORTFOLIO_DESIGNS, type PortfolioDesign } from "../lib/portfolioDesigns";
+import { PORTFOLIO_DESIGNS, PORTFOLIO_PREVIEW_SIZES, type PortfolioDesign } from "../lib/portfolioDesigns";
 import CopyButton from "./copy-button";
 
 const views = [
-  { id: "desktop", name: "Desktop", width: 1280, height: 800, icon: Monitor },
-  { id: "mobile", name: "Mobile", width: 390, height: 844, icon: Smartphone },
+  { id: "desktop", name: "Desktop", icon: Monitor },
+  { id: "mobile", name: "Mobile", icon: Smartphone },
 ] as const;
 
 function promptFor({ id, name }: PortfolioDesign) {
@@ -18,6 +18,7 @@ function promptFor({ id, name }: PortfolioDesign) {
 export default function PortfolioGallery() {
   const [selected, setSelected] = useState<PortfolioDesign | null>(null);
   const [view, setView] = useState<(typeof views)[number]>(views[0]);
+  const previewSize = PORTFOLIO_PREVIEW_SIZES[view.id];
   const dialog = useRef<HTMLDialogElement>(null);
   const opener = useRef<HTMLButtonElement>(null);
 
@@ -49,7 +50,7 @@ export default function PortfolioGallery() {
         {PORTFOLIO_DESIGNS.map(design => (
           <article className="portfolio-gallery-card" key={design.id}>
             <div className="portfolio-gallery-image">
-              <Image src={`/portfolio-designs/${design.id}-desktop.png`} width={1280} height={800}
+              <Image src={`/portfolio-designs/${design.id}-desktop.png`} {...PORTFOLIO_PREVIEW_SIZES.desktop}
                 alt={`Reinael Yabut’s portfolio in the ${design.name} design`} />
             </div>
             <div className="portfolio-card-body">
@@ -82,8 +83,8 @@ export default function PortfolioGallery() {
             ))}
           </div>
           <div className="portfolio-preview-stage" tabIndex={0} role="region" aria-label="Portfolio preview image">
-            <Image key={view.id} className={`portfolio-preview-${view.id}`} src={`/portfolio-designs/${selected.id}-${view.id}.png`}
-              width={view.width} height={view.height} alt={`${selected.name} ${view.name.toLowerCase()} portfolio preview`} loading="eager" />
+            <Image key={view.id} src={`/portfolio-designs/${selected.id}-${view.id}.png`} {...previewSize}
+              style={{ maxWidth: previewSize.width }} alt={`${selected.name} ${view.name.toLowerCase()} portfolio preview`} loading="eager" />
           </div>
           <footer><CopyButton label={`Copy ${selected.name} portfolio prompt`} caption="Copy prompt" text={promptFor(selected)} /></footer>
         </div>}

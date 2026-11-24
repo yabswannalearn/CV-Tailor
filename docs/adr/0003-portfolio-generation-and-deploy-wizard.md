@@ -6,7 +6,7 @@ CV Tailor generates standalone web portfolios outside the CV Tailor repository v
 
 ## Considered options
 
-**Server-rendered Next.js with host adapters** (e.g., `@opennextjs/cloudflare` for Cloudflare Workers/Pages) was rejected as the default because personal portfolios are content sites that do not need server rendering. Static export produces one portable output (`out/` or `dist/`) that deploys identically to Vercel, Cloudflare Pages, and GitHub Pages at zero cost without adapter lag.
+**Server-rendered Next.js with host adapters** (e.g., `@opennextjs/cloudflare` for Cloudflare Workers/Pages) was rejected as the default because personal portfolios are content sites that do not need server rendering. Static export produces one portable output (`out/` or `dist/`) for Vercel and Cloudflare Pages. A GitHub Pages project site served from `/<repo>/` needs the framework and asset paths configured for that subpath.
 
 **Six separate starter repositories (or twelve per-framework templates)** was rejected because duplicating build tooling, dependencies, and layout fixes across repositories causes rapid drift and makes design switching destructive. Bundling all six lightweight designs behind one **Portfolio Config** lets users switch designs in one config edit and re-sync profile updates without overwriting custom overrides. Non-React stacks (Astro, SvelteKit, plain HTML/CSS) remain supported by agent scaffolding from the shared design specification and tokens, with the explicit trade-off that six-in-one instant switching is pre-bundled only for Next.js and Vite + React.
 

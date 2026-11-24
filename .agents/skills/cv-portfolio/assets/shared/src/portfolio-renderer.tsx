@@ -27,17 +27,19 @@ export function PortfolioRenderer({ config }: { config: PortfolioConfig }) {
   const dark = mode === "dark" || (mode === "system" && systemDark);
   const nextMode = dark ? "light" : "dark";
   const accent = config.theme.accent?.trim();
+  // Keep custom accents legible against the light and dark design surfaces.
   const customAccent = accent && /^#(?:[\da-f]{3}|[\da-f]{6})$/i.test(accent)
-    ? { "--accent-override": `color-mix(in srgb, ${accent} 50%, var(--ink))` } as CSSProperties
+    ? { "--accent-override": `color-mix(in srgb, ${accent} 23%, var(--ink))` } as CSSProperties
     : undefined;
   const Design = designs[config.design];
+  const sections = portfolioSections(config);
   const toggle = <button className="p-theme inline-flex items-center justify-center" type="button"
     aria-label={`Switch to ${nextMode} mode`} onClick={() => setMode(nextMode)}>
     {dark ? <Sun size={18} aria-hidden="true" /> : <Moon size={18} aria-hidden="true" />}
   </button>;
   return <div className="portfolio" id="portfolio" data-design={config.design} data-mode={mode}
     data-density={config.layout.density} data-accent={accent && accentTokens.includes(accent) ? accent : undefined} style={customAccent}>
-    <a className="p-skip" href="#portfolio-main">Skip to content</a>
-    <Design profile={config.profile} sections={portfolioSections(config)} toggle={toggle} />
+    <a className="p-skip" href={`#${sections[0]?.id ?? "portfolio-main"}`}>Skip to content</a>
+    <Design profile={config.profile} sections={sections} toggle={toggle} />
   </div>;
 }

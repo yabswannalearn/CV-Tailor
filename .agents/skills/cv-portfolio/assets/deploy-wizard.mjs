@@ -216,10 +216,8 @@ async function customDomain(provider, pagesProject) {
       run("npx", ["vercel", "domains", "add", host, project], "Check the project name and Vercel account or add the domain in the dashboard.");
     }
     console.log("Set the A record for your apex domain or the CNAME for your subdomain using the value shown in Vercel Project Settings → Domains.");
-    if (add || await confirm(`Show the Vercel DNS settings for ${host} using the CLI?`)) {
-      const inspected = command("npx", ["vercel", "domains", "inspect", host]);
-      if (inspected.status !== 0) console.log("Open Vercel Project Settings → Domains to copy the assigned DNS records.");
-    }
+    const inspected = command("npx", ["vercel", "domains", "inspect", host]);
+    if (inspected.status !== 0) console.log("Open Vercel Project Settings → Domains to copy the assigned DNS records.");
   } else {
     console.log("In Workers & Pages, open your Pages project, then select Custom domains → Set up a domain.");
     console.log(`Cloudflare creates the DNS record for a zone in your account. For an external DNS provider, point a subdomain CNAME to the production hostname ${pagesProject ? `(for example, ${pagesProject}.pages.dev)` : "shown as <project>.pages.dev"}. An apex domain requires Cloudflare nameservers.`);

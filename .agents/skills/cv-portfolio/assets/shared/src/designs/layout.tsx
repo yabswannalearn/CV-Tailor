@@ -53,7 +53,7 @@ export function ProfileDetails({ profile }: { profile: DesignProps["profile"] })
 
 export function Sections({ sections }: { sections: PortfolioSection[] }) {
   return sections.map(({ id, title, content }) => (
-    <section className="p-section" id={id} key={id} aria-labelledby={`p-label-${id}`}>
+    <section className="p-section" id={id} key={id} tabIndex={-1} aria-labelledby={`p-label-${id}`}>
       <h2 id={`p-label-${id}`}>{title}</h2>
       <div className="p-section-content">{content}</div>
     </section>
