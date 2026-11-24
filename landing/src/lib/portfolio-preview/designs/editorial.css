@@ -1,0 +1,75 @@
+.portfolio[data-design="editorial"] {
+  --width: 62rem;
+  --radius: 0.5rem;
+  --canvas: light-dark(#f6f4ee, #121714);
+  --surface: light-dark(#fcfbf7, #1a211d);
+  --ink: light-dark(#181c19, #eef1ea);
+  --rule: light-dark(#d3d8ce, #2f3b33);
+  --accent-base: light-dark(#1f513f, #8ecba8);
+  --display-font: "Cormorant Garamond", "Iowan Old Style", Georgia, serif;
+  --anchor-offset: 5rem;
+}
+.portfolio[data-design="editorial"] .p-home {
+  font-family: var(--display-font);
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -.01em;
+}
+.portfolio[data-design="editorial"] .p-intro {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 2rem;
+  padding-block: clamp(3.2rem, 8vw, 6.2rem) clamp(2rem, 4vw, 3rem);
+}
+.portfolio[data-design="editorial"] .p-avatar {
+  border-radius: 1rem;
+  filter: grayscale(15%);
+}
+.portfolio[data-design="editorial"] .p-avatar:hover { filter: none; }
+.portfolio[data-design="editorial"] h1 {
+  margin-top: .65rem;
+  font-size: clamp(3.1rem, 8.2vw, 6.4rem);
+  font-weight: 600;
+  line-height: .96;
+  letter-spacing: -.03em;
+}
+.portfolio[data-design="editorial"] .p-headline {
+  font-family: var(--display-font);
+  font-style: italic;
+  font-size: clamp(1.3rem, 2.6vw, 1.75rem);
+  color: var(--ink);
+  opacity: .84;
+}
+.portfolio[data-design="editorial"] .p-editorial-metrics {
+  padding-bottom: var(--section-space);
+}
+.portfolio[data-design="editorial"] .p-editorial-metrics .p-metrics {
+  margin-block-start: 0;
+}
+.portfolio[data-design="editorial"] h2 {
+  font-size: clamp(1.9rem, 3.6vw, 2.75rem);
+  font-weight: 500;
+  color: var(--accent);
+}
+.portfolio[data-design="editorial"] .p-section-content { max-width: 46rem; }
+.portfolio[data-design="editorial"] .p-entry {
+  padding-inline-start: 1.1rem;
+  border-inline-start: 2px solid transparent;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--rule);
+}
+.portfolio[data-design="editorial"] .p-entry:hover { border-inline-start-color: var(--accent); }
+.portfolio[data-design="editorial"] .p-entry:last-child { border-bottom: 0; padding-bottom: 0; }
+.portfolio[data-design="editorial"] .p-project {
+  padding-bottom: 1.75rem;
+  border-bottom: 1px solid var(--rule);
+}
+.portfolio[data-design="editorial"] .p-project:last-child { border-bottom: 0; padding-bottom: 0; }
+.portfolio[data-design="editorial"] .p-project h3,
+.portfolio[data-design="editorial"] .p-entry h3 { font-size: clamp(1.4rem, 2.4vw, 1.75rem); }
+
+@media (max-width: 40rem) {
+  .portfolio[data-design="editorial"] { --anchor-offset: 8rem; }
+  .portfolio[data-design="editorial"] .p-intro { flex-direction: column-reverse; gap: 1.25rem; }
+}

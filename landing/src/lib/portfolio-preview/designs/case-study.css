@@ -1,0 +1,71 @@
+.portfolio[data-design="case-study"] {
+  --width: 74rem;
+  --radius: 0.65rem;
+  --canvas: light-dark(#f8f3ec, #171210);
+  --surface: light-dark(#fffdf9, #221b18);
+  --band: light-dark(#eee2d5, #291f1b);
+  --ink: light-dark(#241a15, #f5ebe2);
+  --rule: light-dark(#dcc8b7, #4a3730);
+  --accent-base: light-dark(#a43d28, #ea8a72);
+  --display-font: "Newsreader", Charter, Georgia, serif;
+}
+.p-case-band {
+  background: var(--band);
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: clamp(2rem, 4.5vw, 3.5rem);
+}
+.p-case-band .p-intro {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+  align-items: end;
+  gap: 2rem;
+  padding-bottom: 1.75rem;
+}
+.portfolio[data-design="case-study"] h1 {
+  margin-top: .5rem;
+  font-size: clamp(3rem, 7.2vw, 6.2rem);
+  font-weight: 500;
+  letter-spacing: -.03em;
+}
+.p-case-role {
+  padding-inline-start: 1.35rem;
+  border-inline-start: 2px solid var(--accent);
+}
+.p-case-role .p-headline {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--display-font);
+  font-style: italic;
+  font-size: clamp(1.25rem, 2.3vw, 1.7rem);
+}
+.p-case-role .p-avatar { margin-bottom: .9rem; border-radius: .75rem; }
+.p-case-metrics .p-metrics { margin-block-start: 0; }
+.portfolio[data-design="case-study"] h2 { color: var(--accent); font-weight: 500; }
+.portfolio[data-design="case-study"] main > .p-container > .p-section:first-child { border-top: 0; }
+.portfolio[data-design="case-study"] .p-project {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.55fr);
+  gap: 1.75rem;
+  padding: clamp(1.35rem, 3vw, 2.25rem);
+  border: 1px solid var(--rule);
+  border-top: 3px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.portfolio[data-design="case-study"] .p-project:hover {
+  border-color: var(--accent);
+  box-shadow: 0 10px 30px color-mix(in srgb, var(--ink) 7%, transparent);
+}
+.portfolio[data-design="case-study"] .p-project h3 { font-size: clamp(1.45rem, 2.8vw, 2rem); font-weight: 500; }
+.portfolio[data-design="case-study"] .p-project-body > :first-child { margin-top: 0; }
+.portfolio[data-design="case-study"] .p-entry {
+  padding: 1.25rem 1.4rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+@media (max-width: 46rem) {
+  .p-case-band .p-intro,
+  .portfolio[data-design="case-study"] .p-project { grid-template-columns: minmax(0, 1fr); gap: 1.15rem; }
+}

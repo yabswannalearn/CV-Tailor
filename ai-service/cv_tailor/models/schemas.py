@@ -1,9 +1,13 @@
 from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import List, Optional, Literal
 from datetime import date as DateType, datetime
+from pathlib import Path
 from typing import Optional
 
 ResumeTemplate = Literal["classic", "modern", "minimal", "serif", "executive", "technical", "compact", "sidebar"]
+PortfolioDesign = Literal["editorial", "bento", "technical", "case-study", "executive", "bold-studio"]
+PortfolioStack = Literal["nextjs", "vite-react", "astro", "sveltekit", "html", "custom"]
+PortfolioDeployProvider = Literal["vercel", "cloudflare"]
 
 
 class ConnectionPreference(BaseModel):
@@ -30,12 +34,36 @@ class CalendarConnectionPreference(ConnectionPreference):
     provider: Literal["googlecalendar", "outlook"]
 
 
+class PortfolioPreference(BaseModel):
+    model_config = {"extra": "forbid"}
+    design: PortfolioDesign = "editorial"
+    stack: PortfolioStack = "nextjs"
+    deploy_provider: Optional[PortfolioDeployProvider] = None
+    project_dir: Optional[str] = Field(default=None, max_length=4096)
+
+    @field_validator("project_dir")
+    @classmethod
+    def local_project_directory(cls, value):
+        if value is None:
+            return None
+        message = "Use an absolute local project directory without environment-file segments."
+        try:
+            path = Path(value).expanduser()
+        except RuntimeError:
+            raise ValueError(message) from None
+        if (not path.is_absolute() or path.drive.startswith("\\\\") or "\x00" in value
+                or any(part.casefold().startswith(".env") for part in path.parts)):
+            raise ValueError(message)
+        return str(path)
+
+
 class PreferencesUpdate(BaseModel):
     model_config = {"extra": "forbid"}
     revision: Optional[int] = Field(default=None, ge=1)
     resume_template: Optional[ResumeTemplate] = None
     tracking_connection: Optional[TrackingConnectionPreference] = None
     calendar_connections: List[CalendarConnectionPreference] = Field(default_factory=list, max_length=2)
+    portfolio_preference: Optional[PortfolioPreference] = None
 
     @field_validator("calendar_connections")
     @classmethod

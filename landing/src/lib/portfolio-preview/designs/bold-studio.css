@@ -1,0 +1,99 @@
+.portfolio[data-design="bold-studio"] {
+  --width: 82rem;
+  --radius: 0.25rem;
+  --canvas: light-dark(#f5f2eb, #0d0d0d);
+  --surface: light-dark(#ebe6dc, #171717);
+  --ink: light-dark(#111111, #f4f1ea);
+  --rule: light-dark(#ccc5b8, #2b2b2b);
+  --accent-base: light-dark(#d63b17, #ff5c35);
+  --display-font: "Syne", system-ui, sans-serif;
+}
+.portfolio[data-design="bold-studio"] .p-top {
+  border-bottom: 1px solid var(--rule);
+}
+.portfolio[data-design="bold-studio"] .p-home,
+.portfolio[data-design="bold-studio"] .p-nav-links {
+  font-family: var(--mono);
+  font-size: .78rem;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.portfolio[data-design="bold-studio"] .p-intro {
+  padding-block: clamp(3rem, 7vw, 5.5rem) clamp(2.5rem, 5vw, 4rem);
+}
+.p-studio-eyebrow { margin-bottom: 1rem; }
+.portfolio[data-design="bold-studio"] h1 {
+  font-size: clamp(3.1rem, 10.5vw, 8.75rem);
+  font-weight: 800;
+  letter-spacing: -.045em;
+  line-height: .9;
+  text-transform: uppercase;
+}
+.p-studio-caption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.25rem 2rem;
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--rule);
+}
+.p-studio-caption .p-headline {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: clamp(.95rem, 1.7vw, 1.15rem);
+}
+.p-studio-caption .p-actions { margin-block-start: 0; }
+.p-studio-metrics { margin-top: 1.5rem; }
+.p-studio-metrics .p-metrics { margin-block-start: 0; }
+.portfolio[data-design="bold-studio"] h2 {
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: -.02em;
+}
+.portfolio[data-design="bold-studio"] .p-section {
+  border-top: 2px solid var(--ink);
+  padding-top: clamp(2rem, 4.5vw, 3.25rem);
+}
+.portfolio[data-design="bold-studio"] .p-projects {
+  gap: 0;
+  border-bottom: 1px solid var(--rule);
+}
+.portfolio[data-design="bold-studio"] .p-project {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+  gap: 1.5rem;
+  padding: 1.65rem 1rem;
+  border-top: 1px solid var(--rule);
+}
+.portfolio[data-design="bold-studio"] .p-project:hover,
+.portfolio[data-design="bold-studio"] .p-project:focus-within {
+  background: var(--surface);
+}
+.portfolio[data-design="bold-studio"] .p-project h3 {
+  font-size: clamp(1.35rem, 2.4vw, 1.95rem);
+  font-weight: 700;
+}
+.portfolio[data-design="bold-studio"] .p-project-heading {
+  display: grid;
+  column-gap: 1rem;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-content: start;
+}
+.portfolio[data-design="bold-studio"] .p-project-heading .p-meta { grid-column: 2; font-family: var(--mono); }
+.portfolio[data-design="bold-studio"] .p-project-number {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: .85rem;
+  font-weight: 600;
+  line-height: 2;
+  color: var(--accent);
+}
+.portfolio[data-design="bold-studio"] .p-project-body > :first-child { margin-top: 0; }
+
+@media (max-width: 44rem) {
+  .portfolio[data-design="bold-studio"] .p-project { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+  .p-studio-caption { align-items: flex-start; flex-direction: column; }
+}

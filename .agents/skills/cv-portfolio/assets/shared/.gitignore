@@ -1,0 +1,10 @@
+node_modules/
+.next/
+.portfolio-ssr/
+out/
+dist/
+.vercel/
+.wrangler/
+.env*
+*.tsbuildinfo
+next-env.d.ts

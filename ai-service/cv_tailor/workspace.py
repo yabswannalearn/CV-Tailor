@@ -7,12 +7,15 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from hashlib import sha256
 import json
+import random
 import re
+import time
 from pathlib import Path
 from uuid import uuid4
 from pydantic import ValidationError
 
 from sqlalchemy import select, func
+from sqlalchemy.exc import OperationalError
 from cv_tailor.database import SessionLocal
 from cv_tailor.models import database_models as m
 from cv_tailor.models.schemas import UserProfile, JobApplicationCreate, JobApplicationUpdate, PreferencesUpdate
@@ -28,7 +31,16 @@ class WorkspaceError(ValueError):
 @contextmanager
 def write_session():
     with SessionLocal() as db:
-        db.connection().exec_driver_sql("BEGIN IMMEDIATE")
+        for attempt in range(8):
+            try:
+                db.connection().exec_driver_sql("BEGIN IMMEDIATE")
+                break
+            except OperationalError as exc:
+                message = str(exc).lower()
+                if ("locked" not in message and "busy" not in message) or attempt == 7:
+                    raise
+                db.rollback()
+                time.sleep(0.05 * (attempt + 1) + random.uniform(0, 0.05))
         try:
             yield db
             db.commit()
@@ -74,7 +86,8 @@ def preferences_dict(db):
     return {"revision": row.revision if row else 1, "workspace_uuid": row.workspace_uuid if row else None,
             "resume_template": (row.resume_template if row else None) or (profile.preferred_template if profile else None) or "classic",
             "tracking_connection": row.tracking_connection if row else None,
-            "calendar_connections": row.calendar_connections if row else []}
+            "calendar_connections": row.calendar_connections if row else [],
+            "portfolio_preference": row.portfolio_preference if row else None}
 
 
 def preferences_get():
@@ -90,8 +103,14 @@ def preferences_update(payload, revision=None):
             values["tracking_connection"] = validated.tracking_connection.model_dump()
         if "calendar_connections" in values:
             values["calendar_connections"] = [connection.model_dump() for connection in validated.calendar_connections]
+        if validated.portfolio_preference is not None:
+            values["portfolio_preference"] = validated.portfolio_preference.model_dump()
     except ValidationError:
-        raise WorkspaceError("Use a supported resume_template, tracking_connection, or calendar_connections (one per provider, with an absolute nonsecret JSON config_path only). Credentials belong in the Git-ignored environment file.") from None
+        raise WorkspaceError(
+            "Use supported values for resume_template, tracking_connection, calendar_connections, or portfolio_preference. "
+            "Save one connection per provider with an absolute nonsecret JSON config_path. "
+            "Use an absolute local portfolio project_dir. Credentials belong in the Git-ignored environment file."
+        ) from None
     revision = revision if revision is not None else values.pop("revision", None)
     values.pop("revision", None)
     def save(db):

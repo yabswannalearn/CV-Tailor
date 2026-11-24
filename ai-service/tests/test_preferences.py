@@ -9,6 +9,10 @@ from contextlib import closing
 import pytest
 
 
+def test_new_workspace_has_no_portfolio_preference(local_workspace):
+    assert local_workspace.preferences_get()["portfolio_preference"] is None
+
+
 def test_preferences_work_before_profile_and_new_applications_inherit(local_workspace):
     w = local_workspace
     initial = w.preferences_get()
@@ -34,6 +38,29 @@ def test_partial_changes_preserve_other_choices_and_detect_conflicts(local_works
     disconnected = w.preferences_update({"tracking_connection": None}, updated["revision"])
     assert disconnected["resume_template"] == "technical"
     assert disconnected["tracking_connection"] is None
+
+
+def test_portfolio_preference_changes_are_revisioned_and_preserve_other_preferences(local_workspace, tmp_path):
+    w = local_workspace
+    previous = w.preferences_update({
+        "resume_template": "modern",
+        "tracking_connection": {"provider": "notion"},
+        "calendar_connections": [{"provider": "outlook"}],
+    }, 1)
+    expected_defaults = {"design": "editorial", "stack": "nextjs", "deploy_provider": None, "project_dir": None}
+    saved = w.preferences_update({"portfolio_preference": {}}, previous["revision"])
+    assert saved["portfolio_preference"] == expected_defaults
+
+    choice = {"design": "bento", "stack": "vite-react", "deploy_provider": "cloudflare", "project_dir": str(tmp_path / "portfolio")}
+    updated = w.preferences_update({"portfolio_preference": choice}, saved["revision"])
+    assert updated == {**previous, "portfolio_preference": choice, "revision": saved["revision"] + 1}
+    assert w.preferences_get() == updated
+    with pytest.raises(w.WorkspaceError, match="Refresh"):
+        w.preferences_update({"portfolio_preference": None}, saved["revision"])
+    renamed = w.preferences_update({"resume_template": "classic"}, updated["revision"])
+    assert renamed["portfolio_preference"] == choice
+    cleared = w.preferences_update({"portfolio_preference": None}, renamed["revision"])
+    assert cleared == {**renamed, "portfolio_preference": None, "revision": renamed["revision"] + 1}
 
 
 def test_profile_and_default_template_stay_compatible_without_overwriting_applications(local_workspace, profile_payload):
@@ -79,6 +106,27 @@ def test_preference_schema_rejects_credentials_and_invalid_values(local_workspac
     assert w.preferences_get() == before
 
 
+@pytest.mark.parametrize("choice", [
+    {"design": "unknown"}, {"stack": "unknown"}, {"deploy_provider": "unknown"},
+    {"project_dir": "relative/path"}, {"project_dir": "https://example.com/portfolio"},
+    {"token": "fictional-private-value"}, {"vercel_token": "fictional-private-value"},
+    {"api_key": "fictional-private-value"},
+])
+def test_invalid_portfolio_preference_does_not_echo_input_or_change_preferences(local_workspace, choice):
+    w = local_workspace
+    before = w.preferences_get()
+    with pytest.raises(w.WorkspaceError, match="portfolio_preference") as error:
+        w.preferences_update({"portfolio_preference": choice}, before["revision"])
+    assert "fictional-private-value" not in str(error.value)
+    assert w.preferences_get() == before
+
+
+def test_portfolio_project_path_rejects_environment_file_segments(local_workspace, tmp_path):
+    w = local_workspace
+    with pytest.raises(w.WorkspaceError, match="portfolio_preference"):
+        w.preferences_update({"portfolio_preference": {"project_dir": str(tmp_path / ".ENV.local" / "portfolio")}}, 1)
+
+
 def test_version_one_upgrade_preserves_choices_and_creates_a_backup(local_workspace, profile_payload):
     from cv_tailor import database
     from cv_tailor.schema_changes import apply_schema_changes
@@ -115,17 +163,19 @@ def test_new_cli_processes_reload_preferences_and_isolate_workspaces(tmp_path):
     initial = run(first, "preferences", "get")
     saved = run(first, "preferences", "set", "--revision", str(initial["revision"]), "--input", "-",
         payload={"resume_template": "minimal", "tracking_connection": {"provider": "airtable"},
-                 "calendar_connections": [{"provider": "googlecalendar"}, {"provider": "outlook"}]})
+                 "calendar_connections": [{"provider": "googlecalendar"}, {"provider": "outlook"}],
+                 "portfolio_preference": {"design": "technical", "deploy_provider": "vercel"}})
     assert run(first, "status")["preferences"] == saved
     assert run(first, "preferences", "get") == saved
     assert saved["calendar_connections"] == [
         {"provider": "googlecalendar", "config_path": None}, {"provider": "outlook", "config_path": None}]
+    assert saved["portfolio_preference"] == {"design": "technical", "stack": "nextjs", "deploy_provider": "vercel", "project_dir": None}
     other = run(second, "preferences", "get")
     assert other["resume_template"] == "classic"
     assert other["calendar_connections"] == []
     assert other["workspace_uuid"] != saved["workspace_uuid"]
     invalid = run(first, "preferences", "set", "--revision", str(saved["revision"]), "--input", "-",
-        payload={"tracking_connection": {"provider": "notion", "token": "fictional-private-value"}}, success=False)
+        payload={"portfolio_preference": {"vercel_token": "fictional-private-value"}}, success=False)
     assert "fictional-private-value" not in json.dumps(invalid)
 
 
@@ -136,11 +186,15 @@ def test_http_and_cli_share_revisioned_preferences(local_workspace):
     with TestClient(app) as client:
         initial = client.get("/api/preferences").json()
         response = client.patch("/api/preferences", json={"revision": initial["revision"], "resume_template": "compact",
-                                                        "calendar_connections": [{"provider": "outlook"}]})
+                                                        "calendar_connections": [{"provider": "outlook"}],
+                                                        "portfolio_preference": {"design": "executive"}})
         assert response.status_code == 200, response.text
         assert w.preferences_get() == response.json()
         assert response.json()["calendar_connections"] == [{"provider": "outlook", "config_path": None}]
         assert client.get("/api/workspace").json()["preferences"] == response.json()
+        assert client.get("/api/workspace/status").json()["preferences"]["portfolio_preference"] == {
+            "design": "executive", "stack": "nextjs", "deploy_provider": None, "project_dir": None,
+        }
         assert client.patch("/api/preferences", json={"revision": initial["revision"], "resume_template": "modern"}).status_code == 409
         rejected = client.patch("/api/preferences", json={"revision": response.json()["revision"], "token": "fictional-private-value"})
         assert rejected.status_code == 422
@@ -194,3 +248,34 @@ def test_version_two_upgrade_preserves_preferences_and_backs_up_before_alter(loc
     assert len(list(database_path.parent.glob(database_path.name + ".backup-*"))) == 1
     with database.engine.connect() as connection:
         assert connection.exec_driver_sql("PRAGMA user_version").scalar_one() == SCHEMA_VERSION
+
+
+def test_version_three_upgrade_adds_portfolio_preference_and_preserves_existing_choices(local_workspace):
+    from cv_tailor import database
+    from cv_tailor.schema_changes import apply_schema_changes
+
+    w = local_workspace
+    saved = w.preferences_update({
+        "resume_template": "modern",
+        "tracking_connection": {"provider": "notion"},
+        "calendar_connections": [{"provider": "googlecalendar"}, {"provider": "outlook"}],
+    }, 1)
+    with database.engine.begin() as connection:
+        columns = {row[1] for row in connection.exec_driver_sql("PRAGMA table_info(workspace_preferences)")}
+        if "portfolio_preference" in columns:
+            connection.exec_driver_sql("ALTER TABLE workspace_preferences DROP COLUMN portfolio_preference")
+        connection.exec_driver_sql("PRAGMA user_version=3")
+
+    apply_schema_changes(database.engine)
+
+    assert w.preferences_get() == {**saved, "portfolio_preference": None}
+    with database.engine.connect() as connection:
+        assert connection.exec_driver_sql("PRAGMA user_version").scalar_one() == 4
+    database_path = Path(database.engine.url.database)
+    backups = list(database_path.parent.glob(database_path.name + ".backup-*"))
+    assert len(backups) == 1
+    with closing(sqlite3.connect(backups[0])) as backup:
+        assert backup.execute("PRAGMA user_version").fetchone()[0] == 3
+        assert "portfolio_preference" not in {row[1] for row in backup.execute("PRAGMA table_info(workspace_preferences)")}
+    apply_schema_changes(database.engine)
+    assert list(database_path.parent.glob(database_path.name + ".backup-*")) == backups
