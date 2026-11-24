@@ -11,11 +11,11 @@ Base = declarative_base()
 
 
 def make_engine(url):
-    result = create_engine(url, connect_args={"check_same_thread": False, "timeout": 5})
+    result = create_engine(url, connect_args={"check_same_thread": False, "timeout": 15})
     @event.listens_for(result, "connect")
     def setup(connection, _):
         connection.execute("PRAGMA foreign_keys=ON")
-        connection.execute("PRAGMA busy_timeout=5000")
+        connection.execute("PRAGMA busy_timeout=15000")
     return result
 
 

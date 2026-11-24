@@ -1,4 +1,4 @@
-import type { PortfolioConfig } from "./data/types";
+import type { PortfolioConfig } from "../data/types";
 import { publicAsset, webLink } from "./public-links";
 
 function summarySnippet(summary: string) {

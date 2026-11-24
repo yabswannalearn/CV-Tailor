@@ -1,10 +1,13 @@
 """Versioned SQLite initialization and shared preset seeds."""
 from datetime import datetime, timezone
 from pathlib import Path
+import random
 import sqlite3
 import json
+import time
 from uuid import uuid4
 from contextlib import closing
+from sqlalchemy.exc import OperationalError
 
 SCHEMA_VERSION = 4
 
@@ -138,37 +141,70 @@ PRESETS = [{'core_skills_bank': ['Email & Calendar Management',
 
 
 
+def _is_sqlite_lock(exc):
+    message = str(exc).lower()
+    return "locked" in message or "busy" in message
+
+
+def _retry_on_lock(action, attempts=8):
+    for attempt in range(attempts):
+        try:
+            return action()
+        except (OperationalError, sqlite3.OperationalError) as exc:
+            if not _is_sqlite_lock(exc) or attempt == attempts - 1:
+                raise
+            time.sleep(0.05 * (attempt + 1) + random.uniform(0, 0.05))
+
+
 def apply_schema_changes(engine):
     from cv_tailor.database import Base
     from cv_tailor.models.database_models import ResumePreset
     database = engine.url.database
     if database and database != ":memory:":
         Path(database).parent.mkdir(parents=True, exist_ok=True)
-    with engine.connect() as connection:
-        version = connection.exec_driver_sql("PRAGMA user_version").scalar_one()
-        if version > SCHEMA_VERSION:
-            raise RuntimeError("This workspace requires a newer CV Tailor version.")
-        connection.exec_driver_sql("PRAGMA journal_mode=WAL")
-        connection.commit()
+
+    def check_and_enable_wal():
+        with engine.connect() as connection:
+            version = connection.exec_driver_sql("PRAGMA user_version").scalar_one()
+            if version > SCHEMA_VERSION:
+                raise RuntimeError("This workspace requires a newer CV Tailor version.")
+            mode = (connection.exec_driver_sql("PRAGMA journal_mode").scalar_one() or "").lower()
+            if mode != "wal":
+                connection.exec_driver_sql("PRAGMA journal_mode=WAL")
+                connection.commit()
+            return version
+
+    version = _retry_on_lock(check_and_enable_wal)
     if version == SCHEMA_VERSION:
         return
     if version and version < SCHEMA_VERSION and database:
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
-        with closing(sqlite3.connect(database)) as source, closing(sqlite3.connect(database + ".backup-" + stamp)) as dest:
-            source.backup(dest)
-    with engine.begin() as connection:
-        # Serialize first-run initialization across independent CLI processes.
-        connection.exec_driver_sql("BEGIN IMMEDIATE")
-        Base.metadata.create_all(bind=connection)
-        columns = {row[1] for row in connection.exec_driver_sql("PRAGMA table_info(workspace_preferences)")}
-        if "calendar_connections" not in columns:
-            connection.exec_driver_sql("ALTER TABLE workspace_preferences ADD COLUMN calendar_connections JSON NOT NULL DEFAULT '[]'")
-        if "portfolio_preference" not in columns:
-            connection.exec_driver_sql("ALTER TABLE workspace_preferences ADD COLUMN portfolio_preference JSON")
-        connection.exec_driver_sql("INSERT OR IGNORE INTO workspaces (id) VALUES (1)")
-        connection.exec_driver_sql("INSERT OR IGNORE INTO workspace_preferences (workspace_id, revision, workspace_uuid) VALUES (1, 1, ?)", (uuid4().hex,))
-        table = ResumePreset.__table__
-        for preset in PRESETS:
-            connection.exec_driver_sql("INSERT OR IGNORE INTO resume_presets (slug, display_name, target_summary_prompt, core_skills_bank, metric_prompts, section_order, recommended_template, lever_guidance) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (preset["slug"], preset["display_name"], preset["target_summary_prompt"], json.dumps(preset["core_skills_bank"]), json.dumps(preset["metric_prompts"]), json.dumps(preset["section_order"]), preset["recommended_template"], preset["lever_guidance"]))
-        connection.exec_driver_sql(f"PRAGMA user_version={SCHEMA_VERSION}")
+        def backup_db():
+            with closing(sqlite3.connect(database, timeout=15)) as source, closing(sqlite3.connect(database + ".backup-" + stamp, timeout=15)) as dest:
+                source.backup(dest)
+        _retry_on_lock(backup_db)
+
+    def migrate():
+        with engine.begin() as connection:
+            # Serialize first-run initialization across independent CLI processes.
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
+            current = connection.exec_driver_sql("PRAGMA user_version").scalar_one()
+            if current > SCHEMA_VERSION:
+                raise RuntimeError("This workspace requires a newer CV Tailor version.")
+            if current == SCHEMA_VERSION:
+                return
+            Base.metadata.create_all(bind=connection)
+            columns = {row[1] for row in connection.exec_driver_sql("PRAGMA table_info(workspace_preferences)")}
+            if "calendar_connections" not in columns:
+                connection.exec_driver_sql("ALTER TABLE workspace_preferences ADD COLUMN calendar_connections JSON NOT NULL DEFAULT '[]'")
+            if "portfolio_preference" not in columns:
+                connection.exec_driver_sql("ALTER TABLE workspace_preferences ADD COLUMN portfolio_preference JSON")
+            connection.exec_driver_sql("INSERT OR IGNORE INTO workspaces (id) VALUES (1)")
+            connection.exec_driver_sql("INSERT OR IGNORE INTO workspace_preferences (workspace_id, revision, workspace_uuid) VALUES (1, 1, ?)", (uuid4().hex,))
+            table = ResumePreset.__table__
+            for preset in PRESETS:
+                connection.exec_driver_sql("INSERT OR IGNORE INTO resume_presets (slug, display_name, target_summary_prompt, core_skills_bank, metric_prompts, section_order, recommended_template, lever_guidance) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (preset["slug"], preset["display_name"], preset["target_summary_prompt"], json.dumps(preset["core_skills_bank"]), json.dumps(preset["metric_prompts"]), json.dumps(preset["section_order"]), preset["recommended_template"], preset["lever_guidance"]))
+            connection.exec_driver_sql(f"PRAGMA user_version={SCHEMA_VERSION}")
+
+    _retry_on_lock(migrate)

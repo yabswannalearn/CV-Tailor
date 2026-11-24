@@ -1,29 +1,29 @@
 # Portfolio Designs
 
-Use the selected design's desktop composition, then turn its columns into a single reading order on small screens. Start with the Portfolio Config [type](../assets/shared/src/data/types.ts) for content and layout choices. Follow configured section order and visibility. Skip empty sections and absent media. Keep identity and the confirmed headline in the introduction, and surface approved links in Contact.
+Use the selected design's desktop composition, then turn its columns into a single reading order on small screens. Start with the Portfolio Config [type](../assets/shared/src/data/types.ts) for content and layout choices. Keep codebases scalable and maintainable using KISS, DRY, YAGNI, and Separation of Concerns: data in `src/data/`, pure helpers in `src/lib/`, reusable UI primitives in `src/components/`, and visual layouts in `src/designs/`. Follow configured section order and visibility, skip empty sections and absent media, and preserve readable static HTML with JavaScript disabled.
 
 ## Layout and type
 
 | Design | Structure | Type and spacing |
 | --- | --- | --- |
-| `editorial` · Editorial Minimal | Sticky minimal nav above a name-led masthead. Sections read down one column with fine horizontal rules. | Palatino or Georgia for display, system sans for body. Use a 43rem reading measure and generous masthead spacing. |
-| `bento` · Bento Grid | Asymmetric introduction and navigation, then project tiles, grouped skills and an experience timeline. Place adjacent Projects and Skills sections side by side on wide screens. | Trebuchet or system sans for display, system sans for body. Start with a 2:1 header, a 1.2:1 project grid, 1rem gaps and 1.4rem card corners. Use an availability or location tile when those facts exist. |
-| `technical` · Technical / Engineer | Sticky ordered section index beside a ruled content grid. Give projects a heading/metadata column and a body column. | System sans for headings, ui-monospace or Consolas for dates, tags and navigation. Use square corners, visible 1px rules, and a compact nav. |
-| `case-study` · Case Study | Split masthead with a banded background. Lead with projects when the config allows, placing role and dates in one column and the narrative in the other. | Charter, Cambria or Georgia for display, system sans for body. Use broad project cards with a top rule and calmer entry spacing below. |
-| `executive` · Executive / Classic | Border-led, two-zone name and role header, then section titles in a left column with the records at right. | Segoe UI or system sans for the name, Georgia for section titles. Keep lines restrained and include a light print layout with navigational controls omitted. |
-| `bold-studio` · Bold Studio | Oversized typographic hero above numbered showcase rows. Projects lead when specified in the config. | Arial Black or a heavy system sans for the name, monospace for navigation and captions. Use tight headline tracking and full-width rules. |
+| `editorial` · Editorial Minimal | Translucent sticky nav with live scroll-spy above an editorial masthead, framed KPI strip, and calm single-column sections with left-accent experience rows. | `Cormorant Garamond` display (with italic role headline) + `Plus Jakarta Sans` body. 46rem reading measure, warm paper palette. |
+| `bento` · Bento Grid | Asymmetric 2.2:1 Bento hero with status/navigation side card, full-width KPI proof tiles, weighted 7:5 project bento cards with topic filters, and timeline experience cards. | `Bricolage Grotesque` display + `Plus Jakarta Sans` body + `JetBrains Mono` tags. Crisp alabaster/graphite surfaces with cobalt accent (no generic purple gradients). |
+| `technical` · Technical / Engineer | Sticky ordered left index rail (`01`–`07`) with scroll-spy indicator beside a hairline-ruled engineering dossier and two-column project specification rows. | `Space Grotesk` headings + `IBM Plex Sans` body + `JetBrains Mono` nav, dates, and tags. Square corners and visible 1px rules. |
+| `case-study` · Case Study | Split editorial hero band with framed KPI cards along the base, leading into filterable two-column case study cards with top accent rules and emphasized numeric outcomes. | `Newsreader` display (italic role accent) + `Plus Jakarta Sans` body. Generous whitespace and warm kiln-terracotta hierarchy. |
+| `executive` · Executive / Classic | Framed dossier masthead with two-zone name/role header, structured KPI strip, sticky section nav, and two-column experience ledger with print stylesheet. | `Libre Baskerville` headings + `Plus Jakarta Sans` body. Calm stone/maritime-teal restraint; print layout omits navigation and action buttons. |
+| `bold-studio` · Bold Studio | Oversized tight-tracked uppercase display hero with vermilion period accent, mono caption bar, and full-width numbered project showcase rows with hover shift. | `Syne` display + `Plus Jakarta Sans` body + `JetBrains Mono` eyebrows and numbered markers. High-contrast monochrome with a single international vermilion accent. |
 
 ## Color tokens
 
-Each group is canvas / surface / ink / accent / rule, in light and dark mode respectively. Follow the configured `colorMode`, support `system`, and expose a keyboard-accessible light/dark toggle. Use the configurable accent on focus indicators and interactive text. Check contrast after applying an override.
+Each group is canvas / surface / ink / accent / rule, in light and dark mode respectively. Follow the configured `colorMode`, support `system`, and expose a keyboard-accessible light/dark toggle. Use `tabular-nums` for KPIs and dates, emphasize real numeric outcomes subtly without inventing text, and provide one-click email copy when email is approved.
 
 | Design | Light | Dark |
 | --- | --- | --- |
-| Editorial | `#f3f5ee / #fbfcf7 / #222e25 / #38624c / #b8c5b6` | `#1a221c / #232e25 / #edf2e6 / #a5cbb0 / #485a4a` |
-| Bento | `#eceefa / #fafaff / #222446 / #55409b / #cdd2ec` | `#191931 / #242440 / #eeeefe / #cabdff / #444567` |
-| Technical | `#eaf0f1 / #f8fbfc / #202e37 / #166285 / #bacbd2` | `#101b23 / #172832 / #e0edf4 / #91d9f5 / #39515f` |
-| Case Study | `#fbf2e8 / #fffaf3 / #34231f / #953f31 / #dbc0ae` | `#271f1d / #322825 / #fae9df / #ffb8a3 / #644a40` |
-| Executive | `#edf0eb / #fcfcf7 / #233335 / #31585f / #bcc9c3` | `#172123 / #222d2f / #eaf1ed / #a8cbd0 / #485c5b` |
-| Bold Studio | `#fff6dd / #ffe9ad / #2d2120 / #8b321b / #ad874f` | `#241b35 / #372749 / #fff3d6 / #ffd476 / #806794` |
+| Editorial | `#f6f4ee / #fcfbf7 / #181c19 / #1f513f / #d3d8ce` | `#121714 / #1a211d / #eef1ea / #8ecba8 / #2f3b33` |
+| Bento | `#f2f3f5 / #ffffff / #111827 / #1d4ed8 / #d8dee8` | `#0c0f14 / #141922 / #f1f5f9 / #7ba6ff / #273244` |
+| Technical | `#f2f5f7 / #ffffff / #0f172a / #0369a1 / #cbd5e1` | `#0a1016 / #101821 / #e6edf3 / #58c4dc / #243342` |
+| Case Study | `#f8f3ec / #fffdf9 / #241a15 / #a43d28 / #dcc8b7` | `#171210 / #221b18 / #f5ebe2 / #ea8a72 / #4a3730` |
+| Executive | `#eef1ed / #fcfdfb / #1a2526 / #1e4e5a / #c6d0cc` | `#111718 / #182022 / #e9efef / #85c1ce / #2f4043` |
+| Bold Studio | `#f5f2eb / #ebe6dc / #111111 / #d63b17 / #ccc5b8` | `#0d0d0d / #171717 / #f4f1ea / #ff5c35 / #2b2b2b` |
 
-Use responsive gutters of about 1–4rem and section spacing of 2.5–5rem. Let compact density reduce the spacing without changing section order. Use one `h1`, labeled sections, visible focus and a skip-to-content link. Respect reduced motion and test at 390px with long titles and absent optional sections.
+Use responsive gutters of about 1.2–4.25rem and section spacing of 2.75–5.25rem. Let compact density reduce spacing without changing section order. Use one `h1`, labeled sections, visible focus, a skip-to-content link, translucent sticky chrome with `prefers-reduced-transparency` fallback, and `prefers-reduced-motion` support. Test at 390px with long titles and absent optional sections.

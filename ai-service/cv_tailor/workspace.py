@@ -7,12 +7,15 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from hashlib import sha256
 import json
+import random
 import re
+import time
 from pathlib import Path
 from uuid import uuid4
 from pydantic import ValidationError
 
 from sqlalchemy import select, func
+from sqlalchemy.exc import OperationalError
 from cv_tailor.database import SessionLocal
 from cv_tailor.models import database_models as m
 from cv_tailor.models.schemas import UserProfile, JobApplicationCreate, JobApplicationUpdate, PreferencesUpdate
@@ -28,7 +31,16 @@ class WorkspaceError(ValueError):
 @contextmanager
 def write_session():
     with SessionLocal() as db:
-        db.connection().exec_driver_sql("BEGIN IMMEDIATE")
+        for attempt in range(8):
+            try:
+                db.connection().exec_driver_sql("BEGIN IMMEDIATE")
+                break
+            except OperationalError as exc:
+                message = str(exc).lower()
+                if ("locked" not in message and "busy" not in message) or attempt == 7:
+                    raise
+                db.rollback()
+                time.sleep(0.05 * (attempt + 1) + random.uniform(0, 0.05))
         try:
             yield db
             db.commit()

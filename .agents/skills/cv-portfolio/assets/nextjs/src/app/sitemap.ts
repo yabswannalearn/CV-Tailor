@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 import { portfolioConfig } from "../data/portfolio.config";
-import { portfolioSeo } from "../seo";
+import { portfolioSeo } from "../lib/seo";
 
 export const dynamic = "force-static";
 
