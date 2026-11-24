@@ -1,6 +1,6 @@
-import { Avatar, ProfileDetails, Sections, TopBar, type DesignProps } from "./layout";
+import { Avatar, ProfileDetails, ProfileHighlights, Sections, TopBar, type DesignProps } from "./layout";
 
-export function BoldStudio({ profile, sections, toggle }: DesignProps) {
+export function BoldStudio({ profile, sections, toggle, siteUrl }: DesignProps) {
   return <>
     <TopBar name={profile.fullName} sections={sections} toggle={toggle} />
     <main className="p-container" id="portfolio-main" tabIndex={-1}>
@@ -11,6 +11,7 @@ export function BoldStudio({ profile, sections, toggle }: DesignProps) {
           <p className="p-headline">{profile.headline}</p>
           <ProfileDetails profile={profile} />
         </div>
+        <ProfileHighlights profile={profile} sections={sections} siteUrl={siteUrl} />
       </header>
       <Sections sections={sections} />
     </main>

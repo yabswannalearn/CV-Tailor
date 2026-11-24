@@ -31,7 +31,7 @@ const skills = [
   { name: "cv-company-research", label: "Company research", description: "Gather useful company and role context with sources.", prompt: "Research this company and role for my application. Cite the sources and distinguish facts from inference." },
   { name: "cv-resume", label: "Tailored resumes", description: "Turn confirmed experience into a tailored, one-page CV.", prompt: "Tailor my CV for this job using my confirmed experience. Save a draft, check the page count, and run the ATS check." },
   { name: "cv-resume-edit", label: "Targeted edits", description: "Rewrite one summary or selected bullets while keeping the rest.", prompt: "Make the first experience bullet more relevant to this job. Keep my facts and leave the rest of the CV unchanged." },
-  { name: "cv-portfolio", label: "Web portfolios", description: "Build a standalone portfolio from your confirmed profile and choose what goes public.", prompt: "Use cv-portfolio to build my website. Help me pick a Portfolio Design and a frontend stack, review what I want to share, and prepare a Deploy Wizard I can run locally." },
+  { name: "cv-portfolio", label: "Web portfolios", description: "Build a search-ready portfolio from your confirmed profile and choose what goes public.", prompt: "Use cv-portfolio to build my website. Help me pick a Portfolio Design and frontend stack, review my public highlights and calls to action, check the SEO output, and prepare a Deploy Wizard I can run locally." },
   { name: "cv-cover-letter", label: "Cover letters", description: "Connect your experience to the role in a letter you can review.", prompt: "Write a concise cover letter using my real experience and the company research. Save it as a draft for this application." },
   { name: "cv-tracker", label: "Application tracking", description: "Query, update, archive, and manage your application history.", prompt: "Show my applications at the interview stage, including their saved documents and next steps." },
   { name: "cv-snapshot", label: "Application snapshots", description: "Visualize your current application statuses and save a chart, offline HTML report, and source JSON from your local database.", prompt: SNAPSHOT_PROMPT },
@@ -48,6 +48,7 @@ const features = [
   { index: "04", skill: "cv-tracker", badge: "LOCAL SQLITE", title: "Track your progress" },
   { index: "05", skill: "cv-interview", badge: "PRACTICE", title: "Prepare to interview" },
   { index: "06", skill: "cv-code-practice", badge: "PYTHON", title: "Practice your coding" },
+  { index: "07", skill: "cv-portfolio", badge: "STATIC SEO", title: "Publish a search-ready portfolio" },
 ];
 
 const questions = [
@@ -56,6 +57,7 @@ const questions = [
   { title: "What does the ATS check actually check?", answer: "CV Tailor checks that the generated PDF contains selectable text, conventional section headings, and the expected section order. Applying or exporting a generated resume PDF also requires exactly one page. These checks help identify formatting issues; they do not predict an employer’s screening decision or provide an ATS match score." },
   { title: "Can my agent create an application snapshot?", answer: "Yes. Ask for a snapshot of your job applications, or name the cv-snapshot skill. Your agent reads your selected local database and saves an SVG chart, offline HTML report, and source JSON. You can request archived applications too. The chart shows current recorded statuses; historical transitions and interview rounds are not recorded. The dashboard does not need to be running." },
   { title: "How do I build and publish a web portfolio?", answer: "The cv-portfolio skill uses your local profile and reviews what you want to share. It builds a static site with Next.js by default. You can choose Vite + React or ask your agent about another stack. Run the Deploy Wizard in your own terminal to publish on Vercel or Cloudflare Pages and connect an optional custom domain. Provider sign-in runs locally and CV Tailor stores zero hosting tokens." },
+  { title: "What SEO features come with a generated portfolio?", answer: "The Next.js and Vite + React starters include readable static HTML, page titles and descriptions, social previews, and profile structured data. Set the confirmed public URL to add a canonical link and sitemap. You can also supply a public image for social sharing." },
   { title: "Can it help fill application forms?", answer: "Yes, through a local agent with browser or computer access. The cv-apply skill uses your confirmed profile and selected documents, asks for missing facts, and saves progress. You handle sign-in or CAPTCHA when needed, review the form, and submit it yourself. Without browser access, your agent prepares answers to copy. Tracker status changes after you confirm submission." },
   { title: "How do tracking connections work?", answer: "Copy a connection prompt into an AI agent working in this repository. The cv-connect skill guides local setup and prepares a publishing script for your chosen tool. SQLite stays primary, and you choose when to publish. Any required credentials are entered locally and saved in a Git-ignored .env file." },
   { title: "Is CV Tailor open source?", answer: "Yes. CV Tailor is available under the MIT license. Clone the repository, inspect the code, adapt it to your workflow, and contribute through GitHub. Access to your chosen AI agent or provider is separate." },
@@ -169,7 +171,16 @@ export default function LandingPage() {
         ["03", "Tailor it", "Review your CV and cover letter."],
         ["04", "Apply", "Submit, track, and prepare for interviews."],
       ].map(([number, title, text]) => <article key={number}><span className="step-number">{number}</span><h3>{title}</h3><p>{text}</p></article>)}</div></section>
-      <section className="features-section section" id="features" aria-labelledby="features-title"><div className="section-heading"><div><span className="eyebrow">THE TOOLS FOR YOUR NEXT STEP</span><h2 id="features-title">Every step, one place.</h2></div></div><div className="feature-grid">{features.map(({ index, skill, badge, title }) => <article className="feature-card" key={skill}><div className="feature-meta"><span className="feature-index">{index} <i>/</i> {skill}</span><span className="feature-badge">{badge}</span></div><h3>{title}</h3></article>)}</div></section>
+      <section className="features-section section" id="features" aria-labelledby="features-title">
+        <div className="section-heading"><div><span className="eyebrow">THE TOOLS FOR YOUR NEXT STEP</span><h2 id="features-title">Every step, one place.</h2></div></div>
+        <div className="feature-grid">{features.map(({ index, skill, badge, title }) => (
+          <article className={skill === "cv-portfolio" ? "feature-card feature-card-portfolio" : "feature-card"} key={skill}>
+            <div className="feature-meta"><span className="feature-index">{index} <i>/</i> {skill}</span><span className="feature-badge">{badge}</span></div>
+            <h3>{title}</h3>
+            {skill === "cv-portfolio" && <a className="text-link" href="#portfolio-designs">Browse designs<ArrowRight size={15} aria-hidden="true" /></a>}
+          </article>
+        ))}</div>
+      </section>
       <ApplicationSnapshots />
       <ResumeGallery />
       <PortfolioGallery />

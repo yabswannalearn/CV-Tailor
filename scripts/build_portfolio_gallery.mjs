@@ -19,6 +19,15 @@ const designs = [
   { id: "bold-studio", name: "Bold Studio", tagline: "Large display type leads into a numbered showcase of selected work.", bestFor: "Creatives and independent makers", first: "projects" },
 ];
 const viewports = { desktop: { width: 1280, height: 800 }, mobile: { width: 390, height: 844 } };
+// Public highlights and actions from the portfolio Reinael supplied for this showcase.
+const showcaseHighlights = {
+  actions: [{ label: "Explore selected work", href: "#projects" }, { label: "Get in touch", href: "#contact" }],
+  metrics: [
+    { value: "3+", label: "Years of experience", href: "#experience" },
+    { value: "20", label: "Projects", href: "https://www.reinaelyabut.dev/projects" },
+    { value: "23", label: "Credentials", href: "https://www.reinaelyabut.dev/#certs" },
+  ],
+};
 
 function portfolioFromResume({ profile, content }, { id, first }) {
   const order = ["about", "experience", "projects", "skills", "education", "certifications", "contact"];
@@ -31,6 +40,7 @@ function portfolioFromResume({ profile, content }, { id, first }) {
       fullName: [profile.first_name, profile.last_name].join(" "),
       headline: content.experience[0].title,
       summary: content.summary,
+      ...showcaseHighlights,
       links: { linkedin: profile.linkedin, github: profile.github, website: profile.portfolio },
     },
     experience: content.experience.map(({ title, company, location, date, bullets }) => ({
@@ -72,7 +82,7 @@ function serveExport(directory) {
 
 async function capture(browser, origin, design, config, screenshots) {
   for (const [mode, viewport] of Object.entries(viewports)) {
-    const page = await browser.newPage({ viewport, deviceScaleFactor: 1, reducedMotion: "reduce" });
+    const page = await browser.newPage({ viewport, deviceScaleFactor: 1, reducedMotion: "reduce", javaScriptEnabled: false });
     try {
       await page.route("**/*", route => route.request().url().startsWith(`${origin}/`) ? route.continue() : route.abort());
       await page.goto(origin, { waitUntil: "networkidle" });

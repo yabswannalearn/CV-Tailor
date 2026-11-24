@@ -1,6 +1,6 @@
-import { Avatar, ProfileDetails, SectionNav, Sections, type DesignProps } from "./layout";
+import { Avatar, ProfileDetails, ProfileHighlights, SectionNav, Sections, type DesignProps } from "./layout";
 
-export function Technical({ profile, sections, toggle }: DesignProps) {
+export function Technical({ profile, sections, toggle, siteUrl }: DesignProps) {
   return <div className="p-container p-technical-frame">
     <div className="p-technical-index">
       <header><a className="p-home" href="#portfolio">{profile.fullName}</a>{toggle}</header>
@@ -12,6 +12,7 @@ export function Technical({ profile, sections, toggle }: DesignProps) {
           <h1>{profile.fullName}</h1>
           <p className="p-headline">{profile.headline}</p>
           <ProfileDetails profile={profile} />
+          <ProfileHighlights profile={profile} sections={sections} siteUrl={siteUrl} />
         </div>
         <Avatar path={profile.avatarPath} />
       </header>

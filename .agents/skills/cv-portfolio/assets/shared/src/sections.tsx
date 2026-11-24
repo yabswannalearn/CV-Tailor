@@ -1,6 +1,7 @@
 import { ArrowUpRight, Briefcase, Code, Download, Globe, Mail, Phone } from "lucide-react";
 import type { ReactNode } from "react";
 import type { PortfolioConfig, PortfolioSectionId } from "./data/types";
+import { publicAsset, webLink } from "./public-links";
 
 const titles: Record<PortfolioSectionId, string> = {
   about: "About",
@@ -16,20 +17,6 @@ export interface PortfolioSection {
   id: PortfolioSectionId;
   title: string;
   content: ReactNode;
-}
-
-function webLink(url?: string) {
-  if (!url) return undefined;
-  try {
-    const parsed = new URL(url);
-    return ["http:", "https:"].includes(parsed.protocol) && !parsed.username && !parsed.password ? parsed.href : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-export function publicAsset(path?: string) {
-  return path?.startsWith("/") && !path.startsWith("//") && !/[\\\t\n\r]/.test(path) ? path : undefined;
 }
 
 export function Metadata({ items }: { items: (string | undefined)[] }) {

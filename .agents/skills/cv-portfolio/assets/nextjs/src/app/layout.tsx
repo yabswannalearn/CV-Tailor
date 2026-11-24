@@ -1,19 +1,23 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { portfolioConfig } from "../data/portfolio.config";
+import { portfolioSeo } from "../seo";
 import "../portfolio.css";
 
-const { profile, seo } = portfolioConfig;
-const title = seo?.title || `${profile.fullName} | ${profile.headline}`;
-const description = seo?.description || profile.summary || profile.headline;
+const { title, description, siteUrl, socialImage, imageAlt, structuredData } = portfolioSeo(portfolioConfig);
+const images = socialImage ? [{ url: socialImage, alt: imageAlt }] : undefined;
 
 export const metadata: Metadata = {
   title,
   description,
-  openGraph: { type: "website", title, description, url: seo?.siteUrl },
-  alternates: seo?.siteUrl ? { canonical: seo.siteUrl } : undefined,
+  openGraph: { type: "profile", title, description, url: siteUrl, images },
+  twitter: { card: socialImage ? "summary_large_image" : "summary", title, description, images },
+  alternates: siteUrl ? { canonical: siteUrl } : undefined,
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
-  return <html lang="en"><body>{children}</body></html>;
+  return <html lang="en"><body>
+    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: structuredData }} />
+    {children}
+  </body></html>;
 }

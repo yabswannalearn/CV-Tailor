@@ -245,6 +245,8 @@ h2 { font-family: var(--display); font-size: clamp(31px,3.2vw,43px); font-weight
   transition: background-color .18s ease;
 }
 .feature-card:hover { background: var(--canvas); }
+.feature-card-portfolio { grid-column: 1 / -1; }
+.feature-card-portfolio .text-link { align-self: flex-start; margin-top: 11px; }
 .feature-meta {
   display: flex;
   align-items: center;

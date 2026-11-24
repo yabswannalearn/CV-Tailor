@@ -1,12 +1,13 @@
-import { Avatar, ProfileDetails, SectionNav, Sections, type DesignProps } from "./layout";
+import { Avatar, ProfileDetails, ProfileHighlights, SectionNav, Sections, type DesignProps } from "./layout";
 
-export function Bento({ profile, sections, toggle }: DesignProps) {
+export function Bento({ profile, sections, toggle, siteUrl }: DesignProps) {
   return <main className="p-container" id="portfolio-main" tabIndex={-1}>
     <header className="p-bento-header">
       <div className="p-intro">
         <Avatar path={profile.avatarPath} />
         <h1>{profile.fullName}</h1>
         <p className="p-headline">{profile.headline}</p>
+        <ProfileHighlights profile={profile} sections={sections} siteUrl={siteUrl} />
       </div>
       <div className="p-bento-nav">
         {toggle}

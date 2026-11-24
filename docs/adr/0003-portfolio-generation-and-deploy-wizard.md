@@ -15,5 +15,6 @@ CV Tailor generates standalone web portfolios outside the CV Tailor repository v
 ## Consequences
 
 - Switching a **Portfolio Design** or re-syncing profile facts in Next.js or Vite + React targets **Portfolio Config** rather than regenerating the entire project, preserving custom user files.
+- Both starters prerender the portfolio and its search metadata at build time. The confirmed public URL supplies the canonical link and sitemap entries.
 - Workspace preferences in SQLite store an optional nonsecret `portfolio_preference` (`design`, `stack`, `deploy_provider`, `project_dir`) alongside `resume_template`, while the deployed public URL lives on `Profile.portfolio` only after explicit user confirmation.
 - Landing-page previews in `landing/` are rendered directly from the real starter designs populated with `landing/content/reinael-resume.json`, ensuring homepage previews stay faithful to what `cv-portfolio` scaffolds.

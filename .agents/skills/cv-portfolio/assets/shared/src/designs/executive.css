@@ -29,7 +29,7 @@
 
 @media print {
   .portfolio[data-design="executive"][data-mode] { color-scheme: light; --section-space: 1.4rem; --gutter: 0rem; background: white; }
-  .p-executive-nav { display: none; }
+  .p-executive-nav, .portfolio[data-design="executive"] .p-actions { display: none; }
   .p-executive-header { border-inline: 0; }
   .portfolio[data-design="executive"] .p-entries, .portfolio[data-design="executive"] .p-projects { gap: 1rem; }
   .portfolio[data-design="executive"] article { break-inside: avoid; }

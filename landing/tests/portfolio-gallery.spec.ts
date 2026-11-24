@@ -3,6 +3,14 @@ import { expect, test } from "@playwright/test";
 const designNames = ["Editorial Minimal", "Bento Grid", "Technical / Engineer", "Case Study", "Executive / Classic", "Bold Studio"];
 const prompt = "Use CV Tailor's cv-portfolio skill with the Bento Grid Portfolio Design (design: bento). Remember this in my workspace preferences (portfolio_preference) unless I ask to change it later. Ask me which frontend stack I prefer (defaulting to Next.js static export, with Vite + React or other options explained with trade-offs), review what profile details should stay private, scaffold my portfolio outside the CV Tailor repo, verify the local build, and generate the deploy-wizard.mjs script for Vercel or Cloudflare Pages.";
 
+test("the landing page explains static portfolio SEO", async ({ page }) => {
+  await page.goto("/#features");
+  await expect(page.getByRole("heading", { name: "Publish a search-ready portfolio" })).toBeVisible();
+  const question = page.getByText("What SEO features come with a generated portfolio?", { exact: true });
+  await question.click();
+  await expect(page.getByText(/Set the confirmed public URL to add a canonical link and sitemap/)).toBeVisible();
+});
+
 test("all six Portfolio Designs have loaded desktop previews", async ({ page }) => {
   await page.goto("/#portfolio-designs");
   const gallery = page.getByRole("region", { name: "Launch your portfolio." });

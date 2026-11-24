@@ -1,5 +1,6 @@
 node_modules/
 .next/
+.portfolio-ssr/
 out/
 dist/
 .vercel/

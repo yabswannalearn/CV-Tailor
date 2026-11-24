@@ -59,7 +59,7 @@ export const homeStructuredData = {
       isAccessibleForFree: true,
       installUrl: `${SITE_URL}/#install`,
       sameAs: [REPOSITORY_URL],
-      featureList: ["One-page resume tailoring", "ATS checks", "Cover letters", "Local job application tracking", "Application form assistance", "Interview preparation", "Coding practice"],
+      featureList: ["One-page resume tailoring", "ATS checks", "Cover letters", "Local job application tracking", "Application form assistance", "Interview preparation", "Coding practice", "Search-ready web portfolios"],
     },
     {
       "@type": "SoftwareSourceCode",

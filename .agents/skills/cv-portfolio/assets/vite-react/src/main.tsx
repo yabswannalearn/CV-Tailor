@@ -1,6 +1,15 @@
 import { StrictMode } from "react";
-import { createRoot } from "react-dom/client";
+import { createRoot, hydrateRoot } from "react-dom/client";
 import App from "./App";
+import { portfolioConfig } from "./data/portfolio.config";
+import { portfolioSeo } from "./seo";
 import "./portfolio.css";
 
-createRoot(document.getElementById("root")!).render(<StrictMode><App /></StrictMode>);
+const root = document.getElementById("root")!;
+const app = <StrictMode><App /></StrictMode>;
+if (root.hasChildNodes()) {
+  hydrateRoot(root, app);
+} else {
+  document.title = portfolioSeo(portfolioConfig).title;
+  createRoot(root).render(app);
+}

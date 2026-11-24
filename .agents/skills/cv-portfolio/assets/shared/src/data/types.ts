@@ -38,6 +38,8 @@ export interface PortfolioConfig {
     phone?: string;
     resumePdfPath?: string;
     avatarPath?: string;
+    actions?: Array<{ label: string; href: string }>;
+    metrics?: Array<{ label: string; value: string; href?: string }>;
     links: {
       linkedin?: string;
       github?: string;
@@ -85,5 +87,7 @@ export interface PortfolioConfig {
     title?: string;
     description?: string;
     siteUrl?: string;
+    imagePath?: string;
+    imageAlt?: string;
   };
 }

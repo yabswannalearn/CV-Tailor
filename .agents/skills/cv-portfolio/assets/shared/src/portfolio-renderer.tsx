@@ -40,6 +40,6 @@ export function PortfolioRenderer({ config }: { config: PortfolioConfig }) {
   return <div className="portfolio" id="portfolio" data-design={config.design} data-mode={mode}
     data-density={config.layout.density} data-accent={accent && accentTokens.includes(accent) ? accent : undefined} style={customAccent}>
     <a className="p-skip" href={`#${sections[0]?.id ?? "portfolio-main"}`}>Skip to content</a>
-    <Design profile={config.profile} sections={sections} toggle={toggle} />
+    <Design profile={config.profile} sections={sections} toggle={toggle} siteUrl={config.seo?.siteUrl} />
   </div>;
 }
