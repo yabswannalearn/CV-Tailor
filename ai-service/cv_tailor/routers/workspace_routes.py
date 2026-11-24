@@ -7,6 +7,7 @@ router = APIRouter()
 
 
 @router.get("/workspace")
+@router.get("/workspace/status")
 def workspace_status():
     try:
         profile = w.profile_get()

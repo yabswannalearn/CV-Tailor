@@ -1,0 +1,47 @@
+.portfolio[data-design="bold-studio"] {
+  --canvas: light-dark(#fff6dd, #241b35);
+  --surface: light-dark(#ffe9ad, #372749);
+  --ink: light-dark(#2d2120, #fff3d6);
+  --rule: light-dark(#ad874f, #806794);
+  --accent-base: light-dark(#8b321b, #ffd476);
+  --display-font: "Arial Black", "Franklin Gothic Heavy", system-ui, sans-serif;
+  --width: 85rem;
+}
+.portfolio[data-design="bold-studio"] .p-top { border-bottom-color: var(--accent); }
+.portfolio[data-design="bold-studio"] .p-home, .portfolio[data-design="bold-studio"] .p-nav-links {
+  font-family: var(--mono);
+  letter-spacing: .02em;
+}
+.portfolio[data-design="bold-studio"] .p-intro { padding-block: var(--section-space) calc(var(--section-space) * .82); }
+.portfolio[data-design="bold-studio"] h1 {
+  color: var(--accent);
+  font-size: clamp(3.2rem, 12.2vw, 10rem);
+  font-weight: 900;
+  letter-spacing: -.045em;
+  line-height: .87;
+  text-transform: uppercase;
+  text-wrap: wrap;
+}
+.p-studio-caption { display: flex; gap: 1rem 2rem; flex-wrap: wrap; align-items: center; margin-top: 1.5rem; }
+.p-studio-caption .p-headline, .p-studio-caption .p-profile-details { margin: 0; }
+.p-studio-caption .p-headline { color: var(--ink); font-family: var(--mono); }
+.portfolio[data-design="bold-studio"] h2 { font-weight: 900; text-transform: uppercase; }
+.portfolio[data-design="bold-studio"] .p-section { border-top-color: var(--accent); padding-top: calc(var(--section-space) * .72); }
+.portfolio[data-design="bold-studio"] .p-projects { gap: 0; border-bottom: 1px solid var(--rule); }
+.portfolio[data-design="bold-studio"] .p-project {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+  gap: 1rem;
+  padding: 1.2rem .75rem;
+  border-top: 1px solid var(--rule);
+}
+.portfolio[data-design="bold-studio"] .p-project:hover, .portfolio[data-design="bold-studio"] .p-project:focus-within { background: var(--surface); }
+.portfolio[data-design="bold-studio"] .p-project h3 { font-size: clamp(1.25rem, 2.6vw, 2.1rem); }
+.portfolio[data-design="bold-studio"] .p-project-heading { display: grid; column-gap: .8rem; grid-template-columns: auto minmax(0, 1fr); align-content: start; }
+.portfolio[data-design="bold-studio"] .p-project-heading .p-meta { grid-column: 2; }
+.portfolio[data-design="bold-studio"] .p-project-number { display: inline-block; font: .84rem/2 var(--mono); color: var(--accent); }
+.portfolio[data-design="bold-studio"] .p-project-body > :first-child { margin-top: 0; }
+
+@media (max-width: 40rem) {
+  .portfolio[data-design="bold-studio"] .p-project { grid-template-columns: minmax(0, 1fr); }
+}

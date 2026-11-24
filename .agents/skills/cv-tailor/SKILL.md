@@ -15,6 +15,7 @@ Reuse saved `calendar_connections` for calendar requests through cv-calendar. Ca
 - Requirement comparison: cv-job-fit
 - Research: cv-company-research
 - Resume creation/editing: cv-resume, cv-resume-edit
+- Web portfolio generation and deployment wizard: cv-portfolio
 - Cover letters: cv-cover-letter
 - Application management: cv-tracker
 - Visual application snapshots and pipeline charts: cv-snapshot

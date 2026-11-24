@@ -1,0 +1,36 @@
+.portfolio[data-design="executive"] {
+  --width: 71rem;
+  --canvas: light-dark(#edf0eb, #172123);
+  --surface: light-dark(#fcfcf7, #222d2f);
+  --ink: light-dark(#233335, #eaf1ed);
+  --rule: light-dark(#bcc9c3, #485c5b);
+  --accent-base: light-dark(#31585f, #a8cbd0);
+  --display-font: "Segoe UI", system-ui, sans-serif;
+}
+.portfolio[data-design="executive"] > .p-container { padding-top: clamp(1.2rem, 4vw, 3rem); }
+.p-executive-header { border-top: .32rem solid var(--accent); border-inline: 1px solid var(--rule); background: var(--surface); }
+.portfolio[data-design="executive"] .p-intro { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); gap: 1.4rem; align-items: center; padding-inline: clamp(1rem, 4vw, 3rem); }
+.p-executive-name { display: flex; gap: 1rem; align-items: center; }
+.portfolio[data-design="executive"] h1 { font-size: clamp(2.6rem, 6.1vw, 5rem); letter-spacing: -.065em; text-wrap: wrap; }
+.p-executive-role { border-inline-start: 1px solid var(--rule); padding-inline-start: 1.2rem; }
+.p-executive-role .p-headline { margin: 0; font-family: Georgia, serif; font-size: clamp(1.2rem, 2.3vw, 1.8rem); }
+.p-executive-nav { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .65rem clamp(1rem, 4vw, 3rem); border-block: 1px solid var(--rule); }
+.p-executive-nav .p-nav-links a { font-weight: 600; }
+.portfolio[data-design="executive"] .p-section { display: grid; grid-template-columns: minmax(8rem, 1fr) minmax(0, 3.2fr); gap: 1.25rem; }
+.portfolio[data-design="executive"] .p-section:first-of-type { border-top: 0; }
+.portfolio[data-design="executive"] .p-section-content { margin-top: 0; }
+.portfolio[data-design="executive"] h2 { font-family: Georgia, serif; font-weight: 400; color: var(--accent); }
+.portfolio[data-design="executive"] .p-project { padding-bottom: 1.2rem; border-bottom: 1px solid var(--rule); }
+
+@media (max-width: 43rem) {
+  .portfolio[data-design="executive"] .p-intro, .portfolio[data-design="executive"] .p-section { grid-template-columns: minmax(0, 1fr); }
+  .p-executive-name { flex-wrap: wrap; }
+}
+
+@media print {
+  .portfolio[data-design="executive"] { color-scheme: light; --section-space: 1.4rem; --gutter: 0rem; background: white; }
+  .p-executive-nav { display: none; }
+  .p-executive-header { border-inline: 0; }
+  .portfolio[data-design="executive"] .p-entries, .portfolio[data-design="executive"] .p-projects { gap: 1rem; }
+  .portfolio[data-design="executive"] article { break-inside: avoid; }
+}

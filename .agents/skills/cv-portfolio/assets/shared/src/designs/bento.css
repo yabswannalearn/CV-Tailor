@@ -1,0 +1,46 @@
+.portfolio[data-design="bento"] {
+  --canvas: light-dark(#eceefa, #191931);
+  --surface: light-dark(#fafaff, #242440);
+  --ink: light-dark(#222446, #eeeefe);
+  --rule: light-dark(#cdd2ec, #444567);
+  --accent-base: light-dark(#55409b, #cabdff);
+  --tile: light-dark(#dcdef9, #34315b);
+  --display-font: "Trebuchet MS", system-ui, sans-serif;
+}
+.p-bento-header {
+  display: grid;
+  grid-template-columns: minmax(0, 2.1fr) minmax(0, 1fr);
+  gap: 1rem;
+  padding-block: clamp(1.15rem, 4vw, 3rem) var(--section-space);
+}
+.portfolio[data-design="bento"] .p-intro, .p-bento-nav, .portfolio[data-design="bento"] .p-project,
+.portfolio[data-design="bento"] .p-entry, .portfolio[data-design="bento"] .p-skill-group {
+  padding: clamp(1rem, 3vw, 2rem);
+  border: 1px solid var(--rule);
+  border-radius: 1.4rem;
+  background: var(--surface);
+  box-shadow: 0 .35rem 1rem color-mix(in srgb, var(--ink) 5%, transparent);
+}
+.portfolio[data-design="bento"] .p-intro { display: grid; align-content: center; padding-block: var(--section-space); min-height: 17rem; }
+.portfolio[data-design="bento"] .p-intro h1 { font-size: clamp(2.7rem, 6.4vw, 6.1rem); text-wrap: wrap; }
+.portfolio[data-design="bento"] .p-avatar { border-radius: .9rem; margin-bottom: 1rem; }
+.p-bento-nav { display: flex; flex-direction: column; gap: .8rem; border-color: transparent; background: var(--tile); }
+.p-bento-nav .p-theme { align-self: flex-end; border-color: var(--accent); }
+.p-bento-nav nav { margin-top: auto; }
+.p-bento-nav .p-nav-links { flex-direction: column; gap: .16rem; }
+.p-bento-nav .p-nav-links a { color: var(--ink); font-size: .93rem; }
+.portfolio[data-design="bento"] .p-section { border-top: 0; padding-top: 0; }
+.portfolio[data-design="bento"] .p-projects { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 1rem; }
+.portfolio[data-design="bento"] .p-project:nth-child(3n + 1) { background: var(--tile); }
+.portfolio[data-design="bento"] .p-project:only-child { grid-column: 1 / -1; }
+.portfolio[data-design="bento"] .p-entry { border-inline-start: .25rem solid var(--accent); }
+.portfolio[data-design="bento"] .p-tags li { border-radius: 2rem; }
+
+@media (max-width: 45rem) {
+  .p-bento-header, .portfolio[data-design="bento"] .p-projects { grid-template-columns: minmax(0, 1fr); }
+  .portfolio[data-design="bento"] .p-intro { min-height: 0; }
+  .p-bento-nav { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; }
+  .p-bento-nav .p-theme { grid-area: 1 / 2 / span 2; align-self: start; }
+  .p-bento-nav .p-profile-details { margin: 0; }
+  .p-bento-nav .p-nav-links { flex-direction: row; gap: .25rem .75rem; }
+}

@@ -1,0 +1,33 @@
+.portfolio[data-design="case-study"] {
+  --canvas: light-dark(#fbf2e8, #271f1d);
+  --surface: light-dark(#fffaf3, #322825);
+  --ink: light-dark(#34231f, #fae9df);
+  --rule: light-dark(#dbc0ae, #644a40);
+  --accent-base: light-dark(#953f31, #ffb8a3);
+  --band: light-dark(#e9cdbc, #53382f);
+  --display-font: Charter, "Bitstream Charter", Cambria, Georgia, serif;
+}
+.p-case-band { background: var(--band); }
+.p-case-band .p-intro { display: grid; grid-template-columns: minmax(0, 1.85fr) minmax(0, 1fr); align-items: end; gap: 2rem; }
+.portfolio[data-design="case-study"] h1 { font-size: clamp(3.15rem, 7.4vw, 7.3rem); font-weight: 500; text-wrap: wrap; }
+.p-case-role { padding-inline-start: 1.2rem; border-inline-start: 1px solid var(--accent); }
+.p-case-role .p-headline { margin: 0; color: var(--ink); font-size: clamp(1.3rem, 2.7vw, 2rem); font-family: var(--display-font); }
+.p-case-role .p-avatar { margin-bottom: .9rem; }
+.portfolio[data-design="case-study"] h2 { color: var(--accent); font-weight: 500; }
+.portfolio[data-design="case-study"] main > .p-container > .p-section:first-child { border-top: 0; }
+.portfolio[data-design="case-study"] .p-project {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.45fr);
+  gap: 1.4rem;
+  padding: clamp(1.2rem, 3vw, 2.4rem);
+  border: 1px solid var(--rule);
+  border-top: .22rem solid var(--accent);
+  background: var(--surface);
+}
+.portfolio[data-design="case-study"] .p-project h3 { font-size: clamp(1.5rem, 3.5vw, 2.4rem); }
+.portfolio[data-design="case-study"] .p-project .p-meta { margin-top: .8rem; }
+.portfolio[data-design="case-study"] .p-project-body > :first-child { margin-top: 0; }
+
+@media (max-width: 40rem) {
+  .p-case-band .p-intro, .portfolio[data-design="case-study"] .p-project { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+}

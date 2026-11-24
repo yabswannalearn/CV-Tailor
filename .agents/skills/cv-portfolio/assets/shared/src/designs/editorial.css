@@ -1,0 +1,34 @@
+.portfolio[data-design="editorial"] {
+  --width: 63rem;
+  --canvas: light-dark(#f3f5ee, #1a221c);
+  --surface: light-dark(#fbfcf7, #232e25);
+  --ink: light-dark(#222e25, #edf2e6);
+  --rule: light-dark(#b8c5b6, #485a4a);
+  --accent-base: light-dark(#38624c, #a5cbb0);
+  --display-font: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --anchor-offset: 5.5rem;
+}
+.portfolio[data-design="editorial"] .p-top {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--canvas);
+}
+.portfolio[data-design="editorial"] .p-home { font-family: var(--display-font); font-size: 1.1rem; }
+.portfolio[data-design="editorial"] .p-intro { display: flex; align-items: center; gap: 1.5rem; padding-block: calc(var(--section-space) * 1.7); }
+.portfolio[data-design="editorial"] .p-avatar { border-radius: 50%; }
+.portfolio[data-design="editorial"] h1 { font-size: clamp(3.3rem, 9.3vw, 7.6rem); font-weight: 400; letter-spacing: -.065em; text-wrap: wrap; }
+.portfolio[data-design="editorial"] h2 { font-weight: 400; }
+.portfolio[data-design="editorial"] .p-section-content { max-width: 43rem; }
+.portfolio[data-design="editorial"] .p-about { line-height: 1.9; }
+.portfolio[data-design="editorial"] .p-project + .p-project { padding-top: 1.6rem; border-top: 1px solid var(--rule); }
+
+@media (max-width: 40rem) {
+  .portfolio[data-design="editorial"] { --anchor-offset: 8.5rem; }
+  .portfolio[data-design="editorial"] .p-intro { align-items: flex-start; flex-direction: column; }
+}
+
+@media (max-width: 25rem) {
+  .portfolio[data-design="editorial"] { --anchor-offset: 1rem; }
+  .portfolio[data-design="editorial"] .p-top { position: static; }
+}

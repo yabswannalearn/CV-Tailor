@@ -45,6 +45,7 @@ class WorkspacePreferences(Base):
     resume_template = Column(String(50), nullable=True)
     tracking_connection = Column(JSON, nullable=True)
     calendar_connections = Column(JSON, nullable=False, default=list, server_default="[]")
+    portfolio_preference = Column(JSON, nullable=True)
 
 class Education(Base):
     __tablename__ = "education"
