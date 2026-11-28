@@ -43,7 +43,6 @@
   padding: 0 clamp(1.25rem, 4vw, 3rem) 1.5rem;
 }
 .p-executive-metrics .p-metrics { margin-block-start: 0; }
-.p-executive-metrics .p-metrics li { background: var(--canvas); }
 .p-executive-nav {
   display: flex;
   flex-wrap: wrap;
@@ -67,11 +66,20 @@
   font-weight: 400;
   color: var(--accent);
 }
-.portfolio[data-design="executive"] .p-entry {
-  padding-inline-start: 1rem;
-  border-inline-start: 2px solid var(--rule);
+.portfolio[data-design="executive"] .p-entries { gap: 0; }
+.portfolio[data-design="executive"] .p-entry { padding-block: 1.5rem; border-top: 1px solid var(--rule); }
+.portfolio[data-design="executive"] .p-entry:first-child { padding-top: 0; border-top: 0; }
+.portfolio[data-design="executive"] .p-entry:last-child { padding-bottom: 0; }
+.portfolio[data-design="executive"] .p-entry-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 1.5rem;
+  align-items: baseline;
 }
-.portfolio[data-design="executive"] .p-entry:hover { border-inline-start-color: var(--accent); }
+.portfolio[data-design="executive"] .p-entry-heading .p-meta { grid-row: 1; grid-column: 2; margin: 0; text-align: end; }
+.portfolio[data-design="executive"] .p-actions a:first-child { background: var(--accent); }
+.portfolio[data-design="executive"] .p-actions a:first-child:hover { background: var(--ink); }
+.portfolio[data-design="executive"] .p-section-header { position: sticky; top: 1.5rem; align-self: start; }
 .portfolio[data-design="executive"] .p-project {
   padding-bottom: 1.35rem;
   border-bottom: 1px solid var(--rule);
@@ -83,6 +91,9 @@
   .portfolio[data-design="executive"] .p-section { grid-template-columns: minmax(0, 1fr); }
   .p-executive-role { border-inline-start: 0; padding-inline-start: 0; }
   .p-executive-name { flex-wrap: wrap; }
+  .portfolio[data-design="executive"] .p-section-header { position: static; }
+  .portfolio[data-design="executive"] .p-entry-heading { display: block; }
+  .portfolio[data-design="executive"] .p-entry-heading .p-meta { margin-top: .3rem; text-align: start; }
 }
 
 @media print {

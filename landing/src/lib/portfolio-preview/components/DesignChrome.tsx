@@ -117,7 +117,7 @@ export function ProfileActions({
             rel={external ? "noreferrer" : undefined}
           >
             <span>{label}</span>
-            <ArrowUpRight size={15} aria-hidden="true" />
+            {external && <ArrowUpRight size={15} aria-hidden="true" />}
           </a>
         );
       })}

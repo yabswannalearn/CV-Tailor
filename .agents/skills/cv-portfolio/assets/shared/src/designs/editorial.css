@@ -1,75 +1,99 @@
 .portfolio[data-design="editorial"] {
-  --width: 62rem;
-  --radius: 0.5rem;
+  --width: 50rem;
+  --radius: .4rem;
   --canvas: light-dark(#f6f4ee, #121714);
   --surface: light-dark(#fcfbf7, #1a211d);
   --ink: light-dark(#181c19, #eef1ea);
-  --rule: light-dark(#d3d8ce, #2f3b33);
+  --rule: light-dark(#dcdfd6, #2f3b33);
   --accent-base: light-dark(#1f513f, #8ecba8);
   --display-font: "Cormorant Garamond", "Iowan Old Style", Georgia, serif;
   --anchor-offset: 5rem;
 }
+.portfolio[data-design="editorial"] .p-top { border-bottom-color: transparent; }
 .portfolio[data-design="editorial"] .p-home {
   font-family: var(--display-font);
-  font-size: 1.25rem;
+  font-size: 1.3rem;
   font-weight: 600;
   letter-spacing: -.01em;
 }
 .portfolio[data-design="editorial"] .p-intro {
   display: flex;
-  align-items: flex-start;
+  align-items: flex-end;
   justify-content: space-between;
   gap: 2rem;
-  padding-block: clamp(3.2rem, 8vw, 6.2rem) clamp(2rem, 4vw, 3rem);
+  padding-block: clamp(4rem, 11vw, 8rem) 0;
 }
 .portfolio[data-design="editorial"] .p-avatar {
-  border-radius: 1rem;
-  filter: grayscale(15%);
+  border-radius: 50%;
+  filter: grayscale(20%);
 }
-.portfolio[data-design="editorial"] .p-avatar:hover { filter: none; }
 .portfolio[data-design="editorial"] h1 {
-  margin-top: .65rem;
-  font-size: clamp(3.1rem, 8.2vw, 6.4rem);
-  font-weight: 600;
-  line-height: .96;
-  letter-spacing: -.03em;
+  margin-top: 1.25rem;
+  font-size: clamp(3.4rem, 9vw, 6.75rem);
+  font-weight: 500;
+  line-height: .92;
+  letter-spacing: -.035em;
 }
 .portfolio[data-design="editorial"] .p-headline {
+  margin-top: 1.1rem;
   font-family: var(--display-font);
   font-style: italic;
-  font-size: clamp(1.3rem, 2.6vw, 1.75rem);
-  color: var(--ink);
-  opacity: .84;
+  font-size: clamp(1.4rem, 2.8vw, 1.9rem);
+  line-height: 1.25;
+  color: var(--muted);
 }
-.portfolio[data-design="editorial"] .p-editorial-metrics {
-  padding-bottom: var(--section-space);
-}
-.portfolio[data-design="editorial"] .p-editorial-metrics .p-metrics {
-  margin-block-start: 0;
-}
+.portfolio[data-design="editorial"] .p-editorial-metrics { padding-bottom: clamp(3rem, 7vw, 5rem); }
+.portfolio[data-design="editorial"] .p-metrics strong { font-weight: 500; font-size: clamp(2.2rem, 4vw, 3rem); }
+
+/* Sections: small label, then content, all on one left edge */
+.portfolio[data-design="editorial"] .p-section { border-top-color: var(--rule); }
 .portfolio[data-design="editorial"] h2 {
-  font-size: clamp(1.9rem, 3.6vw, 2.75rem);
+  font-size: clamp(1.75rem, 3.4vw, 2.4rem);
   font-weight: 500;
-  color: var(--accent);
+  font-style: italic;
+  color: var(--ink);
 }
-.portfolio[data-design="editorial"] .p-section-content { max-width: 46rem; }
-.portfolio[data-design="editorial"] .p-entry {
-  padding-inline-start: 1.1rem;
-  border-inline-start: 2px solid transparent;
-  padding-bottom: 1.5rem;
-  border-bottom: 1px solid var(--rule);
+.portfolio[data-design="editorial"] .p-about {
+  font-family: var(--display-font);
+  font-size: clamp(1.35rem, 2.4vw, 1.65rem);
+  line-height: 1.5;
 }
-.portfolio[data-design="editorial"] .p-entry:hover { border-inline-start-color: var(--accent); }
-.portfolio[data-design="editorial"] .p-entry:last-child { border-bottom: 0; padding-bottom: 0; }
+.portfolio[data-design="editorial"] .p-entries,
+.portfolio[data-design="editorial"] .p-projects { gap: 0; }
+.portfolio[data-design="editorial"] .p-entry,
 .portfolio[data-design="editorial"] .p-project {
-  padding-bottom: 1.75rem;
-  border-bottom: 1px solid var(--rule);
+  padding-block: 1.75rem;
+  border-top: 1px solid var(--rule);
 }
-.portfolio[data-design="editorial"] .p-project:last-child { border-bottom: 0; padding-bottom: 0; }
+.portfolio[data-design="editorial"] .p-entry:first-child,
+.portfolio[data-design="editorial"] .p-project:first-child { border-top: 0; padding-top: 0; }
+.portfolio[data-design="editorial"] .p-entry:last-child,
+.portfolio[data-design="editorial"] .p-project:last-child { padding-bottom: 0; }
+.portfolio[data-design="editorial"] .p-entry-heading,
+.portfolio[data-design="editorial"] .p-project-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 1.5rem;
+  align-items: baseline;
+}
+.portfolio[data-design="editorial"] .p-entry-heading .p-meta,
+.portfolio[data-design="editorial"] .p-project-heading .p-meta {
+  grid-row: 1;
+  grid-column: 2;
+  margin: 0;
+  text-align: end;
+}
 .portfolio[data-design="editorial"] .p-project h3,
-.portfolio[data-design="editorial"] .p-entry h3 { font-size: clamp(1.4rem, 2.4vw, 1.75rem); }
+.portfolio[data-design="editorial"] .p-entry h3 {
+  font-size: clamp(1.5rem, 2.6vw, 1.9rem);
+  font-weight: 600;
+}
 
 @media (max-width: 40rem) {
   .portfolio[data-design="editorial"] { --anchor-offset: 8rem; }
-  .portfolio[data-design="editorial"] .p-intro { flex-direction: column-reverse; gap: 1.25rem; }
+  .portfolio[data-design="editorial"] .p-intro { flex-direction: column-reverse; align-items: flex-start; gap: 1.25rem; }
+  .portfolio[data-design="editorial"] .p-entry-heading,
+  .portfolio[data-design="editorial"] .p-project-heading { display: block; }
+  .portfolio[data-design="editorial"] .p-entry-heading .p-meta,
+  .portfolio[data-design="editorial"] .p-project-heading .p-meta { margin-top: .3rem; text-align: start; }
 }
