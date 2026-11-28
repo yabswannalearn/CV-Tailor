@@ -91,7 +91,7 @@
 }
 .portfolio[data-design="technical"] .p-meta,
 .portfolio[data-design="technical"] .p-tags { font-family: var(--mono); }
-.portfolio[data-design="technical"] .p-metrics li { background: var(--canvas); }
+
 .portfolio[data-design="technical"] .p-projects {
   gap: 0;
   border: 1px solid var(--rule);
@@ -130,3 +130,13 @@
   .portfolio[data-design="technical"] .p-entry { display: block; }
   .portfolio[data-design="technical"] .p-project-heading { border-inline-end: 0; border-bottom: 1px solid var(--rule); }
 }
+
+.portfolio[data-design="technical"] .p-metrics span {
+  font-family: var(--mono);
+  font-size: .7rem;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.portfolio[data-design="technical"] .p-actions a:first-child { background: var(--accent); color: var(--canvas); }
+.portfolio[data-design="technical"] .p-actions a:first-child:hover { background: var(--ink); }
+.portfolio[data-design="technical"] .p-contact-link { font-size: clamp(1.15rem, 2vw, 1.5rem); }

@@ -17,21 +17,20 @@ export function Bento({ profile, sections, activeSection, toggle, siteUrl }: Des
           <div className="p-intro p-bento-card">
             <div className="p-bento-identity">
               <Avatar path={profile.avatarPath} name={profile.fullName} />
-              <div>
-                <p className="p-eyebrow">Portfolio</p>
-                <h1>{profile.fullName}</h1>
-              </div>
+              <ProfileDetails profile={profile} />
             </div>
-            <p className="p-headline">{profile.headline}</p>
+            <div>
+              <h1>{profile.fullName}</h1>
+              <p className="p-headline">{profile.headline}</p>
+            </div>
             <ProfileActions profile={profile} sections={sections} siteUrl={siteUrl} />
           </div>
           <aside className="p-bento-side">
             <div className="p-bento-nav p-bento-card">
               <div className="p-bento-nav-head">
-                <span className="p-eyebrow">Navigate</span>
+                <span className="p-bento-nav-label">Contents</span>
                 {toggle}
               </div>
-              <ProfileDetails profile={profile} />
               <SectionNav sections={sections} activeSection={activeSection} />
             </div>
           </aside>

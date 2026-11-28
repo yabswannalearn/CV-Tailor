@@ -29,6 +29,7 @@ Your agent handles reasoning and writing; CV Tailor provides persistent records,
 | Maintain your profile | Experience, education, projects, certifications, and confirmed skills | [cv-profile](.agents/skills/cv-profile/SKILL.md) |
 | Find and assess jobs | URL/description intake, requirement comparisons, sourced research | [cv-jobs](.agents/skills/cv-jobs/SKILL.md), [cv-job-fit](.agents/skills/cv-job-fit/SKILL.md), [cv-company-research](.agents/skills/cv-company-research/SKILL.md) |
 | Tailor documents | One-page resumes, targeted edits, cover letters, draft history, exports | [cv-resume](.agents/skills/cv-resume/SKILL.md), [cv-resume-edit](.agents/skills/cv-resume-edit/SKILL.md), [cv-cover-letter](.agents/skills/cv-cover-letter/SKILL.md) |
+| Build a web portfolio | Static Next.js or Vite + React portfolio, six Portfolio Designs, static SEO, local Deploy Wizard | [cv-portfolio](.agents/skills/cv-portfolio/SKILL.md) |
 | Track applications | Statuses, notes, follow-ups, archives, documents, pipeline snapshots | [cv-tracker](.agents/skills/cv-tracker/SKILL.md), [cv-snapshot](.agents/skills/cv-snapshot/SKILL.md) |
 | Assist with forms | Recoverable answers and checkpoints tied to selected documents | [cv-apply](.agents/skills/cv-apply/SKILL.md), [cv-browser](.agents/skills/cv-browser/SKILL.md) |
 | Prepare for interviews | Plans, practice feedback, cheat sheets, Python exercises | [cv-interview](.agents/skills/cv-interview/SKILL.md), [cv-code-practice](.agents/skills/cv-code-practice/SKILL.md) |
@@ -275,6 +276,8 @@ cv-tailor practice problems
 
 Job-source availability varies; search returns source diagnostics. URL intake or pasted descriptions remain available. For portable reports, ask **“Use cv-snapshot to visualize my application pipeline.”** It saves an SVG, standalone HTML, and source JSON under the workspace's `snapshots/` directory without a dashboard server.
 
+For a public web portfolio, ask **“Use cv-portfolio to build my website. Ask me where to place the portfolio directory, help me pick a Portfolio Design and frontend stack, review my public details, check the SEO output, and prepare a Deploy Wizard I can run locally.”** It scaffolds outside the CV Tailor checkout and leaves Vercel/Cloudflare login and deployment to you in your terminal.
+
 ### Facts, revisions, and retries
 
 - Personal claims must come from confirmed profile facts or explicit user statements. Job requirements, suggested skills, generated documents, and web pages do not establish personal evidence.
@@ -329,6 +332,8 @@ cv-tailor --json preferences set --revision 1 --input preferences.json
 Replace `1` with the current preference revision. Application-specific templates override the default; changing the default does not rewrite existing applications. `"tracking_connection": null` chooses SQLite-only tracking.
 
 `calendar_connections` separately supports one `googlecalendar` and one `outlook` connection. Each stores a provider and absolute path to a nonsecret JSON setup file, or `null` before setup. Preserve the latest list when changing one provider; `[]` clears remembered calendars. Disconnecting a preference does not revoke authorization or delete calendar events.
+
+`portfolio_preference` optionally stores your chosen Portfolio Design (`editorial`, `bento`, `technical`, `case-study`, `executive`, or `bold-studio`), frontend stack (`nextjs`, `vite-react`, `astro`, `sveltekit`, `html`, or `custom`), optional hosting provider (`vercel` or `cloudflare`), and absolute local `project_dir` outside the CV Tailor checkout. Send `"portfolio_preference": null` to clear it.
 
 Credentials never belong in preferences. Remembering a provider or setup file does not prove the connection works or authorize publishing.
 
@@ -534,6 +539,7 @@ For **engineering work**, fetch origin and work on `dev`, read nested instructio
 | [AGENTS.md](AGENTS.md) | Development and career-workspace operating rules |
 | [CONTEXT.md](CONTEXT.md) | Domain language, evidence rules, resume editing, architectural constraints |
 | [Local workspace ADR](docs/adr/0002-local-cli-and-optional-dashboard.md) | Rationale for CLI, SQLite, optional dashboard |
+| [Portfolio generation ADR](docs/adr/0003-portfolio-generation-and-deploy-wizard.md) | Static export, shared Portfolio Designs, user-executed Deploy Wizard |
 | [Application form assistance](docs/application_forms.md) | Checkpoints, documents, readbacks, submission confirmation |
 | [Browser setup](docs/browser_setup.md) | Sign-in, supported browsers/hosts, MCP setup, session boundaries |
 | [Application insights](docs/application_insights.md) | Pipeline counts, snapshots, insights endpoints |
